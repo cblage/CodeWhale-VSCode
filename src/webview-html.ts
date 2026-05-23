@@ -42,6 +42,19 @@ export interface WebviewTranslations {
   welcomeSuggestion2: string;
   welcomeSuggestion3: string;
   welcomeSuggestion4: string;
+  noActiveWork: string;
+  cancel: string;
+  goal: string;
+  checklist: string;
+  strategy: string;
+  cycles: string;
+  readyTimedOut: string;
+  note: string;
+  noPreviousMessage: string;
+  justNow: string;
+  minutesAgoPattern: string;
+  hoursAgoPattern: string;
+  daysAgoPattern: string;
   commandMode: string;
   commandModel: string;
   commandModels: string;
@@ -1077,6 +1090,19 @@ export function getWebviewHtml(
       welcomeSuggestion2: '${tr.welcomeSuggestion2}',
       welcomeSuggestion3: '${tr.welcomeSuggestion3}',
       welcomeSuggestion4: '${tr.welcomeSuggestion4}',
+      noActiveWork: '${tr.noActiveWork}',
+      cancel: '${tr.cancel}',
+      goal: '${tr.goal}',
+      checklist: '${tr.checklist}',
+      strategy: '${tr.strategy}',
+      cycles: '${tr.cycles}',
+      readyTimedOut: '${tr.readyTimedOut}',
+      note: '${tr.note}',
+      noPreviousMessage: '${tr.noPreviousMessage}',
+      justNow: '${tr.justNow}',
+      minutesAgoPattern: '${tr.minutesAgoPattern}',
+      hoursAgoPattern: '${tr.hoursAgoPattern}',
+      daysAgoPattern: '${tr.daysAgoPattern}',
     };
 
     function formatThreadsCount(n) {
@@ -1550,7 +1576,7 @@ export function getWebviewHtml(
         block.className = 'thinking-block';
         const isOpen = msg.status === 'streaming' ? 'open' : '';
         const arrow = msg.status === 'streaming' ? '▼' : '▶';
-        block.innerHTML = '<div class="thinking-toggle">' + arrow + ' Thinking</div><div class="thinking-content ' + isOpen + '" id="thinking-' + msg.id + '">' + th + '</div>';
+        block.innerHTML = '<div class="thinking-toggle">' + arrow + ' ' + escapeHtml(__i18n.thinkingToggle) + '</div><div class="thinking-content ' + isOpen + '" id="thinking-' + msg.id + '">' + th + '</div>';
         bodyEl.appendChild(block);
       }
       
@@ -1595,7 +1621,7 @@ export function getWebviewHtml(
         statusText = 'error';
       } else if (tc.status === 'awaiting_approval') {
         statusIcon = '⚠';
-        statusText = 'awaiting approval';
+        statusText = __i18n.approvalAwaiting;
       } else if (tc.status === 'pending') {
         statusIcon = '◯';
         statusText = 'pending';
@@ -1628,10 +1654,10 @@ export function getWebviewHtml(
       const isOpen = content.classList.contains('open');
       if (isOpen) {
         content.classList.remove('open');
-        el.textContent = '▶ Thinking';
+        el.textContent = __i18n.thinkingClose;
       } else {
         content.classList.add('open');
-        el.textContent = '▼ Thinking';
+        el.textContent = __i18n.thinkingOpen;
       }
     }
 
@@ -1671,12 +1697,12 @@ export function getWebviewHtml(
         const now = new Date();
         const diffMs = now - d;
         const diffMin = Math.floor(diffMs / 60000);
-        if (diffMin < 1) return 'just now';
-        if (diffMin < 60) return diffMin + 'm ago';
+        if (diffMin < 1) return __i18n.justNow;
+        if (diffMin < 60) return __i18n.minutesAgoPattern.replace('{n}', String(diffMin));
         const diffHr = Math.floor(diffMin / 60);
-        if (diffHr < 24) return diffHr + 'h ago';
+        if (diffHr < 24) return __i18n.hoursAgoPattern.replace('{n}', String(diffHr));
         const diffDay = Math.floor(diffHr / 24);
-        if (diffDay < 30) return diffDay + 'd ago';
+        if (diffDay < 30) return __i18n.daysAgoPattern.replace('{n}', String(diffDay));
         return d.toLocaleDateString();
       } catch { return ''; }
     }
@@ -1692,7 +1718,7 @@ export function getWebviewHtml(
       if (count === 0) {
         const el = document.createElement('div');
         el.className = 'thread-item';
-        el.textContent = 'No conversations yet';
+        el.textContent = __i18n.noConversations;
         el.style.color = 'var(--muted)';
         el.style.fontStyle = 'italic';
         el.style.textAlign = 'center';
@@ -1753,7 +1779,7 @@ export function getWebviewHtml(
       if (!tasks || tasks.length === 0) {
         const el = document.createElement('div');
         el.className = 'work-empty';
-        el.textContent = 'No tasks';
+        el.textContent = __i18n.noTasks;
         container.appendChild(el);
         return;
       }
@@ -1777,7 +1803,7 @@ export function getWebviewHtml(
           const actions = document.createElement('div');
           actions.className = 'task-actions';
           const cancelBtn = document.createElement('button');
-          cancelBtn.textContent = 'Cancel';
+          cancelBtn.textContent = __i18n.cancel;
           cancelBtn.onclick = () => {
             vscode.postMessage({ type: 'slashCommand', command: '/task', args: 'cancel ' + t.id });
           };
@@ -1798,20 +1824,20 @@ export function getWebviewHtml(
       if (!hasContent) {
         const el = document.createElement('div');
         el.className = 'work-empty';
-        el.textContent = 'No active work';
+        el.textContent = __i18n.noActiveWork;
         container.appendChild(el);
         return;
       }
       if (workState.goal) {
         const section = document.createElement('div');
         section.className = 'work-section';
-        section.innerHTML = '<div class="work-section-title">Goal</div><div class="work-goal">' + escapeHtml(workState.goal) + '</div>';
+        section.innerHTML = '<div class="work-section-title">' + escapeHtml(__i18n.goal) + '</div><div class="work-goal">' + escapeHtml(workState.goal) + '</div>';
         container.appendChild(section);
       }
       if (workState.checklist.length > 0) {
         const section = document.createElement('div');
         section.className = 'work-section';
-        let html = '<div class="work-section-title">Checklist</div>';
+        let html = '<div class="work-section-title">' + escapeHtml(__i18n.checklist) + '</div>';
         for (const item of workState.checklist) {
           const check = item.status === 'completed' ? '[x]' : item.status === 'in_progress' ? '[~]' : '[ ]';
           const color = item.status === 'completed' ? '#4caf50' : item.status === 'in_progress' ? '#ff9800' : '#888';
@@ -1823,7 +1849,7 @@ export function getWebviewHtml(
       if (workState.strategy.length > 0) {
         const section = document.createElement('div');
         section.className = 'work-section';
-        let html = '<div class="work-section-title">Strategy</div>';
+        let html = '<div class="work-section-title">' + escapeHtml(__i18n.strategy) + '</div>';
         for (const step of workState.strategy) {
           const icon = step.status === 'completed' ? '[x]' : step.status === 'in_progress' ? '[~]' : '[ ]';
           const color = step.status === 'completed' ? '#4caf50' : step.status === 'in_progress' ? '#ff9800' : '#888';
@@ -1835,7 +1861,7 @@ export function getWebviewHtml(
       if (workState.cycleCount > 0) {
         const section = document.createElement('div');
         section.className = 'work-section';
-        section.innerHTML = '<div style="font-size:0.8em;color:var(--muted)">cycles: ' + workState.cycleCount + '</div>';
+        section.innerHTML = '<div style="font-size:0.8em;color:var(--muted)">' + escapeHtml(__i18n.cycles) + ': ' + workState.cycleCount + '</div>';
         container.appendChild(section);
       }
     }
@@ -2018,10 +2044,10 @@ export function getWebviewHtml(
             streamingTimeout = setTimeout(() => {
               if (isStreaming) {
                 isStreaming = false;
-                statusTextEl.textContent = 'Ready (stream timed out)';
+                statusTextEl.textContent = __i18n.readyTimedOut;
               }
             }, 300000);
-            statusTextEl.textContent = 'Thinking...';
+            statusTextEl.textContent = __i18n.thinking;
           }
           break;
 
@@ -2040,7 +2066,7 @@ export function getWebviewHtml(
             contentEl.textContent = msg.content || '';
             messagesEl.scrollTop = messagesEl.scrollHeight;
           }
-          statusTextEl.textContent = 'Streaming...';
+          statusTextEl.textContent = __i18n.streaming;
           break;
         }
 
@@ -2051,7 +2077,7 @@ export function getWebviewHtml(
             if (bodyEl) {
               const block = document.createElement('div');
               block.className = 'thinking-block';
-              block.innerHTML = '<div class="thinking-toggle">▼ Thinking</div><div class="thinking-content open" id="thinking-' + msg.messageId + '"></div>';
+              block.innerHTML = '<div class="thinking-toggle">▼ ' + escapeHtml(__i18n.thinkingToggle) + '</div><div class="thinking-content open" id="thinking-' + msg.messageId + '"></div>';
               bodyEl.insertBefore(block, bodyEl.firstChild);
               thinkingEl = block.querySelector('.thinking-content');
             }
@@ -2060,7 +2086,7 @@ export function getWebviewHtml(
             thinkingEl.textContent = msg.thinking || '';
             messagesEl.scrollTop = messagesEl.scrollHeight;
           }
-          statusTextEl.textContent = 'Thinking...';
+          statusTextEl.textContent = __i18n.thinking;
           break;
         }
 
@@ -2099,7 +2125,7 @@ export function getWebviewHtml(
                 statusText = 'error';
               } else if (msg.status === 'awaiting_approval') {
                 statusIcon = '⚠';
-                statusText = 'awaiting approval';
+                statusText = __i18n.approvalAwaiting;
               }
               
               statusSpan.textContent = statusIcon + ' ' + statusText;
@@ -2123,7 +2149,7 @@ export function getWebviewHtml(
             const tcEl = document.getElementById('tc-' + msg.messageId + '-' + msg.toolCallIdx);
             if (tcEl) {
               const statusSpan = tcEl.querySelector('.tool-status');
-              if (statusSpan) statusSpan.textContent = '⚠ awaiting approval';
+              if (statusSpan) statusSpan.textContent = '⚠ ' + __i18n.approvalAwaiting;
               const existing = tcEl.querySelector('.approval-bar');
               if (!existing) {
                 const bar = document.createElement('div');
@@ -2154,13 +2180,13 @@ export function getWebviewHtml(
               }
             }
           }
-          statusTextEl.textContent = '⏳ Awaiting approval...';
+          statusTextEl.textContent = __i18n.approvalAwaiting;
           break;
         }
 
         case 'approvalResolved':
           document.querySelectorAll('.approval-bar').forEach(bar => bar.remove());
-          statusTextEl.textContent = 'Streaming...';
+          statusTextEl.textContent = __i18n.streaming;
           break;
 
         case 'messageComplete': {
@@ -2185,12 +2211,12 @@ export function getWebviewHtml(
           }
           isStreaming = false;
           if (streamingTimeout) { clearTimeout(streamingTimeout); streamingTimeout = null; }
-          statusTextEl.textContent = msg.error ? 'Error' : 'Ready';
+          statusTextEl.textContent = msg.error ? __i18n.error : __i18n.ready;
           break;
         }
 
         case 'turnStarted':
-          statusTextEl.textContent = 'Processing...';
+          statusTextEl.textContent = __i18n.processing;
           break;
 
         case 'sessionStats': {
@@ -2223,16 +2249,16 @@ export function getWebviewHtml(
           messagesEl.innerHTML = '';
           isStreaming = false;
           if (streamingTimeout) { clearTimeout(streamingTimeout); streamingTimeout = null; }
-          statusTextEl.textContent = 'Ready';
+          statusTextEl.textContent = __i18n.ready;
           if (statusStatsEl) statusStatsEl.innerHTML = '';
           renderWelcome();
           break;
 
         case 'error':
-          statusTextEl.textContent = 'Error';
+          statusTextEl.textContent = __i18n.error;
           const errEl = document.createElement('div');
           errEl.className = 'error-banner';
-          errEl.innerHTML = '<span class="msg-label error">Error</span><span>' + escapeHtml(msg.message) + '</span>';
+          errEl.innerHTML = '<span class="msg-label error">' + escapeHtml(__i18n.error) + '</span><span>' + escapeHtml(msg.message) + '</span>';
           messagesEl.appendChild(errEl);
           messagesEl.scrollTop = messagesEl.scrollHeight;
           isStreaming = false;
@@ -2242,7 +2268,7 @@ export function getWebviewHtml(
         case 'info': {
           const infoEl = document.createElement('div');
           infoEl.className = 'system-message';
-          infoEl.innerHTML = '<span class="msg-label note">Note</span><span class="msg-body">' + escapeHtml(msg.message) + '</span>';
+          infoEl.innerHTML = '<span class="msg-label note">' + escapeHtml(__i18n.note) + '</span><span class="msg-body">' + escapeHtml(msg.message) + '</span>';
           messagesEl.appendChild(infoEl);
           messagesEl.scrollTop = messagesEl.scrollHeight;
           break;
@@ -2258,7 +2284,7 @@ export function getWebviewHtml(
           } else {
             const infoEl = document.createElement('div');
             infoEl.className = 'system-message';
-            infoEl.innerHTML = '<span class="msg-label note">Note</span><span class="msg-body">No previous message to edit</span>';
+            infoEl.innerHTML = '<span class="msg-label note">' + escapeHtml(__i18n.note) + '</span><span class="msg-body">' + escapeHtml(__i18n.noPreviousMessage) + '</span>';
             messagesEl.appendChild(infoEl);
             messagesEl.scrollTop = messagesEl.scrollHeight;
           }

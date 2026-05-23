@@ -37,6 +37,19 @@ interface Translations {
   welcomeSuggestion2: string;
   welcomeSuggestion3: string;
   welcomeSuggestion4: string;
+  noActiveWork: string;
+  cancel: string;
+  goal: string;
+  checklist: string;
+  strategy: string;
+  cycles: string;
+  readyTimedOut: string;
+  note: string;
+  noPreviousMessage: string;
+  justNow: string;
+  minutesAgoPattern: string;
+  hoursAgoPattern: string;
+  daysAgoPattern: string;
   loadedThread: (title: string) => string;
   contextCompacted: string;
   compactFailed: string;
@@ -146,6 +159,19 @@ const en: Translations = {
   welcomeSuggestion2: "Write or refactor code",
   welcomeSuggestion3: "Analyze a problem step by step",
   welcomeSuggestion4: "Explore a topic in depth",
+  noActiveWork: "No active work",
+  cancel: "Cancel",
+  goal: "Goal",
+  checklist: "Checklist",
+  strategy: "Strategy",
+  cycles: "cycles",
+  readyTimedOut: "Ready (stream timed out)",
+  note: "Note",
+  noPreviousMessage: "No previous message to edit",
+  justNow: "just now",
+  minutesAgoPattern: "{n}m ago",
+  hoursAgoPattern: "{n}h ago",
+  daysAgoPattern: "{n}d ago",
   loadedThread: (title) => `Loaded: ${title}`,
   contextCompacted: "Context compacted", compactFailed: "Compact failed",
   sendFailed: "Failed to send message", initFailed: "Failed to initialize",
@@ -246,6 +272,19 @@ const zhCn: Translations = {
   welcomeSuggestion2: "编写或重构代码",
   welcomeSuggestion3: "逐步分析一个问题",
   welcomeSuggestion4: "深入探索某个话题",
+  noActiveWork: "暂无进行中的工作",
+  cancel: "取消",
+  goal: "目标",
+  checklist: "检查清单",
+  strategy: "策略",
+  cycles: "轮次",
+  readyTimedOut: "就绪（流超时）",
+  note: "提示",
+  noPreviousMessage: "没有可编辑的上一条消息",
+  justNow: "刚刚",
+  minutesAgoPattern: "{n}分钟前",
+  hoursAgoPattern: "{n}小时前",
+  daysAgoPattern: "{n}天前",
   loadedThread: (title) => `已加载: ${title}`,
   contextCompacted: "上下文已压缩", compactFailed: "压缩失败",
   sendFailed: "发送消息失败", initFailed: "初始化失败",
@@ -399,6 +438,19 @@ export function webviewTranslations(tr: Translations) {
     welcomeSuggestion2: tr.welcomeSuggestion2,
     welcomeSuggestion3: tr.welcomeSuggestion3,
     welcomeSuggestion4: tr.welcomeSuggestion4,
+    noActiveWork: tr.noActiveWork,
+    cancel: tr.cancel,
+    goal: tr.goal,
+    checklist: tr.checklist,
+    strategy: tr.strategy,
+    cycles: tr.cycles,
+    readyTimedOut: tr.readyTimedOut,
+    note: tr.note,
+    noPreviousMessage: tr.noPreviousMessage,
+    justNow: tr.justNow,
+    minutesAgoPattern: tr.minutesAgoPattern,
+    hoursAgoPattern: tr.hoursAgoPattern,
+    daysAgoPattern: tr.daysAgoPattern,
     commandMode: tr.commandMode,
     commandModel: tr.commandModel,
     commandModels: tr.commandModels,
