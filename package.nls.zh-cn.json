@@ -1,0 +1,16 @@
+{
+  "displayName": "DeepSeek",
+  "description": "基于 DeepSeek-TUI 引擎的 AI 编程智能体",
+  "viewsContainers.activitybar.title": "DeepSeek",
+  "views.chat.name": "对话",
+  "commands.openChat.title": "DeepSeek: 打开对话",
+  "commands.newThread.title": "DeepSeek: 新建会话",
+  "commands.compactContext.title": "DeepSeek: 压缩上下文",
+  "commands.restartEngine.title": "DeepSeek: 重启引擎",
+  "config.enginePath.description": "deepseek 可执行文件路径",
+  "config.enginePort.description": "DeepSeek 运行时 API 服务器端口",
+  "config.defaultModel.description": "新会话的默认模型",
+  "config.defaultMode.description": "新会话的默认模式（agent、plan 或 yolo）",
+  "config.reasoningEffort.description": "思考深度级别（auto、off、low、medium、high、max）",
+  "config.autoStartEngine.description": "扩展激活时自动启动 DeepSeek 引擎"
+}

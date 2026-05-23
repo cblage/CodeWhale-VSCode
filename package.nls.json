@@ -1,0 +1,16 @@
+{
+  "displayName": "DeepSeek",
+  "description": "DeepSeek AI coding agent powered by the DeepSeek-TUI engine",
+  "viewsContainers.activitybar.title": "DeepSeek",
+  "views.chat.name": "Chat",
+  "commands.openChat.title": "DeepSeek: Open Chat",
+  "commands.newThread.title": "DeepSeek: New Thread",
+  "commands.compactContext.title": "DeepSeek: Compact Context",
+  "commands.restartEngine.title": "DeepSeek: Restart Engine",
+  "config.enginePath.description": "Path to the deepseek binary",
+  "config.enginePort.description": "Port for the DeepSeek runtime API server",
+  "config.defaultModel.description": "Default model for new threads",
+  "config.defaultMode.description": "Default mode for new threads (agent, plan, or yolo)",
+  "config.reasoningEffort.description": "Reasoning effort level (auto, off, low, medium, high, max)",
+  "config.autoStartEngine.description": "Automatically start the DeepSeek engine when the extension activates"
+}

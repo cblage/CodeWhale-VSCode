@@ -1,0 +1,136 @@
+{
+  "name": "deepseek-vscode",
+  "displayName": "%displayName%",
+  "description": "%description%",
+  "version": "0.1.0",
+  "publisher": "deepseek",
+  "repository": "https://github.com/HengQuWorld/DeepSeek-GUI",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Machine Learning",
+    "Chat"
+  ],
+  "keywords": [
+    "deepseek",
+    "ai",
+    "coding",
+    "agent",
+    "chat"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "deepseek",
+          "title": "%viewsContainers.activitybar.title%",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "deepseek": [
+        {
+          "type": "webview",
+          "id": "deepseek.chat",
+          "name": "%views.chat.name%"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "deepseek.openChat",
+        "title": "%commands.openChat.title%"
+      },
+      {
+        "command": "deepseek.newThread",
+        "title": "%commands.newThread.title%"
+      },
+      {
+        "command": "deepseek.compactContext",
+        "title": "%commands.compactContext.title%"
+      },
+      {
+        "command": "deepseek.restartEngine",
+        "title": "%commands.restartEngine.title%"
+      }
+    ],
+    "configuration": {
+      "title": "DeepSeek",
+      "properties": {
+        "deepseek.enginePath": {
+          "type": "string",
+          "default": "deepseek",
+          "description": "%config.enginePath.description%"
+        },
+        "deepseek.enginePort": {
+          "type": "number",
+          "default": 7878,
+          "description": "%config.enginePort.description%"
+        },
+        "deepseek.defaultModel": {
+          "type": "string",
+          "default": "deepseek-v4-pro",
+          "description": "%config.defaultModel.description%"
+        },
+        "deepseek.defaultMode": {
+          "type": "string",
+          "enum": [
+            "agent",
+            "plan",
+            "yolo"
+          ],
+          "default": "agent",
+          "description": "%config.defaultMode.description%"
+        },
+        "deepseek.reasoningEffort": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "off",
+            "low",
+            "medium",
+            "high",
+            "max"
+          ],
+          "default": "auto",
+          "description": "%config.reasoningEffort.description%"
+        },
+        "deepseek.autoStartEngine": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.autoStartEngine.description%"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "webpack --mode development",
+    "watch": "webpack --mode development --watch",
+    "package": "webpack --mode production --devtool hidden-source-map",
+    "lint": "eslint src --ext ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/marked": "^5.0.2",
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.22.0",
+    "ts-loader": "^9.5.0",
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.7",
+    "webpack": "^5.90.0",
+    "webpack-cli": "^5.1.0"
+  },
+  "dependencies": {
+    "marked": "^18.0.4"
+  }
+}
