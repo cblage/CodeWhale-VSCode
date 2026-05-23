@@ -33,6 +33,15 @@ export interface WebviewTranslations {
   thinkingClose: string;
   modeLabel: string;
   reasoningEffortLabel: string;
+  welcomeTitle: string;
+  welcomeSubtitle: string;
+  welcomeQuote: string;
+  welcomeQuoteAuthor: string;
+  welcomeSuggestionTitle: string;
+  welcomeSuggestion1: string;
+  welcomeSuggestion2: string;
+  welcomeSuggestion3: string;
+  welcomeSuggestion4: string;
   commandMode: string;
   commandModel: string;
   commandModels: string;
@@ -130,6 +139,29 @@ export function getWebviewHtml(
       --input-fg: var(--vscode-input-foreground);
       --card-bg: var(--vscode-sideBar-background);
       --code-bg: var(--vscode-textCodeBlock-background, rgba(128,128,128,0.12));
+      --brand-primary: #2c4f54;
+      --brand-primary-light: #6d9ea6;
+      --brand-primary-foreground: #ffffff;
+      --brand-warm-bg: #fdfbf7;
+      --brand-deep-bg: #0c1416;
+      --brand-ink: #1c1917;
+      --brand-soft-gray: #e7e5e4;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --brand-primary: #6d9ea6;
+        --brand-primary-light: #8fbfc7;
+        --brand-warm-bg: #0c1416;
+        --brand-ink: #e7e5e4;
+      }
+    }
+
+    body[data-vscode-theme-kind="vscode-dark"] {
+      --brand-primary: #6d9ea6;
+      --brand-primary-light: #8fbfc7;
+      --brand-warm-bg: #0c1416;
+      --brand-ink: #e7e5e4;
     }
 
     body {
@@ -145,45 +177,61 @@ export function getWebviewHtml(
     #layout { display: flex; flex: 1; overflow: hidden; }
 
     #threads-panel {
-      width: 200px;
-      min-width: 140px;
+      width: 220px;
+      min-width: 160px;
       border-right: 1px solid var(--border);
       overflow-y: auto;
-      padding: 4px 0;
+      padding: 0;
       display: none;
+      flex-direction: column;
     }
-    #threads-panel.open { display: block; }
+    #threads-panel.open { display: flex; }
 
-    #threads-panel .panel-header {
-      padding: 6px 10px;
-      font-size: 0.8em;
+    .sidebar-section {
+      display: flex;
+      flex-direction: column;
+      border-bottom: 1px solid var(--border);
+    }
+    .sidebar-section-header {
+      display: flex;
+      align-items: center;
+      padding: 5px 10px;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s;
+    }
+    .sidebar-section-header:hover {
+      background: var(--card-bg);
+    }
+    .sidebar-section-title {
+      font-size: 0.78em;
       font-weight: 600;
       color: var(--muted);
-      border-bottom: 1px solid var(--border);
       text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-
-    .panel-tabs {
-      display: flex;
-      border-bottom: 1px solid var(--border);
-    }
-    .panel-tab {
+      letter-spacing: 0.5px;
       flex: 1;
-      background: none;
-      border: none;
-      color: var(--muted);
-      padding: 4px 2px;
-      font-size: 0.75em;
-      cursor: pointer;
-      border-bottom: 2px solid transparent;
-      transition: color 0.15s, border-color 0.15s;
     }
-    .panel-tab:hover { color: var(--fg); }
-    .panel-tab.active { color: var(--fg); border-bottom-color: var(--accent); }
-
-    .tab-content { overflow-y: auto; }
-    .tab-content.active { display: block; }
+    .sidebar-section-arrow {
+      font-size: 0.7em;
+      color: var(--muted);
+      transition: transform 0.2s;
+    }
+    .sidebar-section.collapsed .sidebar-section-arrow {
+      transform: rotate(-90deg);
+    }
+    .sidebar-section-body {
+      overflow-y: auto;
+      max-height: 200px;
+      transition: max-height 0.25s ease;
+    }
+    .sidebar-section.collapsed .sidebar-section-body {
+      max-height: 0 !important;
+      overflow: hidden;
+    }
+    #sidebar-threads .sidebar-section-body {
+      max-height: 600px;
+      flex: 1;
+    }
 
     .thread-item {
       padding: 6px 10px;
@@ -193,7 +241,7 @@ export function getWebviewHtml(
     }
     .thread-item + .thread-item { border-top: 1px solid rgba(128,128,128,0.1); }
     .thread-item:hover { background: var(--card-bg); color: var(--fg); }
-    .thread-item.active { background: var(--accent); color: white; }
+    .thread-item.active { background: var(--brand-primary); color: white; }
     .thread-item .thread-title {
       font-weight: 600;
       color: var(--fg);
@@ -237,6 +285,92 @@ export function getWebviewHtml(
       padding: 8px;
     }
 
+    .welcome-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      padding: 40px 24px;
+      text-align: center;
+      animation: welcomeFadeIn 600ms ease-out;
+    }
+    @keyframes welcomeFadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .welcome-brand {
+      font-size: 1.6em;
+      font-weight: 700;
+      color: var(--brand-primary);
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .welcome-subtitle {
+      font-size: 0.85em;
+      color: var(--muted);
+      margin-bottom: 28px;
+      max-width: 360px;
+      line-height: 1.5;
+    }
+    .welcome-quote-block {
+      position: relative;
+      padding: 16px 24px;
+      margin-bottom: 32px;
+      max-width: 400px;
+      border-left: 3px solid var(--brand-primary);
+      background: rgba(44, 79, 84, 0.06);
+      border-radius: 0 8px 8px 0;
+    }
+    body[data-vscode-theme-kind="vscode-dark"] .welcome-quote-block {
+      background: rgba(109, 158, 166, 0.08);
+    }
+    .welcome-quote-text {
+      font-size: 0.88em;
+      line-height: 1.7;
+      color: var(--fg);
+      font-style: italic;
+    }
+    .welcome-quote-author {
+      font-size: 0.78em;
+      color: var(--muted);
+      margin-top: 8px;
+      text-align: right;
+    }
+    .welcome-suggestions-title {
+      font-size: 0.9em;
+      font-weight: 600;
+      color: var(--fg);
+      margin-bottom: 12px;
+    }
+    .welcome-suggestions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      max-width: 420px;
+      width: 100%;
+    }
+    .welcome-suggestion {
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.82em;
+      color: var(--muted);
+      cursor: pointer;
+      text-align: left;
+      background: transparent;
+      transition: border-color 0.2s, color 0.2s, background 0.2s;
+      line-height: 1.4;
+    }
+    .welcome-suggestion:hover {
+      border-color: var(--brand-primary);
+      color: var(--brand-primary);
+      background: rgba(44, 79, 84, 0.05);
+    }
+    body[data-vscode-theme-kind="vscode-dark"] .welcome-suggestion:hover {
+      background: rgba(109, 158, 166, 0.08);
+    }
+
     .message {
       margin-bottom: 12px;
       padding: 8px 12px;
@@ -246,8 +380,8 @@ export function getWebviewHtml(
     }
 
     .message.user {
-      background: var(--accent);
-      color: white;
+      background: var(--brand-primary);
+      color: var(--brand-primary-foreground);
       margin-left: 20%;
     }
 
@@ -313,11 +447,11 @@ export function getWebviewHtml(
     }
 
     .message .content blockquote {
-      border-left: 3px solid var(--accent);
+      border-left: 3px solid var(--brand-primary);
       margin: 6px 0;
       padding: 4px 10px;
       color: var(--muted);
-      background: rgba(128,128,128,0.05);
+      background: rgba(44, 79, 84, 0.05);
       border-radius: 0 4px 4px 0;
     }
     .message .content blockquote p { margin: 2px 0; }
@@ -336,7 +470,7 @@ export function getWebviewHtml(
     }
 
     .message .content a {
-      color: var(--accent);
+      color: var(--brand-primary);
       text-decoration: underline;
     }
     .message .content a:hover { opacity: 0.8; }
@@ -402,7 +536,7 @@ export function getWebviewHtml(
     }
     .tool-call .tool-name {
       font-weight: 600;
-      color: var(--accent);
+      color: var(--brand-primary);
     }
     .tool-call .tool-status {
       margin-left: 4px;
@@ -484,10 +618,10 @@ export function getWebviewHtml(
       max-height: 120px;
       outline: none;
     }
-    #input-area textarea:focus { border-color: var(--accent); }
+    #input-area textarea:focus { border-color: var(--brand-primary); }
     #input-area button {
-      background: var(--accent);
-      color: white;
+      background: var(--brand-primary);
+      color: var(--brand-primary-foreground);
       border: none;
       border-radius: 4px;
       padding: 6px 14px;
@@ -495,7 +629,7 @@ export function getWebviewHtml(
       font-size: 0.9em;
       white-space: nowrap;
     }
-    #input-area button:hover { background: var(--accent-hover); }
+    #input-area button:hover { background: var(--brand-primary-light); }
     #input-area button:disabled { opacity: 0.5; cursor: not-allowed; }
 
     #toolbar {
@@ -551,8 +685,8 @@ export function getWebviewHtml(
       border-radius: 2px;
     }
     #settings-bar .setting-value:hover {
-      background: var(--accent);
-      color: white;
+      background: var(--brand-primary);
+      color: var(--brand-primary-foreground);
     }
     
     #slash-menu {
@@ -573,8 +707,8 @@ export function getWebviewHtml(
       border-bottom: 1px solid var(--border);
     }
     .slash-menu-item:last-child { border-bottom: none; }
-    .slash-menu-item:hover { background: var(--accent); color: white; }
-    .slash-menu-item.selected { background: var(--accent); color: white; }
+    .slash-menu-item:hover { background: var(--brand-primary); color: white; }
+    .slash-menu-item.selected { background: var(--brand-primary); color: white; }
     .slash-menu-item .command-name {
       font-weight: 600;
       margin-right: 8px;
@@ -635,7 +769,49 @@ export function getWebviewHtml(
       padding: 2px 8px;
       font-size: 0.75em;
       color: var(--muted);
-      text-align: center;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-top: 1px solid var(--border);
+      background: var(--card-bg);
+      min-height: 20px;
+    }
+    .status-bar .status-left {
+      flex-shrink: 0;
+    }
+    .status-bar .status-right {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .status-bar .stat-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 0 4px;
+      border-radius: 2px;
+      font-size: 0.95em;
+    }
+    .status-bar .stat-chip.cost {
+      color: var(--fg);
+      font-weight: 600;
+    }
+    .status-bar .stat-chip.cache-good {
+      color: #4caf50;
+    }
+    .status-bar .stat-chip.cache-warn {
+      color: #f0ad4e;
+    }
+    .status-bar .stat-chip.cache-bad {
+      color: #d9534f;
+    }
+    .status-bar .stat-chip.cache-neutral {
+      color: var(--muted);
+    }
+    .status-bar .stat-chip.tokens {
+      color: var(--muted);
     }
     .task-card {
       padding: 6px 10px;
@@ -794,15 +970,27 @@ export function getWebviewHtml(
   <div id="task-detail-overlay" class="task-detail-overlay" style="display:none"></div>
   <div id="layout">
     <div id="threads-panel">
-      <div class="panel-header">${tr.history}</div>
-      <div class="panel-tabs" id="panel-tabs">
-        <button class="panel-tab active" data-tab="threads">🕮 ${tr.threads}</button>
-        <button class="panel-tab" data-tab="work">◆ ${tr.work}</button>
-        <button class="panel-tab" data-tab="tasks">⚙ ${tr.tasks}</button>
+      <div class="sidebar-section" id="sidebar-threads">
+        <div class="sidebar-section-header" id="threads-section-toggle">
+          <span class="sidebar-section-title">🕮 ${tr.threads}</span>
+          <span class="sidebar-section-arrow">▼</span>
+        </div>
+        <div class="sidebar-section-body" id="tab-threads"></div>
       </div>
-      <div id="tab-threads" class="tab-content active"></div>
-      <div id="tab-work" class="tab-content" style="display:none"></div>
-      <div id="tab-tasks" class="tab-content" style="display:none"></div>
+      <div class="sidebar-section" id="sidebar-work">
+        <div class="sidebar-section-header" id="work-section-toggle">
+          <span class="sidebar-section-title">◆ ${tr.work}</span>
+          <span class="sidebar-section-arrow">▼</span>
+        </div>
+        <div class="sidebar-section-body" id="tab-work"></div>
+      </div>
+      <div class="sidebar-section" id="sidebar-tasks">
+        <div class="sidebar-section-header" id="tasks-section-toggle">
+          <span class="sidebar-section-title">⚙ ${tr.tasks}</span>
+          <span class="sidebar-section-arrow">▼</span>
+        </div>
+        <div class="sidebar-section-body" id="tab-tasks"></div>
+      </div>
     </div>
     <div id="chat-area">
       <div id="settings-bar">
@@ -832,7 +1020,10 @@ export function getWebviewHtml(
         <textarea id="input" placeholder="${tr.inputPlaceholder}" rows="1"></textarea>
         <button id="btn-send">${tr.send}</button>
       </div>
-      <div class="status-bar" id="status">${tr.initializing}</div>
+      <div class="status-bar" id="status">
+        <span class="status-left" id="status-text">${tr.initializing}</span>
+        <span class="status-right" id="status-stats"></span>
+      </div>
       <div id="debug-panel" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#1a1a2e;color:#0f0;font-size:11px;padding:4px 8px;z-index:99999;max-height:80px;overflow-y:auto;font-family:monospace;pointer-events:none;"></div>
     </div>
   </div>
@@ -872,12 +1063,20 @@ export function getWebviewHtml(
       approvalAwaiting: '${tr.approvalAwaiting}',
       noConversations: '${tr.noConversations}',
       noTasks: '${tr.noTasks}',
-      // Formatting uses __locale + inline logic — no .replace() dependency
       approvalRequired: '${tr.approvalRequired}',
       allow: '${tr.allow}',
       deny: '${tr.deny}',
       thinkingOpen: '${tr.thinkingOpen}',
       thinkingClose: '${tr.thinkingClose}',
+      welcomeTitle: '${tr.welcomeTitle}',
+      welcomeSubtitle: '${tr.welcomeSubtitle}',
+      welcomeQuote: '${tr.welcomeQuote}',
+      welcomeQuoteAuthor: '${tr.welcomeQuoteAuthor}',
+      welcomeSuggestionTitle: '${tr.welcomeSuggestionTitle}',
+      welcomeSuggestion1: '${tr.welcomeSuggestion1}',
+      welcomeSuggestion2: '${tr.welcomeSuggestion2}',
+      welcomeSuggestion3: '${tr.welcomeSuggestion3}',
+      welcomeSuggestion4: '${tr.welcomeSuggestion4}',
     };
 
     function formatThreadsCount(n) {
@@ -914,6 +1113,8 @@ export function getWebviewHtml(
     const compactBtn = document.getElementById('btn-compact');
     const interruptBtn = document.getElementById('btn-interrupt');
     const statusEl = document.getElementById('status');
+    const statusTextEl = document.getElementById('status-text');
+    const statusStatsEl = document.getElementById('status-stats');
     const slashMenuEl = document.getElementById('slash-menu');
     const currentModeEl = document.getElementById('current-mode');
     const currentModelEl = document.getElementById('current-model');
@@ -1222,8 +1423,12 @@ export function getWebviewHtml(
     });
 
     sendBtn.addEventListener('click', () => { _dbg('sendBtn clicked'); sendMessage(); });
+    let isComposing = false;
+    inputEl.addEventListener('compositionstart', () => { isComposing = true; });
+    inputEl.addEventListener('compositionend', () => { isComposing = false; });
     inputEl.addEventListener('keydown', (e) => {
-      _dbg('keydown: key=' + e.key);
+      _dbg('keydown: key=' + e.key + ' isComposing=' + isComposing);
+      if (isComposing) return;
       if (slashMenuOpen) {
         if (e.key === 'ArrowDown') {
           e.preventDefault();
@@ -1269,6 +1474,8 @@ export function getWebviewHtml(
     threadsBtn.addEventListener('click', toggleThreadsPanel);
     threadCountEl.addEventListener('click', toggleThreadsPanel);
 
+    renderWelcome();
+
     function sendMessage() {
       const text = inputEl.value.trim();
       if (!text || isStreaming) return;
@@ -1286,7 +1493,44 @@ export function getWebviewHtml(
       }
     }
 
+    function renderWelcome() {
+      const existing = messagesEl.querySelector('.welcome-screen');
+      if (existing) return;
+      const welcome = document.createElement('div');
+      welcome.className = 'welcome-screen';
+      const suggestions = [
+        { text: __i18n.welcomeSuggestion1, prompt: __i18n.welcomeSuggestion1 },
+        { text: __i18n.welcomeSuggestion2, prompt: __i18n.welcomeSuggestion2 },
+        { text: __i18n.welcomeSuggestion3, prompt: __i18n.welcomeSuggestion3 },
+        { text: __i18n.welcomeSuggestion4, prompt: __i18n.welcomeSuggestion4 },
+      ];
+      welcome.innerHTML =
+        '<div class="welcome-brand">' + escapeHtml(__i18n.welcomeTitle) + '</div>' +
+        '<div class="welcome-subtitle">' + escapeHtml(__i18n.welcomeSubtitle) + '</div>' +
+        '<div class="welcome-quote-block">' +
+          '<div class="welcome-quote-text">' + escapeHtml(__i18n.welcomeQuote) + '</div>' +
+          '<div class="welcome-quote-author">' + escapeHtml(__i18n.welcomeQuoteAuthor) + '</div>' +
+        '</div>' +
+        '<div class="welcome-suggestions-title">' + escapeHtml(__i18n.welcomeSuggestionTitle) + '</div>' +
+        '<div class="welcome-suggestions">' +
+          suggestions.map(s =>
+            '<button class="welcome-suggestion" data-prompt="' + escapeHtml(s.prompt) + '">' + escapeHtml(s.text) + '</button>'
+          ).join('') +
+        '</div>';
+      messagesEl.appendChild(welcome);
+      welcome.addEventListener('click', function(e) {
+        const btn = e.target.closest('.welcome-suggestion');
+        if (btn && btn.dataset.prompt) {
+          inputEl.value = btn.dataset.prompt;
+          inputEl.focus();
+        }
+      });
+    }
+
     function addMessage(msg) {
+      const welcomeEl = messagesEl.querySelector('.welcome-screen');
+      if (welcomeEl) welcomeEl.remove();
+
       const el = document.createElement('div');
       el.className = 'message ' + msg.role;
       el.id = 'msg-' + msg.id;
@@ -1311,9 +1555,10 @@ export function getWebviewHtml(
       }
       
       if (msg.toolCalls && msg.toolCalls.length > 0) {
-        for (const tc of msg.toolCalls) {
+        for (let i = 0; i < msg.toolCalls.length; i++) {
+          const tc = msg.toolCalls[i];
           const tcEl = document.createElement('div');
-          tcEl.innerHTML = renderToolCall(msg.id, tc);
+          tcEl.innerHTML = renderToolCall(msg.id, tc, i);
           bodyEl.appendChild(tcEl.firstElementChild);
         }
       }
@@ -1335,7 +1580,7 @@ export function getWebviewHtml(
       messagesEl.scrollTop = messagesEl.scrollHeight;
     }
 
-    function renderToolCall(msgId, tc) {
+    function renderToolCall(msgId, tc, tcIdx) {
       let statusIcon = '';
       let statusText = tc.status;
       
@@ -1356,7 +1601,7 @@ export function getWebviewHtml(
         statusText = 'pending';
       }
       
-      let html = '<div class="tool-call" id="tc-' + msgId + '-' + escapeHtml(tc.name) + '">';
+      let html = '<div class="tool-call" id="tc-' + msgId + '-' + tcIdx + '">';
       html += '<span class="tool-name">🔧 ' + escapeHtml(tc.name) + '</span>';
       html += ' <span class="tool-status" style="color:var(--muted)">' + statusIcon + ' ' + statusText + '</span>';
       if (tc.output) {
@@ -1413,15 +1658,10 @@ export function getWebviewHtml(
       }
     });
 
-    // Tab switching
-    document.getElementById('panel-tabs').addEventListener('click', (e) => {
-      const btn = e.target.closest('.panel-tab');
-      if (!btn) return;
-      const tab = btn.dataset.tab;
-      document.querySelectorAll('.panel-tab').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      document.querySelectorAll('.tab-content').forEach(c => {
-        c.style.display = c.id === 'tab-' + tab ? 'block' : 'none';
+    document.querySelectorAll('.sidebar-section-header').forEach(header => {
+      header.addEventListener('click', () => {
+        const section = header.parentElement;
+        section.classList.toggle('collapsed');
       });
     });
 
@@ -1501,7 +1741,6 @@ export function getWebviewHtml(
 
         el.addEventListener('click', () => {
           vscode.postMessage({ type: 'loadThread', threadId: t.id });
-          threadsPanel.classList.remove('open');
         });
         container.appendChild(el);
       }
@@ -1532,7 +1771,7 @@ export function getWebviewHtml(
           '<div class="task-meta">' + escapeHtml(t.status) + ' · ' + escapeHtml(t.model || '') + '</div>';
         card.addEventListener('click', (e) => {
           if (e.target.tagName === 'BUTTON') return;
-          vscode.postMessage({ type: 'slashCommand', command: '/task show ' + t.id });
+          vscode.postMessage({ type: 'slashCommand', command: '/task', args: 'show ' + t.id });
         });
         if (t.status === 'running' || t.status === 'queued') {
           const actions = document.createElement('div');
@@ -1540,7 +1779,7 @@ export function getWebviewHtml(
           const cancelBtn = document.createElement('button');
           cancelBtn.textContent = 'Cancel';
           cancelBtn.onclick = () => {
-            vscode.postMessage({ type: 'slashCommand', command: '/task cancel ' + t.id });
+            vscode.postMessage({ type: 'slashCommand', command: '/task', args: 'cancel ' + t.id });
           };
           actions.appendChild(cancelBtn);
           card.appendChild(actions);
@@ -1721,7 +1960,7 @@ export function getWebviewHtml(
       switch (msg.type) {
         case 'ready':
           closeTaskDetail();
-          statusEl.textContent = '${tr.ready} (' + (msg.model || 'deepseek-v4-pro') + ')';
+          statusTextEl.textContent = '${tr.ready} (' + (msg.model || 'deepseek-v4-pro') + ')';
           if (msg.mode) currentModeEl.textContent = msg.mode;
           if (msg.model) currentModelEl.textContent = msg.model;
           if (msg.reasoningEffort) currentReasoningEl.textContent = msg.reasoningEffort;
@@ -1767,7 +2006,7 @@ export function getWebviewHtml(
           activeThreadId = msg.thread?.id || null;
           messagesEl.innerHTML = '';
           for (const m of msg.messages) addMessage(m);
-          statusEl.textContent = formatLoadedThread(msg.thread?.title || msg.thread?.id?.slice(0, 12) || '');
+          statusTextEl.textContent = formatLoadedThread(msg.thread?.title || msg.thread?.id?.slice(0, 12) || '');
           renderThreads();
           break;
 
@@ -1779,10 +2018,10 @@ export function getWebviewHtml(
             streamingTimeout = setTimeout(() => {
               if (isStreaming) {
                 isStreaming = false;
-                statusEl.textContent = 'Ready (stream timed out)';
+                statusTextEl.textContent = 'Ready (stream timed out)';
               }
             }, 300000);
-            statusEl.textContent = 'Thinking...';
+            statusTextEl.textContent = 'Thinking...';
           }
           break;
 
@@ -1801,7 +2040,7 @@ export function getWebviewHtml(
             contentEl.textContent = msg.content || '';
             messagesEl.scrollTop = messagesEl.scrollHeight;
           }
-          statusEl.textContent = 'Streaming...';
+          statusTextEl.textContent = 'Streaming...';
           break;
         }
 
@@ -1821,7 +2060,7 @@ export function getWebviewHtml(
             thinkingEl.textContent = msg.thinking || '';
             messagesEl.scrollTop = messagesEl.scrollHeight;
           }
-          statusEl.textContent = 'Thinking...';
+          statusTextEl.textContent = 'Thinking...';
           break;
         }
 
@@ -1829,7 +2068,7 @@ export function getWebviewHtml(
           const bodyEl = document.getElementById('body-' + msg.messageId);
           if (bodyEl) {
             const tcEl = document.createElement('div');
-            tcEl.innerHTML = renderToolCall(msg.messageId, msg.toolCall);
+            tcEl.innerHTML = renderToolCall(msg.messageId, msg.toolCall, msg.toolCallIdx);
             const contentEl = document.getElementById('content-' + msg.messageId);
             if (contentEl) {
               bodyEl.insertBefore(tcEl.firstElementChild, contentEl);
@@ -1842,7 +2081,7 @@ export function getWebviewHtml(
         }
 
         case 'updateToolCall': {
-          const tcEl = document.getElementById('tc-' + msg.messageId + '-' + msg.toolName);
+          const tcEl = document.getElementById('tc-' + msg.messageId + '-' + msg.toolCallIdx);
           if (tcEl) {
             const statusSpan = tcEl.querySelector('.tool-status');
             if (statusSpan) {
@@ -1880,28 +2119,48 @@ export function getWebviewHtml(
         }
 
         case 'approvalRequired': {
-          const bodyEl = document.getElementById('body-' + msg.messageId);
-          if (bodyEl) {
-            const existing = bodyEl.querySelector('.approval-bar');
-            if (!existing) {
-              const bar = document.createElement('div');
-              bar.className = 'approval-bar';
-              bar.innerHTML = '<div class="approval-text">⚠ ' + escapeHtml(msg.reason) + '</div>'
-                + '<div class="approval-buttons">'
-                + '<button class="btn-allow" data-approval-id="' + msg.approvalId + '" data-decision="allow">Allow</button>'
-                + '<button class="btn-deny" data-approval-id="' + msg.approvalId + '" data-decision="deny">Deny</button>'
-                + '</div>';
-              bodyEl.appendChild(bar);
-              messagesEl.scrollTop = messagesEl.scrollHeight;
+          if (msg.toolCallIdx !== undefined) {
+            const tcEl = document.getElementById('tc-' + msg.messageId + '-' + msg.toolCallIdx);
+            if (tcEl) {
+              const statusSpan = tcEl.querySelector('.tool-status');
+              if (statusSpan) statusSpan.textContent = '⚠ awaiting approval';
+              const existing = tcEl.querySelector('.approval-bar');
+              if (!existing) {
+                const bar = document.createElement('div');
+                bar.className = 'approval-bar';
+                bar.innerHTML = '<div class="approval-text">⚠ ' + escapeHtml(msg.reason) + '</div>'
+                  + '<div class="approval-buttons">'
+                  + '<button class="btn-allow" data-approval-id="' + msg.approvalId + '" data-decision="allow">Allow</button>'
+                  + '<button class="btn-deny" data-approval-id="' + msg.approvalId + '" data-decision="deny">Deny</button>'
+                  + '</div>';
+                tcEl.appendChild(bar);
+                messagesEl.scrollTop = messagesEl.scrollHeight;
+              }
+            }
+          } else {
+            const bodyEl = document.getElementById('body-' + msg.messageId);
+            if (bodyEl) {
+              const existing = bodyEl.querySelector('.approval-bar');
+              if (!existing) {
+                const bar = document.createElement('div');
+                bar.className = 'approval-bar';
+                bar.innerHTML = '<div class="approval-text">⚠ ' + escapeHtml(msg.reason) + '</div>'
+                  + '<div class="approval-buttons">'
+                  + '<button class="btn-allow" data-approval-id="' + msg.approvalId + '" data-decision="allow">Allow</button>'
+                  + '<button class="btn-deny" data-approval-id="' + msg.approvalId + '" data-decision="deny">Deny</button>'
+                  + '</div>';
+                bodyEl.appendChild(bar);
+                messagesEl.scrollTop = messagesEl.scrollHeight;
+              }
             }
           }
-          statusEl.textContent = '⏳ Awaiting approval...';
+          statusTextEl.textContent = '⏳ Awaiting approval...';
           break;
         }
 
         case 'approvalResolved':
           document.querySelectorAll('.approval-bar').forEach(bar => bar.remove());
-          statusEl.textContent = 'Streaming...';
+          statusTextEl.textContent = 'Streaming...';
           break;
 
         case 'messageComplete': {
@@ -1926,16 +2185,37 @@ export function getWebviewHtml(
           }
           isStreaming = false;
           if (streamingTimeout) { clearTimeout(streamingTimeout); streamingTimeout = null; }
-          statusEl.textContent = msg.error ? 'Error' : 'Ready';
+          statusTextEl.textContent = msg.error ? 'Error' : 'Ready';
           break;
         }
 
         case 'turnStarted':
-          statusEl.textContent = 'Processing...';
+          statusTextEl.textContent = 'Processing...';
           break;
 
+        case 'sessionStats': {
+          if (!statusStatsEl) break;
+          let statsHtml = '';
+          if (msg.cost) {
+            statsHtml += '<span class="stat-chip cost">' + escapeHtml(msg.cost) + '</span>';
+          }
+          if (msg.cacheHitRate !== undefined) {
+            const rate = parseFloat(msg.cacheHitRate);
+            let cacheClass = 'cache-neutral';
+            if (rate > 80) cacheClass = 'cache-good';
+            else if (rate >= 40) cacheClass = 'cache-warn';
+            else if (rate > 0) cacheClass = 'cache-bad';
+            statsHtml += '<span class="stat-chip ' + cacheClass + '">Cache: ' + msg.cacheHitRate + '%</span>';
+          }
+          if (msg.totalInputTokens || msg.totalOutputTokens) {
+            statsHtml += '<span class="stat-chip tokens">↥' + Number(msg.totalInputTokens || 0).toLocaleString() + ' ↧' + Number(msg.totalOutputTokens || 0).toLocaleString() + '</span>';
+          }
+          statusStatsEl.innerHTML = statsHtml;
+          break;
+        }
+
         case 'status':
-          statusEl.textContent = msg.text;
+          statusTextEl.textContent = msg.text;
           break;
 
         case 'clearChat':
@@ -1943,11 +2223,13 @@ export function getWebviewHtml(
           messagesEl.innerHTML = '';
           isStreaming = false;
           if (streamingTimeout) { clearTimeout(streamingTimeout); streamingTimeout = null; }
-          statusEl.textContent = 'Ready';
+          statusTextEl.textContent = 'Ready';
+          if (statusStatsEl) statusStatsEl.innerHTML = '';
+          renderWelcome();
           break;
 
         case 'error':
-          statusEl.textContent = 'Error';
+          statusTextEl.textContent = 'Error';
           const errEl = document.createElement('div');
           errEl.className = 'error-banner';
           errEl.innerHTML = '<span class="msg-label error">Error</span><span>' + escapeHtml(msg.message) + '</span>';

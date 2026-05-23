@@ -28,6 +28,15 @@ interface Translations {
   workspaceLabel: string;
   modeLabel: string;
   reasoningEffortLabel: string;
+  welcomeTitle: string;
+  welcomeSubtitle: string;
+  welcomeQuote: string;
+  welcomeQuoteAuthor: string;
+  welcomeSuggestionTitle: string;
+  welcomeSuggestion1: string;
+  welcomeSuggestion2: string;
+  welcomeSuggestion3: string;
+  welcomeSuggestion4: string;
   loadedThread: (title: string) => string;
   contextCompacted: string;
   compactFailed: string;
@@ -128,6 +137,15 @@ const en: Translations = {
   threadsCount: (n) => `${n} thread${n !== 1 ? "s" : ""}`,
   modelLabel: "Model", workspaceLabel: "Workspace",
   modeLabel: "Mode", reasoningEffortLabel: "Reasoning Effort",
+  welcomeTitle: "DeepSeek",
+  welcomeSubtitle: "Technology serves the enduring mission of civilization",
+  welcomeQuote: "To establish the heart for heaven and earth, to secure life for the people, to continue the lost learning of past sages, and to establish peace for all generations.",
+  welcomeQuoteAuthor: "— Zhang Zai",
+  welcomeSuggestionTitle: "How can I help you today?",
+  welcomeSuggestion1: "Explain a concept or idea",
+  welcomeSuggestion2: "Write or refactor code",
+  welcomeSuggestion3: "Analyze a problem step by step",
+  welcomeSuggestion4: "Explore a topic in depth",
   loadedThread: (title) => `Loaded: ${title}`,
   contextCompacted: "Context compacted", compactFailed: "Compact failed",
   sendFailed: "Failed to send message", initFailed: "Failed to initialize",
@@ -219,6 +237,15 @@ const zhCn: Translations = {
   threadsCount: (n) => `${n} 个会话`,
   modelLabel: "模型", workspaceLabel: "工作区",
   modeLabel: "模式", reasoningEffortLabel: "思考深度",
+  welcomeTitle: "DeepSeek",
+  welcomeSubtitle: "科技服务文明传承的长线使命",
+  welcomeQuote: "为天地立心，为生民立命，为往圣继绝学，为万世开太平。",
+  welcomeQuoteAuthor: "—— 张载",
+  welcomeSuggestionTitle: "今天想探索什么？",
+  welcomeSuggestion1: "解释一个概念或想法",
+  welcomeSuggestion2: "编写或重构代码",
+  welcomeSuggestion3: "逐步分析一个问题",
+  welcomeSuggestion4: "深入探索某个话题",
   loadedThread: (title) => `已加载: ${title}`,
   contextCompacted: "上下文已压缩", compactFailed: "压缩失败",
   sendFailed: "发送消息失败", initFailed: "初始化失败",
@@ -363,6 +390,15 @@ export function webviewTranslations(tr: Translations) {
     engineNotRunning: tr.engineNotRunning,
     modeLabel: tr.modeLabel,
     reasoningEffortLabel: tr.reasoningEffortLabel,
+    welcomeTitle: tr.welcomeTitle,
+    welcomeSubtitle: tr.welcomeSubtitle,
+    welcomeQuote: tr.welcomeQuote,
+    welcomeQuoteAuthor: tr.welcomeQuoteAuthor,
+    welcomeSuggestionTitle: tr.welcomeSuggestionTitle,
+    welcomeSuggestion1: tr.welcomeSuggestion1,
+    welcomeSuggestion2: tr.welcomeSuggestion2,
+    welcomeSuggestion3: tr.welcomeSuggestion3,
+    welcomeSuggestion4: tr.welcomeSuggestion4,
     commandMode: tr.commandMode,
     commandModel: tr.commandModel,
     commandModels: tr.commandModels,

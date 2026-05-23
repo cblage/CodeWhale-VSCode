@@ -37,6 +37,7 @@ interface ToolCallInfo {
   output?: string;
   status: "pending" | "running" | "complete" | "error" | "awaiting_approval";
   approvalId?: string;
+  itemId?: string;
 }
 
 // ── Provider ──
@@ -54,9 +55,17 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   private currentTurnId: string | null = null;
   private pendingApprovals: Map<string, ToolCallInfo> = new Map();
   /** Active agent items for the current turn, keyed by item_id */
-  private activeItems: Map<string, { kind: string; msgId: string; toolCallName?: string }> =
+  private activeItems: Map<string, { kind: string; msgId: string; toolCallName?: string; toolCallIdx?: number }> =
     new Map();
   private _disposables: vscode.Disposable[] = [];
+  private sessionCostUsd: number = 0;
+  private sessionCostCny: number = 0;
+  private lastCacheHitTokens: number = 0;
+  private lastCacheMissTokens: number = 0;
+  private lastInputTokens: number = 0;
+  private lastOutputTokens: number = 0;
+  private totalInputTokens: number = 0;
+  private totalOutputTokens: number = 0;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -294,6 +303,28 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         this.messages.push(assistantMsg);
       }
 
+      for (const turn of detail.turns) {
+        if (turn.usage) {
+          const u = turn.usage;
+          this.totalInputTokens += u.input_tokens;
+          this.totalOutputTokens += u.output_tokens;
+          this.lastCacheHitTokens = u.prompt_cache_hit_tokens ?? 0;
+          this.lastCacheMissTokens = u.prompt_cache_miss_tokens ?? Math.max(0, u.input_tokens - (u.prompt_cache_hit_tokens ?? 0));
+          this.lastInputTokens = u.input_tokens;
+          this.lastOutputTokens = u.output_tokens;
+          const model = this.currentThread?.model || this.getCurrentModel();
+          const cost = calculateTurnCost(
+            model, u.input_tokens, u.output_tokens,
+            u.prompt_cache_hit_tokens, u.prompt_cache_miss_tokens, u.reasoning_tokens,
+          );
+          if (cost) {
+            this.sessionCostUsd += cost.usd;
+            this.sessionCostCny += cost.cny;
+          }
+        }
+      }
+      this.sendSessionStats();
+
       this.postMessage({ type: "loadHistory", messages: this.messages });
       this.postMessage({ type: "status", text: `Loaded ${this.messages.length / 2} turns` });
     } catch (err) {
@@ -310,6 +341,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     this.lastEventSeq = 0;
     this.currentTurnId = null;
     this.activeItems.clear();
+    this.resetSessionStats();
 
     try {
       this.currentThread = await this.api.getThread(threadId);
@@ -416,6 +448,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     this.lastEventSeq = 0;
     this.currentTurnId = null;
     this.activeItems.clear();
+    this.resetSessionStats();
     this.postMessage({ type: "clearChat" });
   }
 
@@ -607,11 +640,25 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         break;
       }
       case "/tokens": {
-        this.postMessage({ type: "info", message: "Token usage is displayed in the status bar during streaming. Use /cost for detailed cost info." });
+        const cfg2 = vscode.workspace.getConfiguration("deepseek");
+        const currency2 = cfg2.get<string>("costCurrency", "usd");
+        const costStr2 = currency2 === "cny"
+          ? formatCostAmount(this.sessionCostCny, "cny")
+          : formatCostAmount(this.sessionCostUsd, "usd");
+        const cacheTotal = this.lastCacheHitTokens + this.lastCacheMissTokens;
+        const cacheRate = cacheTotal > 0 ? (this.lastCacheHitTokens / cacheTotal * 100).toFixed(1) : "N/A";
+        this.postMessage({ type: "info", message: `Token Usage (session):\n  Total input: ${this.totalInputTokens.toLocaleString()}\n  Total output: ${this.totalOutputTokens.toLocaleString()}\n  Last turn input: ${this.lastInputTokens.toLocaleString()}\n  Last turn output: ${this.lastOutputTokens.toLocaleString()}\n  Cache hit rate (last): ${cacheRate}%\n  Cache hit: ${this.lastCacheHitTokens.toLocaleString()} | miss: ${this.lastCacheMissTokens.toLocaleString()}\n  Estimated cost: ${costStr2}` });
         break;
       }
       case "/cost": {
-        this.postMessage({ type: "info", message: "Cost tracking is approximate. Check the status bar for token counts during conversations." });
+        const cfg3 = vscode.workspace.getConfiguration("deepseek");
+        const currency3 = cfg3.get<string>("costCurrency", "usd");
+        const costStr3 = currency3 === "cny"
+          ? formatCostAmount(this.sessionCostCny, "cny")
+          : formatCostAmount(this.sessionCostUsd, "usd");
+        const cacheTotal2 = this.lastCacheHitTokens + this.lastCacheMissTokens;
+        const cacheRate2 = cacheTotal2 > 0 ? (this.lastCacheHitTokens / cacheTotal2 * 100).toFixed(1) : "N/A";
+        this.postMessage({ type: "info", message: `Session Cost (approximate):\n  Total: ${costStr3}\n  Tokens: ↥${this.totalInputTokens.toLocaleString()} ↧${this.totalOutputTokens.toLocaleString()}\n  Cache hit rate: ${cacheRate2}% (hit: ${this.lastCacheHitTokens.toLocaleString()}, miss: ${this.lastCacheMissTokens.toLocaleString()})\n  Model: ${this.getCurrentModel()}` });
         break;
       }
       case "/status": {
@@ -1197,6 +1244,25 @@ Use the TUI for full command support.` });
     }
   }
 
+  private showApprovalDialog(
+    approvalId: string,
+    toolName: string,
+    reason: string,
+    detail: string
+  ): void {
+    this.view?.show?.(true);
+
+    const msg = `🔧 ${toolName}: ${reason}`;
+    vscode.window.showWarningMessage(msg, { modal: true, detail }, "Allow", "Deny")
+      .then((choice) => {
+        if (choice === "Allow") {
+          this.handleApprovalDecision(approvalId, "allow");
+        } else if (choice === "Deny") {
+          this.handleApprovalDecision(approvalId, "deny");
+        }
+      });
+  }
+
   // ── SSE event stream ──
 
   private subscribeToEvents(): void {
@@ -1232,6 +1298,25 @@ Use the TUI for full command support.` });
       case "turn.completed": {
         const pl = event.payload as { turn?: TurnRecord };
         this.currentTurnId = null;
+        if (pl.turn?.usage) {
+          const u = pl.turn.usage;
+          this.lastInputTokens = u.input_tokens;
+          this.lastOutputTokens = u.output_tokens;
+          this.lastCacheHitTokens = u.prompt_cache_hit_tokens ?? 0;
+          this.lastCacheMissTokens = u.prompt_cache_miss_tokens ?? Math.max(0, u.input_tokens - (u.prompt_cache_hit_tokens ?? 0));
+          this.totalInputTokens += u.input_tokens;
+          this.totalOutputTokens += u.output_tokens;
+          const model = this.getCurrentModel();
+          const cost = calculateTurnCost(
+            model, u.input_tokens, u.output_tokens,
+            u.prompt_cache_hit_tokens, u.prompt_cache_miss_tokens, u.reasoning_tokens,
+          );
+          if (cost) {
+            this.sessionCostUsd += cost.usd;
+            this.sessionCostCny += cost.cny;
+          }
+          this.sendSessionStats();
+        }
         const lastMsg = this.messages[this.messages.length - 1];
         if (lastMsg?.role === "assistant") {
           lastMsg.status = "complete";
@@ -1302,17 +1387,21 @@ Use the TUI for full command support.` });
             name: pl.item?.summary || "unknown",
             input: {},
             status: "running",
+            itemId,
           };
           lastMsg.toolCalls = lastMsg.toolCalls || [];
+          const tcIdx = lastMsg.toolCalls.length;
           lastMsg.toolCalls.push(tc);
           this.activeItems.set(itemId, {
             kind,
             msgId: lastMsg.id,
             toolCallName: tc.name,
+            toolCallIdx: tcIdx,
           });
           this.postMessage({
             type: "addToolCall",
             messageId: lastMsg.id,
+            toolCallIdx: tcIdx,
             toolCall: tc,
           });
         }
@@ -1359,16 +1448,15 @@ Use the TUI for full command support.` });
         this.activeItems.delete(itemId);
 
         if (kind === "tool_call") {
-          const tcName = active?.toolCallName;
-          const tc = lastMsg.toolCalls?.find(
-            (t) => t.name === tcName && t.status === "running"
-          );
+          const tcIdx = active?.toolCallIdx;
+          const tc = tcIdx !== undefined ? lastMsg.toolCalls?.[tcIdx] : undefined;
           if (tc) {
             tc.status = "complete";
             tc.output = pl.item?.detail || pl.item?.summary;
             this.postMessage({
               type: "updateToolCall",
               messageId: lastMsg.id,
+              toolCallIdx: tcIdx!,
               toolName: tc.name,
               status: "complete",
               output: tc.output,
@@ -1389,10 +1477,22 @@ Use the TUI for full command support.` });
           };
         };
         const approvalId = pl.request?.approval_id;
+        const callId = pl.request?.call_id;
         if (!approvalId) break;
 
-        // Mark a pending tool call as awaiting
-        const tc = lastMsg.toolCalls?.find((t) => t.status === "running");
+        let tc: ToolCallInfo | undefined;
+        let tcIdx: number | undefined;
+        if (callId) {
+          const active = this.activeItems.get(callId);
+          if (active?.toolCallIdx !== undefined) {
+            tcIdx = active.toolCallIdx;
+            tc = lastMsg.toolCalls?.[tcIdx];
+          }
+        }
+        if (!tc) {
+          tc = lastMsg.toolCalls?.find((t) => t.status === "running");
+          if (tc) tcIdx = lastMsg.toolCalls!.indexOf(tc);
+        }
         if (tc) {
           tc.status = "awaiting_approval";
           tc.approvalId = approvalId;
@@ -1401,11 +1501,19 @@ Use the TUI for full command support.` });
         this.postMessage({
           type: "approvalRequired",
           messageId: lastMsg.id,
+          toolCallIdx: tcIdx,
           approvalId,
           toolName: pl.request?.tool_name || pl.request?.command || "unknown",
           reason: pl.request?.reason || "Tool execution requires approval",
           toolInput: pl.request,
         });
+
+        const toolName = pl.request?.tool_name || pl.request?.command || "unknown";
+        const reason = pl.request?.reason || "Tool execution requires approval";
+        const detail = pl.request?.command
+          ? `Command: ${pl.request.command}`
+          : `Tool: ${toolName}`;
+        this.showApprovalDialog(approvalId, toolName, reason, detail);
         break;
       }
     }
@@ -1422,6 +1530,40 @@ Use the TUI for full command support.` });
   }
 
   // ── Helpers ──
+
+  private sendSessionStats(): void {
+    const totalCacheHit = this.lastCacheHitTokens;
+    const totalCacheMiss = this.lastCacheMissTokens;
+    const total = totalCacheHit + totalCacheMiss;
+    const cacheHitRate = total > 0 ? (totalCacheHit / total * 100) : 0;
+    const cfg = vscode.workspace.getConfiguration("deepseek");
+    const currency = cfg.get<string>("costCurrency", "usd");
+    const costDisplay = currency === "cny"
+      ? formatCostAmount(this.sessionCostCny, "cny")
+      : formatCostAmount(this.sessionCostUsd, "usd");
+    this.postMessage({
+      type: "sessionStats",
+      cost: costDisplay,
+      cacheHitRate: cacheHitRate.toFixed(1),
+      cacheHitTokens: totalCacheHit,
+      cacheMissTokens: totalCacheMiss,
+      totalInputTokens: this.totalInputTokens,
+      totalOutputTokens: this.totalOutputTokens,
+      lastInputTokens: this.lastInputTokens,
+      lastOutputTokens: this.lastOutputTokens,
+    });
+  }
+
+  private resetSessionStats(): void {
+    this.sessionCostUsd = 0;
+    this.sessionCostCny = 0;
+    this.lastCacheHitTokens = 0;
+    this.lastCacheMissTokens = 0;
+    this.lastInputTokens = 0;
+    this.lastOutputTokens = 0;
+    this.totalInputTokens = 0;
+    this.totalOutputTokens = 0;
+  }
 
   private getCurrentModel(): string {
     const cfg = vscode.workspace.getConfiguration("deepseek");
@@ -1485,4 +1627,75 @@ Use the TUI for full command support.` });
       d.dispose();
     }
   }
+}
+
+interface CostEstimate {
+  usd: number;
+  cny: number;
+}
+
+interface ModelPricing {
+  inputCacheHitPerMillion: number;
+  inputCacheMissPerMillion: number;
+  outputPerMillion: number;
+  inputCacheHitPerMillionCny: number;
+  inputCacheMissPerMillionCny: number;
+  outputPerMillionCny: number;
+}
+
+function getModelPricing(model: string): ModelPricing | null {
+  const lower = model.toLowerCase();
+  if (!lower.includes("deepseek")) return null;
+  const discountEnd = new Date("2026-05-31T15:59:00Z").getTime();
+  const now = Date.now();
+  if (lower.includes("v4-pro") || lower.includes("v4pro")) {
+    if (now <= discountEnd) {
+      return {
+        inputCacheHitPerMillion: 0.003625, inputCacheMissPerMillion: 0.435, outputPerMillion: 0.87,
+        inputCacheHitPerMillionCny: 0.025, inputCacheMissPerMillionCny: 3.0, outputPerMillionCny: 6.0,
+      };
+    }
+    return {
+      inputCacheHitPerMillion: 0.0145, inputCacheMissPerMillion: 1.74, outputPerMillion: 3.48,
+      inputCacheHitPerMillionCny: 0.1, inputCacheMissPerMillionCny: 12.0, outputPerMillionCny: 24.0,
+    };
+  }
+  return {
+    inputCacheHitPerMillion: 0.0028, inputCacheMissPerMillion: 0.14, outputPerMillion: 0.28,
+    inputCacheHitPerMillionCny: 0.02, inputCacheMissPerMillionCny: 1.0, outputPerMillionCny: 2.0,
+  };
+}
+
+function calculateTurnCost(
+  model: string,
+  inputTokens: number,
+  outputTokens: number,
+  cacheHitTokens?: number,
+  cacheMissTokens?: number,
+  reasoningTokens?: number,
+): CostEstimate | null {
+  const pricing = getModelPricing(model);
+  if (!pricing) return null;
+  const hit = cacheHitTokens ?? 0;
+  const miss = cacheMissTokens ?? Math.max(0, inputTokens - hit);
+  const uncategorized = Math.max(0, inputTokens - hit - miss);
+  const effectiveMiss = miss + uncategorized;
+  const effectiveOutput = outputTokens + (reasoningTokens ?? 0);
+  const hitCost = (hit / 1_000_000) * pricing.inputCacheHitPerMillion;
+  const missCost = (effectiveMiss / 1_000_000) * pricing.inputCacheMissPerMillion;
+  const outputCost = (effectiveOutput / 1_000_000) * pricing.outputPerMillion;
+  const hitCostCny = (hit / 1_000_000) * pricing.inputCacheHitPerMillionCny;
+  const missCostCny = (effectiveMiss / 1_000_000) * pricing.inputCacheMissPerMillionCny;
+  const outputCostCny = (effectiveOutput / 1_000_000) * pricing.outputPerMillionCny;
+  return {
+    usd: hitCost + missCost + outputCost,
+    cny: hitCostCny + missCostCny + outputCostCny,
+  };
+}
+
+function formatCostAmount(cost: number, currency: "usd" | "cny"): string {
+  const symbol = currency === "usd" ? "$" : "¥";
+  if (cost < 0.0001) return `<${symbol}0.0001`;
+  if (cost < 0.01) return `${symbol}${cost.toFixed(4)}`;
+  return `${symbol}${cost.toFixed(2)}`;
 }
