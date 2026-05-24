@@ -1,0 +1,678 @@
+import { describe, it, expect } from "vitest";
+
+interface ModelPricing {
+  inputCacheHitPerMillion: number;
+  inputCacheMissPerMillion: number;
+  outputPerMillion: number;
+  inputCacheHitPerMillionCny: number;
+  inputCacheMissPerMillionCny: number;
+  outputPerMillionCny: number;
+}
+
+interface CostEstimate {
+  usd: number;
+  cny: number;
+}
+
+function getModelPricing(model: string): ModelPricing | null {
+  const lower = model.toLowerCase();
+  if (!lower.includes("deepseek")) return null;
+  const discountEnd = new Date("2026-05-31T15:59:00Z").getTime();
+  const now = Date.now();
+  if (lower.includes("v4-pro") || lower.includes("v4pro")) {
+    if (now <= discountEnd) {
+      return {
+        inputCacheHitPerMillion: 0.003625, inputCacheMissPerMillion: 0.435, outputPerMillion: 0.87,
+        inputCacheHitPerMillionCny: 0.025, inputCacheMissPerMillionCny: 3.0, outputPerMillionCny: 6.0,
+      };
+    }
+    return {
+      inputCacheHitPerMillion: 0.0145, inputCacheMissPerMillion: 1.74, outputPerMillion: 3.48,
+      inputCacheHitPerMillionCny: 0.1, inputCacheMissPerMillionCny: 12.0, outputPerMillionCny: 24.0,
+    };
+  }
+  return {
+    inputCacheHitPerMillion: 0.0028, inputCacheMissPerMillion: 0.14, outputPerMillion: 0.28,
+    inputCacheHitPerMillionCny: 0.02, inputCacheMissPerMillionCny: 1.0, outputPerMillionCny: 2.0,
+  };
+}
+
+function calculateTurnCost(
+  model: string,
+  inputTokens: number,
+  outputTokens: number,
+  cacheHitTokens?: number,
+  cacheMissTokens?: number,
+  reasoningTokens?: number,
+): CostEstimate | null {
+  const pricing = getModelPricing(model);
+  if (!pricing) return null;
+  const hit = cacheHitTokens ?? 0;
+  const miss = cacheMissTokens ?? Math.max(0, inputTokens - hit);
+  const uncategorized = Math.max(0, inputTokens - hit - miss);
+  const effectiveMiss = miss + uncategorized;
+  const effectiveOutput = outputTokens + (reasoningTokens ?? 0);
+  const hitCost = (hit / 1_000_000) * pricing.inputCacheHitPerMillion;
+  const missCost = (effectiveMiss / 1_000_000) * pricing.inputCacheMissPerMillion;
+  const outputCost = (effectiveOutput / 1_000_000) * pricing.outputPerMillion;
+  const hitCostCny = (hit / 1_000_000) * pricing.inputCacheHitPerMillionCny;
+  const missCostCny = (effectiveMiss / 1_000_000) * pricing.inputCacheMissPerMillionCny;
+  const outputCostCny = (effectiveOutput / 1_000_000) * pricing.outputPerMillionCny;
+  return {
+    usd: hitCost + missCost + outputCost,
+    cny: hitCostCny + missCostCny + outputCostCny,
+  };
+}
+
+function formatCostAmount(cost: number, currency: "usd" | "cny"): string {
+  const symbol = currency === "usd" ? "$" : "¥";
+  if (cost < 0.0001) return `<${symbol}0.0001`;
+  if (cost < 0.01) return `${symbol}${cost.toFixed(4)}`;
+  return `${symbol}${cost.toFixed(2)}`;
+}
+
+describe("Cost calculation", () => {
+  describe("getModelPricing", () => {
+    it("returns null for non-DeepSeek models", () => {
+      expect(getModelPricing("gpt-4")).toBeNull();
+      expect(getModelPricing("claude-3")).toBeNull();
+      expect(getModelPricing("")).toBeNull();
+    });
+
+    it("returns flash pricing for deepseek-v4-flash", () => {
+      const pricing = getModelPricing("deepseek-v4-flash");
+      expect(pricing).not.toBeNull();
+      expect(pricing!.inputCacheHitPerMillion).toBe(0.0028);
+      expect(pricing!.inputCacheMissPerMillion).toBe(0.14);
+      expect(pricing!.outputPerMillion).toBe(0.28);
+    });
+
+    it("returns flash pricing for deepseek-chat alias", () => {
+      expect(getModelPricing("deepseek-chat")).not.toBeNull();
+      expect(getModelPricing("deepseek-chat")!.inputCacheMissPerMillion).toBe(0.14);
+    });
+
+    it("returns pro pricing for deepseek-v4-pro", () => {
+      const pricing = getModelPricing("deepseek-v4-pro");
+      expect(pricing).not.toBeNull();
+    });
+
+    it("is case-insensitive", () => {
+      expect(getModelPricing("DeepSeek-V4-Pro")).not.toBeNull();
+      expect(getModelPricing("DEEPSEEK-V4-FLASH")).not.toBeNull();
+    });
+
+    it("recognizes v4pro without hyphen", () => {
+      const pricing = getModelPricing("deepseek-v4pro");
+      expect(pricing).not.toBeNull();
+    });
+  });
+
+  describe("calculateTurnCost", () => {
+    it("returns null for non-DeepSeek model", () => {
+      expect(calculateTurnCost("gpt-4", 1000, 500)).toBeNull();
+    });
+
+    it("calculates cost for flash model with cache hit", () => {
+      const cost = calculateTurnCost("deepseek-v4-flash", 10000, 2000, 8000, 2000);
+      expect(cost).not.toBeNull();
+      expect(cost!.usd).toBeGreaterThan(0);
+      expect(cost!.cny).toBeGreaterThan(0);
+    });
+
+    it("calculates cost for flash model without cache info", () => {
+      const cost = calculateTurnCost("deepseek-v4-flash", 10000, 2000);
+      expect(cost).not.toBeNull();
+      expect(cost!.usd).toBeGreaterThan(0);
+    });
+
+    it("includes reasoning tokens in output cost", () => {
+      const costWithoutReasoning = calculateTurnCost("deepseek-v4-flash", 1000, 500, 0, 1000);
+      const costWithReasoning = calculateTurnCost("deepseek-v4-flash", 1000, 500, 0, 1000, 300);
+      expect(costWithReasoning!.usd).toBeGreaterThan(costWithoutReasoning!.usd);
+    });
+
+    it("handles zero tokens", () => {
+      const cost = calculateTurnCost("deepseek-v4-flash", 0, 0, 0, 0);
+      expect(cost).not.toBeNull();
+      expect(cost!.usd).toBe(0);
+      expect(cost!.cny).toBe(0);
+    });
+
+    it("cache hit is cheaper than cache miss", () => {
+      const allHit = calculateTurnCost("deepseek-v4-flash", 10000, 1000, 10000, 0);
+      const allMiss = calculateTurnCost("deepseek-v4-flash", 10000, 1000, 0, 10000);
+      expect(allHit!.usd).toBeLessThan(allMiss!.usd);
+    });
+
+    it("CNY cost is higher than USD cost for same tokens", () => {
+      const cost = calculateTurnCost("deepseek-v4-flash", 10000, 2000, 5000, 5000);
+      expect(cost!.cny).toBeGreaterThan(cost!.usd);
+    });
+  });
+
+  describe("formatCostAmount", () => {
+    it("formats very small costs with < symbol", () => {
+      expect(formatCostAmount(0.00001, "usd")).toBe("<$0.0001");
+      expect(formatCostAmount(0.00001, "cny")).toBe("<¥0.0001");
+    });
+
+    it("formats small costs with 4 decimal places", () => {
+      expect(formatCostAmount(0.005, "usd")).toBe("$0.0050");
+      expect(formatCostAmount(0.005, "cny")).toBe("¥0.0050");
+    });
+
+    it("formats normal costs with 2 decimal places", () => {
+      expect(formatCostAmount(1.5, "usd")).toBe("$1.50");
+      expect(formatCostAmount(12.345, "cny")).toBe("¥12.35");
+    });
+
+    it("formats zero cost", () => {
+      expect(formatCostAmount(0, "usd")).toBe("<$0.0001");
+    });
+
+    it("formats large costs", () => {
+      expect(formatCostAmount(100, "usd")).toBe("$100.00");
+      expect(formatCostAmount(999.99, "cny")).toBe("¥999.99");
+    });
+  });
+});
+
+describe("Event handling state machine", () => {
+  interface WorkState {
+    cycleCount: number;
+    checklistItems: { id: string; content: string; status: string }[];
+    checklistCompletionPct: number;
+    coherenceState: string;
+    coherenceLabel: string;
+  }
+
+  function createInitialWorkState(): WorkState {
+    return {
+      cycleCount: 0,
+      checklistItems: [],
+      checklistCompletionPct: 0,
+      coherenceState: "healthy",
+      coherenceLabel: "",
+    };
+  }
+
+  it("initializes with default state", () => {
+    const state = createInitialWorkState();
+    expect(state.cycleCount).toBe(0);
+    expect(state.checklistItems).toHaveLength(0);
+    expect(state.checklistCompletionPct).toBe(0);
+    expect(state.coherenceState).toBe("healthy");
+    expect(state.coherenceLabel).toBe("");
+  });
+
+  it("updates cycle count on cycle.advanced event", () => {
+    const state = createInitialWorkState();
+    const payload = { from: 0, to: 1, cycle: 1 };
+    state.cycleCount = payload.to ?? payload.cycle ?? 0;
+    expect(state.cycleCount).toBe(1);
+  });
+
+  it("updates cycle count using 'to' field preferentially", () => {
+    const state = createInitialWorkState();
+    const payload = { from: 2, to: 5, cycle: 3 };
+    state.cycleCount = payload.to ?? payload.cycle ?? 0;
+    expect(state.cycleCount).toBe(5);
+  });
+
+  it("falls back to 'cycle' field when 'to' is missing", () => {
+    const state = createInitialWorkState();
+    const payload: { from?: number; to?: number; cycle?: number } = { from: 0, cycle: 7 };
+    state.cycleCount = payload.to ?? payload.cycle ?? 0;
+    expect(state.cycleCount).toBe(7);
+  });
+
+  it("updates coherence state on coherence.state event", () => {
+    const state = createInitialWorkState();
+    const payload = { state: "refreshing_context", label: "Refreshing context…" };
+    state.coherenceState = payload.state || "healthy";
+    state.coherenceLabel = payload.label || "";
+    expect(state.coherenceState).toBe("refreshing_context");
+    expect(state.coherenceLabel).toBe("Refreshing context…");
+  });
+
+  it("falls back to description when label is missing", () => {
+    const state = createInitialWorkState();
+    const payload = { state: "getting_crowded", description: "Context is getting crowded" };
+    state.coherenceState = payload.state || "healthy";
+    state.coherenceLabel = (payload as any).label || payload.description || "";
+    expect(state.coherenceState).toBe("getting_crowded");
+    expect(state.coherenceLabel).toBe("Context is getting crowded");
+  });
+
+  it("defaults coherence state to healthy when state is missing", () => {
+    const state = createInitialWorkState();
+    const payload = {};
+    state.coherenceState = (payload as any).state || "healthy";
+    expect(state.coherenceState).toBe("healthy");
+  });
+
+  it("updates checklist items from task_updates metadata", () => {
+    const state = createInitialWorkState();
+    const metadata = {
+      task_updates: {
+        checklist: {
+          items: [
+            { id: "1", content: "Step 1", status: "completed" },
+            { id: "2", content: "Step 2", status: "in_progress" },
+          ],
+          completion_pct: 50,
+        },
+      },
+    };
+    const checklist = (metadata.task_updates as Record<string, unknown>).checklist;
+    if (checklist && typeof checklist === "object") {
+      const cl = checklist as Record<string, unknown>;
+      if (Array.isArray(cl.items)) {
+        state.checklistItems = cl.items as { id: string; content: string; status: string }[];
+      }
+      if (typeof cl.completion_pct === "number") {
+        state.checklistCompletionPct = cl.completion_pct;
+      }
+    }
+    expect(state.checklistItems).toHaveLength(2);
+    expect(state.checklistCompletionPct).toBe(50);
+    expect(state.checklistItems[0].status).toBe("completed");
+  });
+
+  it("resets all state on new thread", () => {
+    const state: WorkState = {
+      cycleCount: 5,
+      checklistItems: [{ id: "1", content: "Done", status: "completed" }],
+      checklistCompletionPct: 100,
+      coherenceState: "refreshing_context",
+      coherenceLabel: "Refreshing…",
+    };
+    state.cycleCount = 0;
+    state.checklistItems = [];
+    state.checklistCompletionPct = 0;
+    state.coherenceState = "healthy";
+    state.coherenceLabel = "";
+    expect(state.cycleCount).toBe(0);
+    expect(state.checklistItems).toHaveLength(0);
+    expect(state.checklistCompletionPct).toBe(0);
+    expect(state.coherenceState).toBe("healthy");
+    expect(state.coherenceLabel).toBe("");
+  });
+});
+
+describe("Tool call status transitions", () => {
+  type ToolCallStatus = "pending" | "running" | "complete" | "error" | "awaiting_approval";
+
+  interface ToolCallInfo {
+    name: string;
+    status: ToolCallStatus;
+    output?: string;
+    approvalId?: string;
+  }
+
+  it("transitions from running to complete", () => {
+    const tc: ToolCallInfo = { name: "read_file", status: "running" };
+    tc.status = "complete";
+    tc.output = "file contents";
+    expect(tc.status).toBe("complete");
+    expect(tc.output).toBe("file contents");
+  });
+
+  it("transitions from running to awaiting_approval", () => {
+    const tc: ToolCallInfo = { name: "exec_shell", status: "running" };
+    tc.status = "awaiting_approval";
+    tc.approvalId = "appr-1";
+    expect(tc.status).toBe("awaiting_approval");
+    expect(tc.approvalId).toBe("appr-1");
+  });
+
+  it("transitions from awaiting_approval to complete after approval", () => {
+    const tc: ToolCallInfo = { name: "exec_shell", status: "awaiting_approval", approvalId: "appr-1" };
+    tc.status = "complete";
+    tc.output = "command output";
+    expect(tc.status).toBe("complete");
+  });
+
+  it("tracks multiple tool calls in a single message", () => {
+    const toolCalls: ToolCallInfo[] = [
+      { name: "read_file", status: "complete", output: "contents" },
+      { name: "exec_shell", status: "running" },
+      { name: "write_file", status: "awaiting_approval", approvalId: "appr-2" },
+    ];
+    expect(toolCalls).toHaveLength(3);
+    expect(toolCalls.filter((tc) => tc.status === "complete")).toHaveLength(1);
+    expect(toolCalls.filter((tc) => tc.status === "running")).toHaveLength(1);
+    expect(toolCalls.filter((tc) => tc.status === "awaiting_approval")).toHaveLength(1);
+  });
+});
+
+describe("Task refresh trigger conditions", () => {
+  const taskRefreshToolNames = [
+    "agent_open", "agent_spawn", "agent_close", "agent_cancel",
+    "todo_write", "todo_add", "todo_update",
+    "checklist_write", "checklist_add", "checklist_update",
+    "task_shell_start", "exec_shell",
+  ];
+
+  it("triggers task refresh on agent tools", () => {
+    for (const name of ["agent_open", "agent_spawn", "agent_close", "agent_cancel"]) {
+      expect(taskRefreshToolNames).toContain(name);
+    }
+  });
+
+  it("triggers task refresh on todo tools", () => {
+    for (const name of ["todo_write", "todo_add", "todo_update"]) {
+      expect(taskRefreshToolNames).toContain(name);
+    }
+  });
+
+  it("triggers task refresh on checklist tools", () => {
+    for (const name of ["checklist_write", "checklist_add", "checklist_update"]) {
+      expect(taskRefreshToolNames).toContain(name);
+    }
+  });
+
+  it("triggers task refresh on shell tools", () => {
+    expect(taskRefreshToolNames).toContain("task_shell_start");
+    expect(taskRefreshToolNames).toContain("exec_shell");
+  });
+
+  it("does not trigger task refresh on read-only tools", () => {
+    for (const name of ["read_file", "grep_files", "project_map"]) {
+      expect(taskRefreshToolNames).not.toContain(name);
+    }
+  });
+});
+
+describe("Session stats tracking", () => {
+  interface SessionStats {
+    sessionCostUsd: number;
+    sessionCostCny: number;
+    lastCacheHitTokens: number;
+    lastCacheMissTokens: number;
+    lastInputTokens: number;
+    lastOutputTokens: number;
+    totalInputTokens: number;
+    totalOutputTokens: number;
+  }
+
+  function createInitialStats(): SessionStats {
+    return {
+      sessionCostUsd: 0,
+      sessionCostCny: 0,
+      lastCacheHitTokens: 0,
+      lastCacheMissTokens: 0,
+      lastInputTokens: 0,
+      lastOutputTokens: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+    };
+  }
+
+  it("starts with zero values", () => {
+    const stats = createInitialStats();
+    expect(stats.sessionCostUsd).toBe(0);
+    expect(stats.sessionCostCny).toBe(0);
+    expect(stats.totalInputTokens).toBe(0);
+    expect(stats.totalOutputTokens).toBe(0);
+  });
+
+  it("accumulates token counts across turns", () => {
+    const stats = createInitialStats();
+    const turn1 = { input_tokens: 1000, output_tokens: 500 };
+    stats.lastInputTokens = turn1.input_tokens;
+    stats.lastOutputTokens = turn1.output_tokens;
+    stats.totalInputTokens += turn1.input_tokens;
+    stats.totalOutputTokens += turn1.output_tokens;
+
+    const turn2 = { input_tokens: 2000, output_tokens: 800 };
+    stats.lastInputTokens = turn2.input_tokens;
+    stats.lastOutputTokens = turn2.output_tokens;
+    stats.totalInputTokens += turn2.input_tokens;
+    stats.totalOutputTokens += turn2.output_tokens;
+
+    expect(stats.totalInputTokens).toBe(3000);
+    expect(stats.totalOutputTokens).toBe(1300);
+    expect(stats.lastInputTokens).toBe(2000);
+    expect(stats.lastOutputTokens).toBe(800);
+  });
+
+  it("accumulates cost across turns", () => {
+    const stats = createInitialStats();
+    const cost1 = calculateTurnCost("deepseek-v4-flash", 1000, 500)!;
+    stats.sessionCostUsd += cost1.usd;
+    stats.sessionCostCny += cost1.cny;
+
+    const cost2 = calculateTurnCost("deepseek-v4-flash", 2000, 800)!;
+    stats.sessionCostUsd += cost2.usd;
+    stats.sessionCostCny += cost2.cny;
+
+    expect(stats.sessionCostUsd).toBeGreaterThan(cost1.usd);
+    expect(stats.sessionCostUsd).toBeCloseTo(cost1.usd + cost2.usd, 10);
+  });
+
+  it("resets on new session", () => {
+    const stats = createInitialStats();
+    stats.sessionCostUsd = 0.5;
+    stats.totalInputTokens = 5000;
+    stats.totalOutputTokens = 2000;
+
+    stats.sessionCostUsd = 0;
+    stats.sessionCostCny = 0;
+    stats.lastCacheHitTokens = 0;
+    stats.lastCacheMissTokens = 0;
+    stats.lastInputTokens = 0;
+    stats.lastOutputTokens = 0;
+    stats.totalInputTokens = 0;
+    stats.totalOutputTokens = 0;
+
+    expect(stats.sessionCostUsd).toBe(0);
+    expect(stats.totalInputTokens).toBe(0);
+  });
+
+  it("computes cache miss from input minus cache hit", () => {
+    const inputTokens = 10000;
+    const cacheHitTokens = 8000;
+    const cacheMissTokens = Math.max(0, inputTokens - cacheHitTokens);
+    expect(cacheMissTokens).toBe(2000);
+  });
+
+  it("handles case where cache hit exceeds input tokens gracefully", () => {
+    const inputTokens = 5000;
+    const cacheHitTokens = 8000;
+    const cacheMissTokens = Math.max(0, inputTokens - cacheHitTokens);
+    expect(cacheMissTokens).toBe(0);
+  });
+});
+
+describe("Message model", () => {
+  interface ChatMessage {
+    id: string;
+    role: "user" | "assistant" | "system";
+    content: string;
+    thinking?: string;
+    toolCalls?: { name: string; status: string }[];
+    status: "streaming" | "complete" | "error";
+    timestamp: number;
+  }
+
+  it("creates user message with complete status", () => {
+    const msg: ChatMessage = {
+      id: "msg-1",
+      role: "user",
+      content: "Hello",
+      status: "complete",
+      timestamp: Date.now(),
+    };
+    expect(msg.role).toBe("user");
+    expect(msg.status).toBe("complete");
+  });
+
+  it("creates assistant message with streaming status", () => {
+    const msg: ChatMessage = {
+      id: "msg-2",
+      role: "assistant",
+      content: "",
+      status: "streaming",
+      timestamp: Date.now(),
+    };
+    expect(msg.status).toBe("streaming");
+  });
+
+  it("appends content during streaming", () => {
+    const msg: ChatMessage = {
+      id: "msg-2",
+      role: "assistant",
+      content: "",
+      status: "streaming",
+      timestamp: Date.now(),
+    };
+    msg.content += "Hello ";
+    msg.content += "world";
+    expect(msg.content).toBe("Hello world");
+  });
+
+  it("appends thinking during streaming", () => {
+    const msg: ChatMessage = {
+      id: "msg-2",
+      role: "assistant",
+      content: "",
+      status: "streaming",
+      timestamp: Date.now(),
+    };
+    msg.thinking = (msg.thinking || "") + "Let me think... ";
+    msg.thinking = (msg.thinking || "") + "I should check the code.";
+    expect(msg.thinking).toBe("Let me think... I should check the code.");
+  });
+
+  it("transitions from streaming to complete", () => {
+    const msg: ChatMessage = {
+      id: "msg-2",
+      role: "assistant",
+      content: "Final answer",
+      status: "streaming",
+      timestamp: Date.now(),
+    };
+    msg.status = "complete";
+    expect(msg.status).toBe("complete");
+  });
+
+  it("transitions from streaming to error", () => {
+    const msg: ChatMessage = {
+      id: "msg-2",
+      role: "assistant",
+      content: "Partial answer",
+      status: "streaming",
+      timestamp: Date.now(),
+    };
+    msg.status = "error";
+    expect(msg.status).toBe("error");
+  });
+
+  it("tracks tool calls on assistant messages", () => {
+    const msg: ChatMessage = {
+      id: "msg-3",
+      role: "assistant",
+      content: "I'll read the file.",
+      status: "streaming",
+      timestamp: Date.now(),
+      toolCalls: [
+        { name: "read_file", status: "running" },
+      ],
+    };
+    expect(msg.toolCalls).toHaveLength(1);
+    expect(msg.toolCalls![0].name).toBe("read_file");
+  });
+});
+
+describe("Approval flow", () => {
+  interface PendingApproval {
+    approvalId: string;
+    toolName: string;
+    status: "awaiting_approval" | "approved" | "denied";
+  }
+
+  it("stores pending approval", () => {
+    const pending = new Map<string, PendingApproval>();
+    const approval: PendingApproval = {
+      approvalId: "appr-1",
+      toolName: "exec_shell",
+      status: "awaiting_approval",
+    };
+    pending.set(approval.approvalId, approval);
+    expect(pending.has("appr-1")).toBe(true);
+    expect(pending.get("appr-1")!.toolName).toBe("exec_shell");
+  });
+
+  it("resolves approval with allow", () => {
+    const pending = new Map<string, PendingApproval>();
+    pending.set("appr-1", { approvalId: "appr-1", toolName: "exec_shell", status: "awaiting_approval" });
+    const approval = pending.get("appr-1")!;
+    approval.status = "approved";
+    expect(approval.status).toBe("approved");
+  });
+
+  it("resolves approval with deny", () => {
+    const pending = new Map<string, PendingApproval>();
+    pending.set("appr-1", { approvalId: "appr-1", toolName: "exec_shell", status: "awaiting_approval" });
+    const approval = pending.get("appr-1")!;
+    approval.status = "denied";
+    expect(approval.status).toBe("denied");
+  });
+
+  it("handles multiple concurrent approvals", () => {
+    const pending = new Map<string, PendingApproval>();
+    pending.set("appr-1", { approvalId: "appr-1", toolName: "exec_shell", status: "awaiting_approval" });
+    pending.set("appr-2", { approvalId: "appr-2", toolName: "write_file", status: "awaiting_approval" });
+    expect(pending.size).toBe(2);
+  });
+});
+
+describe("Active items tracking", () => {
+  it("tracks item by item_id with kind and message reference", () => {
+    const activeItems = new Map<string, { kind: string; msgId: string; toolCallName?: string; toolCallIdx?: number }>();
+    activeItems.set("item-1", { kind: "tool_call", msgId: "msg-1", toolCallName: "read_file", toolCallIdx: 0 });
+    expect(activeItems.get("item-1")!.kind).toBe("tool_call");
+    expect(activeItems.get("item-1")!.toolCallName).toBe("read_file");
+  });
+
+  it("removes item on completion", () => {
+    const activeItems = new Map<string, { kind: string; msgId: string }>();
+    activeItems.set("item-1", { kind: "tool_call", msgId: "msg-1" });
+    activeItems.delete("item-1");
+    expect(activeItems.has("item-1")).toBe(false);
+  });
+
+  it("tracks multiple concurrent items", () => {
+    const activeItems = new Map<string, { kind: string; msgId: string }>();
+    activeItems.set("item-1", { kind: "tool_call", msgId: "msg-1" });
+    activeItems.set("item-2", { kind: "agent_message", msgId: "msg-1" });
+    activeItems.set("item-3", { kind: "agent_reasoning", msgId: "msg-1" });
+    expect(activeItems.size).toBe(3);
+  });
+});
+
+describe("Event sequence tracking", () => {
+  it("tracks last event sequence number", () => {
+    let lastEventSeq = 0;
+    lastEventSeq = 5;
+    expect(lastEventSeq).toBe(5);
+  });
+
+  it("uses sequence number for SSE reconnection", () => {
+    let lastEventSeq = 42;
+    const sinceSeq = lastEventSeq;
+    const params = new URLSearchParams();
+    params.set("since_seq", String(sinceSeq ?? 0));
+    expect(params.get("since_seq")).toBe("42");
+  });
+
+  it("defaults to 0 for initial connection", () => {
+    let lastEventSeq = 0;
+    const sinceSeq = lastEventSeq;
+    const params = new URLSearchParams();
+    params.set("since_seq", String(sinceSeq ?? 0));
+    expect(params.get("since_seq")).toBe("0");
+  });
+});

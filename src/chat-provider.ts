@@ -57,6 +57,12 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   /** Active agent items for the current turn, keyed by item_id */
   private activeItems: Map<string, { kind: string; msgId: string; toolCallName?: string; toolCallIdx?: number }> =
     new Map();
+  private cycleCount: number = 0;
+  private checklistItems: { id: string; content: string; status: string }[] = [];
+  private checklistCompletionPct: number = 0;
+  private coherenceState: string = "healthy";
+  private coherenceLabel: string = "";
+  private taskRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private _disposables: vscode.Disposable[] = [];
   private sessionCostUsd: number = 0;
   private sessionCostCny: number = 0;
@@ -341,6 +347,11 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     this.lastEventSeq = 0;
     this.currentTurnId = null;
     this.activeItems.clear();
+    this.cycleCount = 0;
+    this.checklistItems = [];
+    this.checklistCompletionPct = 0;
+    this.coherenceState = "healthy";
+    this.coherenceLabel = "";
     this.resetSessionStats();
 
     try {
@@ -448,6 +459,11 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     this.lastEventSeq = 0;
     this.currentTurnId = null;
     this.activeItems.clear();
+    this.cycleCount = 0;
+    this.checklistItems = [];
+    this.checklistCompletionPct = 0;
+    this.coherenceState = "healthy";
+    this.coherenceLabel = "";
     this.resetSessionStats();
     this.postMessage({ type: "clearChat" });
   }
@@ -484,10 +500,27 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     this.postMessage({
       type: "workState",
       goal,
-      checklist: [],
+      checklist: this.checklistItems,
+      checklistCompletionPct: this.checklistCompletionPct,
       strategy: [],
-      cycleCount: 0,
+      cycleCount: this.cycleCount,
+      coherenceState: this.coherenceState,
+      coherenceLabel: this.coherenceLabel,
     });
+  }
+
+  private startPeriodicTaskRefresh(): void {
+    this.stopPeriodicTaskRefresh();
+    this.taskRefreshTimer = setInterval(() => {
+      this.refreshTaskList();
+    }, 2500);
+  }
+
+  private stopPeriodicTaskRefresh(): void {
+    if (this.taskRefreshTimer) {
+      clearInterval(this.taskRefreshTimer);
+      this.taskRefreshTimer = null;
+    }
   }
 
   private async handleInterrupt(): Promise<void> {
@@ -1290,7 +1323,10 @@ Use the TUI for full command support.` });
     switch (event.event) {
       case "turn.lifecycle": {
         const pl = event.payload as { status?: string };
-        if (pl.status === "completed") break; // handled by turn.completed
+        if (pl.status === "completed") break;
+        if (pl.status === "running" || pl.status === "in_progress") {
+          this.startPeriodicTaskRefresh();
+        }
         this.postMessage({ type: "status", text: `Turn: ${pl.status || "unknown"}` });
         break;
       }
@@ -1337,6 +1373,9 @@ Use the TUI for full command support.` });
           });
         }
         this.refreshThreadList();
+        this.stopPeriodicTaskRefresh();
+        this.refreshTaskList();
+        this.refreshWorkPanel();
         break;
       }
 
@@ -1362,6 +1401,22 @@ Use the TUI for full command support.` });
             thinkingHtml,
           });
         }
+        this.stopPeriodicTaskRefresh();
+        break;
+      }
+
+      case "cycle.advanced": {
+        const pl = event.payload as { from?: number; to?: number; cycle?: number };
+        this.cycleCount = pl.to ?? pl.cycle ?? 0;
+        this.refreshWorkPanel();
+        break;
+      }
+
+      case "coherence.state": {
+        const pl = event.payload as { state?: string; label?: string; description?: string };
+        this.coherenceState = pl.state || "healthy";
+        this.coherenceLabel = pl.label || pl.description || "";
+        this.refreshWorkPanel();
         break;
       }
     }
@@ -1461,6 +1516,28 @@ Use the TUI for full command support.` });
               status: "complete",
               output: tc.output,
             });
+          }
+          const toolName = active?.toolCallName || "";
+          if (pl.item?.metadata?.task_updates) {
+            const checklist = (pl.item.metadata.task_updates as Record<string, unknown>).checklist;
+            if (checklist && typeof checklist === "object") {
+              const cl = checklist as Record<string, unknown>;
+              if (Array.isArray(cl.items)) {
+                this.checklistItems = cl.items as { id: string; content: string; status: string }[];
+              }
+              if (typeof cl.completion_pct === "number") {
+                this.checklistCompletionPct = cl.completion_pct;
+              }
+              this.refreshWorkPanel();
+            }
+          }
+          if ([
+            "agent_open", "agent_spawn", "agent_close", "agent_cancel",
+            "todo_write", "todo_add", "todo_update",
+            "checklist_write", "checklist_add", "checklist_update",
+            "task_shell_start", "exec_shell",
+          ].includes(toolName)) {
+            this.refreshTaskList();
           }
         }
         break;

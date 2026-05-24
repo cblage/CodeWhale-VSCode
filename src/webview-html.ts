@@ -48,6 +48,12 @@ export interface WebviewTranslations {
   checklist: string;
   strategy: string;
   cycles: string;
+  coherenceHealthy: string;
+  coherenceGettingCrowded: string;
+  coherenceRefreshingContext: string;
+  coherenceVerifyingRecentWork: string;
+  coherenceResettingPlan: string;
+  completionPct: string;
   readyTimedOut: string;
   note: string;
   noPreviousMessage: string;
@@ -1814,19 +1820,29 @@ export function getWebviewHtml(
       }
     }
 
-    let workState = { goal: null, checklist: [], strategy: [], cycleCount: 0 };
+    let workState = { goal: null, checklist: [], checklistCompletionPct: 0, strategy: [], cycleCount: 0, coherenceState: 'healthy', coherenceLabel: '' };
 
     function renderWork() {
       const container = document.getElementById('tab-work');
       if (!container) return;
       container.innerHTML = '';
-      const hasContent = workState.goal || workState.checklist.length > 0 || workState.strategy.length > 0 || workState.cycleCount > 0;
+      const hasContent = workState.goal || workState.checklist.length > 0 || workState.strategy.length > 0 || workState.cycleCount > 0 || (workState.coherenceState && workState.coherenceState !== 'healthy');
       if (!hasContent) {
         const el = document.createElement('div');
         el.className = 'work-empty';
         el.textContent = __i18n.noActiveWork;
         container.appendChild(el);
         return;
+      }
+      if (workState.coherenceState && workState.coherenceState !== 'healthy') {
+        const section = document.createElement('div');
+        section.className = 'work-section';
+        const stateKey = 'coherence' + workState.coherenceState.charAt(0).toUpperCase() + workState.coherenceState.slice(1).replace(/_([a-z])/g, function(_, c) { return c.toUpperCase(); });
+        const stateLabel = __i18n[stateKey] || workState.coherenceLabel || workState.coherenceState;
+        const isWarning = workState.coherenceState === 'refreshing_context' || workState.coherenceState === 'getting_crowded';
+        const barColor = isWarning ? '#ff9800' : '#2196f3';
+        section.innerHTML = '<div class="work-coherence" style="padding:4px 8px;border-radius:4px;background:' + barColor + '22;border-left:3px solid ' + barColor + ';font-size:0.82em;color:' + barColor + '">' + escapeHtml(stateLabel) + '</div>';
+        container.appendChild(section);
       }
       if (workState.goal) {
         const section = document.createElement('div');
@@ -1837,11 +1853,19 @@ export function getWebviewHtml(
       if (workState.checklist.length > 0) {
         const section = document.createElement('div');
         section.className = 'work-section';
-        let html = '<div class="work-section-title">' + escapeHtml(__i18n.checklist) + '</div>';
+        let html = '<div class="work-section-title">' + escapeHtml(__i18n.checklist);
+        if (workState.checklistCompletionPct > 0) {
+          const pctStr = __i18n.completionPct.replace('{n}', String(workState.checklistCompletionPct));
+          html += ' <span style="font-weight:400;color:var(--muted);font-size:0.9em">' + escapeHtml(pctStr) + '</span>';
+        }
+        html += '</div>';
+        if (workState.checklistCompletionPct > 0) {
+          html += '<div class="work-progress-bar" style="height:4px;background:var(--border);border-radius:2px;margin:4px 0 8px;overflow:hidden"><div style="height:100%;width:' + workState.checklistCompletionPct + '%;background:var(--brand-primary);border-radius:2px;transition:width 0.3s ease"></div></div>';
+        }
         for (const item of workState.checklist) {
-          const check = item.status === 'completed' ? '[x]' : item.status === 'in_progress' ? '[~]' : '[ ]';
+          const check = item.status === 'completed' ? '✓' : item.status === 'in_progress' ? '⟳' : '○';
           const color = item.status === 'completed' ? '#4caf50' : item.status === 'in_progress' ? '#ff9800' : '#888';
-          html += '<div class="work-checklist-item" style="color:' + color + '"><span class="check">' + check + '</span>' + escapeHtml(item.content) + '</div>';
+          html += '<div class="work-checklist-item" style="color:' + color + ';display:flex;align-items:baseline;gap:6px;padding:2px 0"><span style="flex-shrink:0;width:16px;text-align:center">' + check + '</span><span>' + escapeHtml(item.content) + '</span></div>';
         }
         section.innerHTML = html;
         container.appendChild(section);
@@ -1851,9 +1875,9 @@ export function getWebviewHtml(
         section.className = 'work-section';
         let html = '<div class="work-section-title">' + escapeHtml(__i18n.strategy) + '</div>';
         for (const step of workState.strategy) {
-          const icon = step.status === 'completed' ? '[x]' : step.status === 'in_progress' ? '[~]' : '[ ]';
+          const icon = step.status === 'completed' ? '✓' : step.status === 'in_progress' ? '⟳' : '○';
           const color = step.status === 'completed' ? '#4caf50' : step.status === 'in_progress' ? '#ff9800' : '#888';
-          html += '<div class="work-strategy-step" style="color:' + color + '"><span class="step-icon">' + icon + '</span>' + escapeHtml(step.text) + '</div>';
+          html += '<div class="work-strategy-step" style="color:' + color + ';display:flex;align-items:baseline;gap:6px;padding:2px 0"><span style="flex-shrink:0;width:16px;text-align:center">' + icon + '</span><span>' + escapeHtml(step.text) + '</span></div>';
         }
         section.innerHTML = html;
         container.appendChild(section);
@@ -2011,8 +2035,11 @@ export function getWebviewHtml(
           workState = {
             goal: msg.goal || null,
             checklist: msg.checklist || [],
+            checklistCompletionPct: msg.checklistCompletionPct || 0,
             strategy: msg.strategy || [],
             cycleCount: msg.cycleCount || 0,
+            coherenceState: msg.coherenceState || 'healthy',
+            coherenceLabel: msg.coherenceLabel || '',
           };
           renderWork();
           break;

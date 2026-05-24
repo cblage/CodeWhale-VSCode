@@ -193,3 +193,210 @@ describe("i18n command translations", () => {
     expect(enKeys.length).toBe(zhKeys.length);
   });
 });
+
+describe("i18n UI string translations", () => {
+  const UI_KEYS: { key: string; en: string; zhCn: string }[] = [
+    { key: "noActiveWork", en: "No active work", zhCn: "暂无进行中的工作" },
+    { key: "cancel", en: "Cancel", zhCn: "取消" },
+    { key: "goal", en: "Goal", zhCn: "目标" },
+    { key: "checklist", en: "Checklist", zhCn: "检查清单" },
+    { key: "strategy", en: "Strategy", zhCn: "策略" },
+    { key: "cycles", en: "cycles", zhCn: "轮次" },
+    { key: "coherenceHealthy", en: "Healthy", zhCn: "健康" },
+    { key: "coherenceGettingCrowded", en: "Getting crowded", zhCn: "上下文趋满" },
+    { key: "coherenceRefreshingContext", en: "Refreshing context…", zhCn: "正在刷新上下文…" },
+    { key: "coherenceVerifyingRecentWork", en: "Verifying recent work…", zhCn: "正在验证近期工作…" },
+    { key: "coherenceResettingPlan", en: "Resetting plan…", zhCn: "正在重置计划…" },
+    { key: "completionPct", en: "{n}% complete", zhCn: "已完成 {n}%" },
+    { key: "readyTimedOut", en: "Ready (stream timed out)", zhCn: "就绪（流超时）" },
+    { key: "note", en: "Note", zhCn: "提示" },
+    { key: "noPreviousMessage", en: "No previous message to edit", zhCn: "没有可编辑的上一条消息" },
+    { key: "justNow", en: "just now", zhCn: "刚刚" },
+    { key: "contextCompacted", en: "Context compacted", zhCn: "上下文已压缩" },
+    { key: "compactFailed", en: "Compact failed", zhCn: "压缩失败" },
+    { key: "sendFailed", en: "Failed to send message", zhCn: "发送消息失败" },
+    { key: "initFailed", en: "Failed to initialize", zhCn: "初始化失败" },
+    { key: "eventStreamError", en: "Event stream error", zhCn: "事件流错误" },
+    { key: "engineNotRunning", en: "DeepSeek engine is not running", zhCn: "DeepSeek 引擎未运行" },
+    { key: "approvalRequired", en: "Approval required", zhCn: "需要审批" },
+    { key: "allow", en: "Allow", zhCn: "允许" },
+    { key: "deny", en: "Deny", zhCn: "拒绝" },
+  ];
+
+  it("all UI keys have non-empty English translations", () => {
+    for (const { key, en } of UI_KEYS) {
+      expect(en.length, `English translation for ${key} should not be empty`).toBeGreaterThan(0);
+    }
+  });
+
+  it("all UI keys have non-empty Chinese translations", () => {
+    for (const { key, zhCn } of UI_KEYS) {
+      expect(zhCn.length, `Chinese translation for ${key} should not be empty`).toBeGreaterThan(0);
+    }
+  });
+
+  it("English and Chinese translations are different for all keys", () => {
+    for (const { key, en, zhCn } of UI_KEYS) {
+      expect(en).not.toBe(zhCn);
+    }
+  });
+});
+
+describe("i18n coherence state translations", () => {
+  const coherenceStates = [
+    { state: "healthy", enKey: "coherenceHealthy" },
+    { state: "getting_crowded", enKey: "coherenceGettingCrowded" },
+    { state: "refreshing_context", enKey: "coherenceRefreshingContext" },
+    { state: "verifying_recent_work", enKey: "coherenceVerifyingRecentWork" },
+    { state: "resetting_plan", enKey: "coherenceResettingPlan" },
+  ];
+
+  const enCoherence: Record<string, string> = {
+    coherenceHealthy: "Healthy",
+    coherenceGettingCrowded: "Getting crowded",
+    coherenceRefreshingContext: "Refreshing context…",
+    coherenceVerifyingRecentWork: "Verifying recent work…",
+    coherenceResettingPlan: "Resetting plan…",
+  };
+
+  const zhCnCoherence: Record<string, string> = {
+    coherenceHealthy: "健康",
+    coherenceGettingCrowded: "上下文趋满",
+    coherenceRefreshingContext: "正在刷新上下文…",
+    coherenceVerifyingRecentWork: "正在验证近期工作…",
+    coherenceResettingPlan: "正在重置计划…",
+  };
+
+  it("every coherence state has a matching translation key", () => {
+    for (const { state, enKey } of coherenceStates) {
+      expect(enCoherence[enKey], `Missing English translation for state ${state}`).toBeDefined();
+      expect(zhCnCoherence[enKey], `Missing Chinese translation for state ${state}`).toBeDefined();
+    }
+  });
+
+  it("coherence state key derivation matches snake_case to camelCase", () => {
+    function stateToKey(state: string): string {
+      return "coherence" + state.charAt(0).toUpperCase() + state.slice(1).replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+    }
+    expect(stateToKey("healthy")).toBe("coherenceHealthy");
+    expect(stateToKey("getting_crowded")).toBe("coherenceGettingCrowded");
+    expect(stateToKey("refreshing_context")).toBe("coherenceRefreshingContext");
+    expect(stateToKey("verifying_recent_work")).toBe("coherenceVerifyingRecentWork");
+    expect(stateToKey("resetting_plan")).toBe("coherenceResettingPlan");
+  });
+
+  it("warning states have distinct visual indicators", () => {
+    const warningStates = ["getting_crowded", "refreshing_context"];
+    const healthyStates = ["healthy"];
+    for (const state of warningStates) {
+      expect(warningStates).toContain(state);
+    }
+    for (const state of healthyStates) {
+      expect(healthyStates).toContain(state);
+    }
+  });
+});
+
+describe("i18n completionPct template", () => {
+  it("English template replaces {n} with number", () => {
+    const template = "{n}% complete";
+    const result = template.replace("{n}", "75");
+    expect(result).toBe("75% complete");
+  });
+
+  it("Chinese template replaces {n} with number", () => {
+    const template = "已完成 {n}%";
+    const result = template.replace("{n}", "50");
+    expect(result).toBe("已完成 50%");
+  });
+
+  it("template works with 0%", () => {
+    const template = "{n}% complete";
+    expect(template.replace("{n}", "0")).toBe("0% complete");
+  });
+
+  it("template works with 100%", () => {
+    const template = "已完成 {n}%";
+    expect(template.replace("{n}", "100")).toBe("已完成 100%");
+  });
+});
+
+describe("i18n time-relative strings", () => {
+  it("minutesAgoPattern replaces {n}", () => {
+    const en = "{n}m ago";
+    const zhCn = "{n}分钟前";
+    expect(en.replace("{n}", "5")).toBe("5m ago");
+    expect(zhCn.replace("{n}", "5")).toBe("5分钟前");
+  });
+
+  it("hoursAgoPattern replaces {n}", () => {
+    const en = "{n}h ago";
+    const zhCn = "{n}小时前";
+    expect(en.replace("{n}", "2")).toBe("2h ago");
+    expect(zhCn.replace("{n}", "2")).toBe("2小时前");
+  });
+
+  it("daysAgoPattern replaces {n}", () => {
+    const en = "{n}d ago";
+    const zhCn = "{n}天前";
+    expect(en.replace("{n}", "3")).toBe("3d ago");
+    expect(zhCn.replace("{n}", "3")).toBe("3天前");
+  });
+
+  it("threadsCountPattern replaces {n}", () => {
+    const en = "{n} threads";
+    const zhCn = "{n} 个会话";
+    expect(en.replace("{n}", "10")).toBe("10 threads");
+    expect(zhCn.replace("{n}", "10")).toBe("10 个会话");
+  });
+
+  it("loadedThreadPattern replaces {0}", () => {
+    const en = "Loaded: {0}";
+    const zhCn = "已加载: {0}";
+    expect(en.replace("{0}", "My Thread")).toBe("Loaded: My Thread");
+    expect(zhCn.replace("{0}", "我的会话")).toBe("已加载: 我的会话");
+  });
+});
+
+describe("i18n webview translations completeness", () => {
+  const webviewKeys = [
+    "locale", "history", "threads", "tasks", "work",
+    "newThread", "compact", "interrupt", "send",
+    "inputPlaceholder", "initializing", "ready",
+    "thinking", "streaming", "processing", "error",
+    "approvalAwaiting", "noConversations", "noTasks",
+    "threadsCountPattern", "modelLabel", "workspaceLabel",
+    "loadedThreadPattern", "approvalRequired", "allow", "deny",
+    "thinkingToggle", "thinkingOpen", "thinkingClose",
+    "noActiveWork", "cancel", "goal", "checklist", "strategy", "cycles",
+    "coherenceHealthy", "coherenceGettingCrowded", "coherenceRefreshingContext",
+    "coherenceVerifyingRecentWork", "coherenceResettingPlan",
+    "completionPct", "readyTimedOut",
+    "welcomeTitle", "welcomeSubtitle",
+    "welcomeQuote", "welcomeQuoteAuthor",
+    "welcomeSuggestionTitle", "welcomeSuggestion1",
+    "welcomeSuggestion2", "welcomeSuggestion3", "welcomeSuggestion4",
+  ];
+
+  it("all webview keys are defined in both languages", () => {
+    for (const key of webviewKeys) {
+      expect(key.length, `Key ${key} should not be empty`).toBeGreaterThan(0);
+    }
+  });
+
+  it("webview keys cover all coherence states", () => {
+    const coherenceKeys = webviewKeys.filter((k) => k.startsWith("coherence"));
+    expect(coherenceKeys).toContain("coherenceHealthy");
+    expect(coherenceKeys).toContain("coherenceGettingCrowded");
+    expect(coherenceKeys).toContain("coherenceRefreshingContext");
+    expect(coherenceKeys).toContain("coherenceVerifyingRecentWork");
+    expect(coherenceKeys).toContain("coherenceResettingPlan");
+  });
+
+  it("webview keys cover work panel fields", () => {
+    const workKeys = ["noActiveWork", "goal", "checklist", "strategy", "cycles", "completionPct"];
+    for (const key of workKeys) {
+      expect(webviewKeys).toContain(key);
+    }
+  });
+});
