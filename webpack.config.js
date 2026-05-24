@@ -29,6 +29,9 @@ const extensionConfig = {
     ],
   },
   devtool: "nosources-source-map",
+  optimization: {
+    minimize: false,
+  },
   infrastructureLogging: {
     level: "log",
   },

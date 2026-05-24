@@ -17,6 +17,109 @@ import { getWebviewHtml } from "./webview-html";
 import { renderMarkdown } from "./markdown";
 import { t, webviewTranslations } from "./i18n";
 
+const FRIENDLY_TOOL_NAMES: Record<string, string> = {
+  write_file: "Write file",
+  read_file: "Read file",
+  apply_patch: "Apply patch",
+  replace_text: "Replace text",
+  exec_shell: "Run command",
+  exec_shell_wait: "Run command (wait)",
+  list_directory: "List directory",
+  search_files: "Search files",
+  move_file: "Move file",
+  copy_file: "Copy file",
+  delete_file: "Delete file",
+  create_directory: "Create directory",
+  web_search: "Web search",
+  fetch_url: "Fetch URL",
+  web_run: "Browse web",
+  run_tests: "Run tests",
+  image_analyze: "Analyze image",
+  code_execution: "Run Python code",
+  js_execution: "Run JavaScript code",
+  request_user_input: "Ask user",
+  checklist_add: "Add checklist item",
+  checklist_update: "Update checklist item",
+  checklist_list: "List checklist",
+  checklist_write: "Write checklist",
+  validate_data: "Validate data",
+  retrieve_tool_result: "Retrieve result",
+};
+
+const TOOL_APPROVAL_SUMMARIES: Record<string, (input: Record<string, unknown>) => string> = {
+  write_file: (i) => {
+    const p = (i.file_path || i.path || "") as string;
+    return p ? `Write to ${shortPath(p)}` : "Write a file";
+  },
+  read_file: (i) => {
+    const p = (i.file_path || i.path || "") as string;
+    return p ? `Read ${shortPath(p)}` : "Read a file";
+  },
+  apply_patch: (i) => {
+    const p = (i.file_path || i.path || "") as string;
+    return p ? `Patch ${shortPath(p)}` : "Apply a patch";
+  },
+  replace_text: (i) => {
+    const p = (i.file_path || i.path || "") as string;
+    return p ? `Replace text in ${shortPath(p)}` : "Replace text in a file";
+  },
+  exec_shell: (i) => {
+    const c = (i.command || "") as string;
+    return c ? `Run: ${truncate(c, 60)}` : "Run a shell command";
+  },
+  exec_shell_wait: (i) => {
+    const c = (i.command || "") as string;
+    return c ? `Run: ${truncate(c, 60)}` : "Run a shell command";
+  },
+  delete_file: (i) => {
+    const p = (i.file_path || i.path || "") as string;
+    return p ? `Delete ${shortPath(p)}` : "Delete a file";
+  },
+  move_file: (i) => {
+    const s = (i.source || "") as string;
+    const d = (i.destination || "") as string;
+    return s && d ? `Move ${shortPath(s)} → ${shortPath(d)}` : "Move a file";
+  },
+  copy_file: (i) => {
+    const s = (i.source || "") as string;
+    const d = (i.destination || "") as string;
+    return s && d ? `Copy ${shortPath(s)} → ${shortPath(d)}` : "Copy a file";
+  },
+  create_directory: (i) => {
+    const p = (i.path || "") as string;
+    return p ? `Create directory ${shortPath(p)}` : "Create a directory";
+  },
+  web_search: () => "Search the web",
+  fetch_url: (i) => {
+    const u = (i.url || "") as string;
+    return u ? `Fetch ${truncate(u, 50)}` : "Fetch a URL";
+  },
+  code_execution: () => "Execute Python code",
+  js_execution: () => "Execute JavaScript code",
+  run_tests: () => "Run tests",
+};
+
+function shortPath(p: string): string {
+  const parts = p.replace(/\\/g, "/").split("/");
+  return parts.length > 3 ? "…/" + parts.slice(-3).join("/") : p;
+}
+
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max - 1) + "…" : s;
+}
+
+function friendlyToolName(raw: string): string {
+  if (FRIENDLY_TOOL_NAMES[raw]) return FRIENDLY_TOOL_NAMES[raw];
+  if (raw.startsWith("mcp__")) return raw.slice(4).replace(/__/g, " / ");
+  return raw.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function buildApprovalSummary(toolName: string, input: Record<string, unknown>): string {
+  const builder = TOOL_APPROVAL_SUMMARIES[toolName];
+  if (builder) return builder(input);
+  return friendlyToolName(toolName);
+}
+
 // ── UI model ──
 
 interface ChatMessage {
@@ -33,10 +136,12 @@ interface ChatMessage {
 
 interface ToolCallInfo {
   name: string;
+  displayName?: string;
   input: Record<string, unknown>;
   output?: string;
   status: "pending" | "running" | "complete" | "error" | "awaiting_approval";
   approvalId?: string;
+  approvalSummary?: string;
   itemId?: string;
 }
 
@@ -156,7 +261,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       case "approvalDecision":
         await this.handleApprovalDecision(
           msg.approvalId as string,
-          msg.decision as "allow" | "deny"
+          msg.decision as "allow" | "deny",
+          !!msg.remember
         );
         break;
       case "loadThread":
@@ -390,10 +496,13 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         const model = cfg.get<string>("defaultModel", "deepseek-v4-pro");
         const mode = cfg.get<string>("defaultMode", "agent");
         const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const autoApprove = cfg.get<boolean>("autoApprove", false);
         this.currentThread = await this.api.createThread({
           model,
           mode,
           workspace,
+          auto_approve: autoApprove,
+          trust_mode: mode === "yolo",
         });
         this.subscribeToEvents();
         this.refreshThreadList();
@@ -428,10 +537,13 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       if (!threadOk) {
         const cfg = vscode.workspace.getConfiguration("deepseek");
         const mode = cfg.get<string>("defaultMode", "agent");
+        const autoApprove = cfg.get<boolean>("autoApprove", false);
         this.currentThread = await this.api.createThread({
           model: this.getCurrentModel(),
           mode,
           workspace: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+          auto_approve: autoApprove,
+          trust_mode: mode === "yolo",
         });
         this.subscribeToEvents();
         this.refreshThreadList();
@@ -439,8 +551,15 @@ export class ChatProvider implements vscode.WebviewViewProvider {
 
       const cfg = vscode.workspace.getConfiguration("deepseek");
       const reasoningEffort = cfg.get<string>("reasoningEffort", "auto");
+      const mode = cfg.get<string>("defaultMode", "agent");
+      const model = this.getCurrentModel();
+      const autoApprove = cfg.get<boolean>("autoApprove", false);
       const result = await this.api.startTurn(this.currentThread.id, text, {
-        reasoning_effort: reasoningEffort
+        mode,
+        model,
+        reasoning_effort: reasoningEffort,
+        auto_approve: autoApprove,
+        trust_mode: mode === "yolo",
       });
       this.currentTurnId = result.turn.id;
       this.postMessage({ type: "turnStarted", turnId: result.turn.id });
@@ -561,6 +680,14 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           const modeMap: Record<string, string> = { "1": "agent", "2": "plan", "3": "yolo" };
           const actualMode = modeMap[mode] || mode;
           await cfg.update("defaultMode", actualMode, vscode.ConfigurationTarget.Global);
+          if (this.currentThread) {
+            try {
+              await this.api.updateThread(this.currentThread.id, {
+                mode: actualMode,
+                trust_mode: actualMode === "yolo",
+              });
+            } catch { /* non-critical */ }
+          }
           this.postMessage({ type: "settingsUpdated", mode: actualMode, model: cfg.get<string>("defaultModel", "deepseek-v4-pro"), reasoningEffort: cfg.get<string>("reasoningEffort", "auto") });
           this.postMessage({ type: "info", message: `Mode changed to ${actualMode}` });
         } else {
@@ -754,9 +881,19 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         const sub = args.trim().toLowerCase();
         if (sub === "on") {
           await cfg.update("autoApprove", true, vscode.ConfigurationTarget.Global);
+          if (this.currentThread) {
+            try {
+              await this.api.updateThread(this.currentThread.id, { auto_approve: true });
+            } catch { /* non-critical */ }
+          }
           this.postMessage({ type: "info", message: "Trust mode enabled (auto-approve)" });
         } else if (sub === "off") {
           await cfg.update("autoApprove", false, vscode.ConfigurationTarget.Global);
+          if (this.currentThread) {
+            try {
+              await this.api.updateThread(this.currentThread.id, { auto_approve: false });
+            } catch { /* non-critical */ }
+          }
           this.postMessage({ type: "info", message: "Trust mode disabled" });
         } else {
           this.postMessage({ type: "info", message: `Usage: /trust [on|off]\nAuto-approve is currently: ${cfg.get<boolean>("autoApprove", false) ? "on" : "off"}` });
@@ -1263,10 +1400,16 @@ Use the TUI for full command support.` });
 
   private async handleApprovalDecision(
     approvalId: string,
-    decision: "allow" | "deny"
+    decision: "allow" | "deny",
+    remember = false
   ): Promise<void> {
     try {
-      await this.api.decideApproval(approvalId, decision);
+      await this.api.decideApproval(approvalId, decision, remember);
+      const tc = this.pendingApprovals.get(approvalId);
+      if (tc) {
+        tc.status = decision === "allow" ? "running" : "error";
+        tc.approvalId = undefined;
+      }
       this.pendingApprovals.delete(approvalId);
       this.postMessage({ type: "approvalResolved", approvalId, decision });
     } catch (err) {
@@ -1280,13 +1423,12 @@ Use the TUI for full command support.` });
   private showApprovalDialog(
     approvalId: string,
     toolName: string,
-    reason: string,
-    detail: string
+    summary: string
   ): void {
     this.view?.show?.(true);
 
-    const msg = `🔧 ${toolName}: ${reason}`;
-    vscode.window.showWarningMessage(msg, { modal: true, detail }, "Allow", "Deny")
+    const displayName = friendlyToolName(toolName);
+    vscode.window.showWarningMessage(displayName, { modal: false, detail: summary }, "Allow", "Deny")
       .then((choice) => {
         if (choice === "Allow") {
           this.handleApprovalDecision(approvalId, "allow");
@@ -1315,11 +1457,11 @@ Use the TUI for full command support.` });
   private handleRuntimeEvent(event: RuntimeEvent): void {
     this.lastEventSeq = event.seq;
 
-    // Route to item-based or turn-level handler
     if (event.item_id && this.currentTurnId) {
       this.handleItemEvent(event);
     }
 
+    try {
     switch (event.event) {
       case "turn.lifecycle": {
         const pl = event.payload as { status?: string };
@@ -1419,6 +1561,101 @@ Use the TUI for full command support.` });
         this.refreshWorkPanel();
         break;
       }
+
+      case "approval.required": {
+        const pl = event.payload as Record<string, unknown>;
+        const request = pl.request as Record<string, unknown> | undefined;
+        const approvalId = (request?.approval_id as string) || (pl.approval_id as string) || (pl.id as string);
+        const callId = (request?.call_id as string) || (pl.call_id as string) || (pl.id as string);
+        const toolName = (request?.tool_name as string) || (pl.tool_name as string) || "unknown";
+        const toolInput = (request || pl) as Record<string, unknown>;
+        if (!approvalId) break;
+
+        const summary = buildApprovalSummary(toolName, toolInput);
+
+        const lastMsg = this.messages[this.messages.length - 1];
+        let tc: ToolCallInfo | undefined;
+        let tcIdx: number | undefined;
+        if (callId) {
+          const active = this.activeItems.get(callId);
+          if (active?.toolCallIdx !== undefined) {
+            tcIdx = active.toolCallIdx;
+            tc = lastMsg?.toolCalls?.[tcIdx];
+          }
+        }
+        if (!tc && lastMsg?.toolCalls) {
+          tc = lastMsg.toolCalls.find((t) => t.status === "running");
+          if (tc) tcIdx = lastMsg.toolCalls.indexOf(tc);
+        }
+        if (tc) {
+          tc.status = "awaiting_approval";
+          tc.approvalId = approvalId;
+          tc.displayName = friendlyToolName(toolName);
+          tc.approvalSummary = summary;
+          this.pendingApprovals.set(approvalId, tc);
+        }
+        this.postMessage({
+          type: "approvalRequired",
+          messageId: lastMsg?.id,
+          toolCallIdx: tcIdx,
+          approvalId,
+          toolName: friendlyToolName(toolName),
+          summary,
+        });
+
+        this.showApprovalDialog(approvalId, toolName, summary);
+        break;
+      }
+
+      case "approval.decided": {
+        const pl = event.payload as {
+          approval_id?: string;
+          decision?: string;
+          remember?: boolean;
+        };
+        const approvalId = pl.approval_id;
+        if (!approvalId) break;
+        const tc = this.pendingApprovals.get(approvalId);
+        if (tc) {
+          tc.status = pl.decision === "allow" ? "running" : "error";
+          tc.approvalId = undefined;
+        }
+        this.pendingApprovals.delete(approvalId);
+        this.postMessage({
+          type: "approvalResolved",
+          approvalId,
+          decision: pl.decision || "deny",
+        });
+        break;
+      }
+
+      case "approval.timeout": {
+        const pl = event.payload as {
+          approval_id?: string;
+          timeout_secs?: number;
+        };
+        const approvalId = pl.approval_id;
+        if (!approvalId) break;
+        const tc = this.pendingApprovals.get(approvalId);
+        if (tc) {
+          tc.status = "error";
+          tc.approvalId = undefined;
+        }
+        this.pendingApprovals.delete(approvalId);
+        this.postMessage({
+          type: "approvalResolved",
+          approvalId,
+          decision: "deny",
+        });
+        this.postMessage({
+          type: "error",
+          message: `Approval timed out after ${pl.timeout_secs || 30}s — tool call was denied automatically`,
+        });
+        break;
+      }
+    }
+    } catch (err) {
+      this.debugLog(`handleRuntimeEvent error on ${event.event}: ${(err as Error).message}`);
     }
   }
 
@@ -1431,6 +1668,7 @@ Use the TUI for full command support.` });
       case "item.started": {
         const pl = event.payload as {
           item?: { kind?: string; id?: string; summary?: string; detail?: string };
+          tool?: { id?: string; name?: string; input?: Record<string, unknown> };
         };
         const kind = pl.item?.kind;
         if (!kind || !itemId) break;
@@ -1440,19 +1678,23 @@ Use the TUI for full command support.` });
         if (kind === "tool_call") {
           const tc: ToolCallInfo = {
             name: pl.item?.summary || "unknown",
-            input: {},
+            input: pl.tool?.input || {},
             status: "running",
             itemId,
           };
           lastMsg.toolCalls = lastMsg.toolCalls || [];
           const tcIdx = lastMsg.toolCalls.length;
           lastMsg.toolCalls.push(tc);
-          this.activeItems.set(itemId, {
+          const entry = {
             kind,
             msgId: lastMsg.id,
             toolCallName: tc.name,
             toolCallIdx: tcIdx,
-          });
+          };
+          this.activeItems.set(itemId, entry);
+          if (pl.tool?.id) {
+            this.activeItems.set(pl.tool.id, entry);
+          }
           this.postMessage({
             type: "addToolCall",
             messageId: lastMsg.id,
@@ -1540,57 +1782,6 @@ Use the TUI for full command support.` });
             this.refreshTaskList();
           }
         }
-        break;
-      }
-
-      case "approval.required": {
-        const pl = event.payload as {
-          request?: {
-            approval_id?: string;
-            call_id?: string;
-            command?: string;
-            reason?: string;
-            tool_name?: string;
-          };
-        };
-        const approvalId = pl.request?.approval_id;
-        const callId = pl.request?.call_id;
-        if (!approvalId) break;
-
-        let tc: ToolCallInfo | undefined;
-        let tcIdx: number | undefined;
-        if (callId) {
-          const active = this.activeItems.get(callId);
-          if (active?.toolCallIdx !== undefined) {
-            tcIdx = active.toolCallIdx;
-            tc = lastMsg.toolCalls?.[tcIdx];
-          }
-        }
-        if (!tc) {
-          tc = lastMsg.toolCalls?.find((t) => t.status === "running");
-          if (tc) tcIdx = lastMsg.toolCalls!.indexOf(tc);
-        }
-        if (tc) {
-          tc.status = "awaiting_approval";
-          tc.approvalId = approvalId;
-          this.pendingApprovals.set(approvalId, tc);
-        }
-        this.postMessage({
-          type: "approvalRequired",
-          messageId: lastMsg.id,
-          toolCallIdx: tcIdx,
-          approvalId,
-          toolName: pl.request?.tool_name || pl.request?.command || "unknown",
-          reason: pl.request?.reason || "Tool execution requires approval",
-          toolInput: pl.request,
-        });
-
-        const toolName = pl.request?.tool_name || pl.request?.command || "unknown";
-        const reason = pl.request?.reason || "Tool execution requires approval";
-        const detail = pl.request?.command
-          ? `Command: ${pl.request.command}`
-          : `Tool: ${toolName}`;
-        this.showApprovalDialog(approvalId, toolName, reason, detail);
         break;
       }
     }

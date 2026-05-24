@@ -241,6 +241,8 @@ export class DeepSeekApiClient {
     allow_shell?: boolean;
     trust_mode?: boolean;
     auto_approve?: boolean;
+    mode?: string;
+    model?: string;
     title?: string;
   }): Promise<ThreadRecord> {
     return (await this.patch(`/v1/threads/${threadId}`, updates)) as ThreadRecord;
@@ -251,12 +253,14 @@ export class DeepSeekApiClient {
   async startTurn(
     threadId: string,
     prompt: string,
-    opts?: { model?: string; mode?: string; reasoning_effort?: string }
+    opts?: { model?: string; mode?: string; reasoning_effort?: string; auto_approve?: boolean; trust_mode?: boolean }
   ): Promise<StartTurnResponse> {
     const body: Record<string, unknown> = { prompt };
     if (opts?.model) body.model = opts.model;
     if (opts?.mode) body.mode = opts.mode;
     if (opts?.reasoning_effort) body.reasoning_effort = opts.reasoning_effort;
+    if (opts?.auto_approve !== undefined) body.auto_approve = opts.auto_approve;
+    if (opts?.trust_mode !== undefined) body.trust_mode = opts.trust_mode;
     return (await this.post(
       `/v1/threads/${threadId}/turns`,
       body

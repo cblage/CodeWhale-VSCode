@@ -589,6 +589,8 @@ export function getWebviewHtml(
       background: rgba(240,173,78,0.1);
     }
     .approval-bar .approval-text { font-size: 0.85em; margin-bottom: 6px; }
+    .approval-bar .approval-remember { font-size: 0.8em; display: flex; align-items: center; gap: 4px; margin-bottom: 6px; color: var(--muted); cursor: pointer; }
+    .approval-bar .approval-remember input { cursor: pointer; }
     .approval-bar .approval-buttons { display: flex; gap: 6px; }
     .approval-bar button {
       padding: 3px 12px;
@@ -1634,17 +1636,18 @@ export function getWebviewHtml(
       }
       
       let html = '<div class="tool-call" id="tc-' + msgId + '-' + tcIdx + '">';
-      html += '<span class="tool-name">🔧 ' + escapeHtml(tc.name) + '</span>';
+      html += '<span class="tool-name">🔧 ' + escapeHtml(tc.displayName || tc.name) + '</span>';
       html += ' <span class="tool-status" style="color:var(--muted)">' + statusIcon + ' ' + statusText + '</span>';
       if (tc.output) {
         html += '<div class="tool-output">' + escapeHtml(tc.output) + '</div>';
       }
       if (tc.status === 'awaiting_approval' && tc.approvalId) {
         html += '<div class="approval-bar">';
-        html += '<div class="approval-text">⚠ Approval required</div>';
+        html += '<div class="approval-text">⚠ ' + escapeHtml(tc.approvalSummary || __i18n.approvalRequired) + '</div>';
+        html += '<label class="approval-remember"><input type="checkbox" data-approval-id="' + tc.approvalId + '" class="remember-check" /> Remember for this tool</label>';
         html += '<div class="approval-buttons">';
-        html += '<button class="btn-allow" data-approval-id="' + tc.approvalId + '" data-decision="allow">Allow</button>';
-        html += '<button class="btn-deny" data-approval-id="' + tc.approvalId + '" data-decision="deny">Deny</button>';
+        html += '<button class="btn-allow" data-approval-id="' + tc.approvalId + '" data-decision="allow">' + __i18n.allow + '</button>';
+        html += '<button class="btn-deny" data-approval-id="' + tc.approvalId + '" data-decision="deny">' + __i18n.deny + '</button>';
         html += '</div></div>';
       }
       html += '</div>';
@@ -1668,7 +1671,9 @@ export function getWebviewHtml(
     }
 
     function decideApproval(approvalId, decision) {
-      vscode.postMessage({ type: 'approvalDecision', approvalId, decision });
+      const checkbox = document.querySelector('.remember-check[data-approval-id="' + approvalId + '"]');
+      const remember = checkbox ? checkbox.checked : false;
+      vscode.postMessage({ type: 'approvalDecision', approvalId, decision, remember });
     }
 
     // Event delegation for thinking toggle and approval buttons
@@ -2172,19 +2177,24 @@ export function getWebviewHtml(
         }
 
         case 'approvalRequired': {
+          const summaryText = escapeHtml(msg.summary || __i18n.approvalRequired);
+          const rememberLabel = '<label class="approval-remember"><input type="checkbox" data-approval-id="' + msg.approvalId + '" class="remember-check" /> Remember for this tool</label>';
           if (msg.toolCallIdx !== undefined) {
             const tcEl = document.getElementById('tc-' + msg.messageId + '-' + msg.toolCallIdx);
             if (tcEl) {
+              const nameSpan = tcEl.querySelector('.tool-name');
+              if (nameSpan && msg.toolName) nameSpan.textContent = '🔧 ' + msg.toolName;
               const statusSpan = tcEl.querySelector('.tool-status');
               if (statusSpan) statusSpan.textContent = '⚠ ' + __i18n.approvalAwaiting;
               const existing = tcEl.querySelector('.approval-bar');
               if (!existing) {
                 const bar = document.createElement('div');
                 bar.className = 'approval-bar';
-                bar.innerHTML = '<div class="approval-text">⚠ ' + escapeHtml(msg.reason) + '</div>'
+                bar.innerHTML = '<div class="approval-text">⚠ ' + summaryText + '</div>'
+                  + rememberLabel
                   + '<div class="approval-buttons">'
-                  + '<button class="btn-allow" data-approval-id="' + msg.approvalId + '" data-decision="allow">Allow</button>'
-                  + '<button class="btn-deny" data-approval-id="' + msg.approvalId + '" data-decision="deny">Deny</button>'
+                  + '<button class="btn-allow" data-approval-id="' + msg.approvalId + '" data-decision="allow">' + __i18n.allow + '</button>'
+                  + '<button class="btn-deny" data-approval-id="' + msg.approvalId + '" data-decision="deny">' + __i18n.deny + '</button>'
                   + '</div>';
                 tcEl.appendChild(bar);
                 messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -2197,10 +2207,11 @@ export function getWebviewHtml(
               if (!existing) {
                 const bar = document.createElement('div');
                 bar.className = 'approval-bar';
-                bar.innerHTML = '<div class="approval-text">⚠ ' + escapeHtml(msg.reason) + '</div>'
+                bar.innerHTML = '<div class="approval-text">⚠ ' + summaryText + '</div>'
+                  + rememberLabel
                   + '<div class="approval-buttons">'
-                  + '<button class="btn-allow" data-approval-id="' + msg.approvalId + '" data-decision="allow">Allow</button>'
-                  + '<button class="btn-deny" data-approval-id="' + msg.approvalId + '" data-decision="deny">Deny</button>'
+                  + '<button class="btn-allow" data-approval-id="' + msg.approvalId + '" data-decision="allow">' + __i18n.allow + '</button>'
+                  + '<button class="btn-deny" data-approval-id="' + msg.approvalId + '" data-decision="deny">' + __i18n.deny + '</button>'
                   + '</div>';
                 bodyEl.appendChild(bar);
                 messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -2213,6 +2224,19 @@ export function getWebviewHtml(
 
         case 'approvalResolved':
           document.querySelectorAll('.approval-bar').forEach(bar => bar.remove());
+          if (msg.decision === 'allow') {
+            document.querySelectorAll('.tool-status').forEach(span => {
+              if (span.textContent && span.textContent.includes(__i18n.approvalAwaiting)) {
+                span.textContent = '⟳ running...';
+              }
+            });
+          } else if (msg.decision === 'deny') {
+            document.querySelectorAll('.tool-status').forEach(span => {
+              if (span.textContent && span.textContent.includes(__i18n.approvalAwaiting)) {
+                span.textContent = '✗ denied';
+              }
+            });
+          }
           statusTextEl.textContent = __i18n.streaming;
           break;
 
