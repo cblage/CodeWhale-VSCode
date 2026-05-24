@@ -1813,6 +1813,7 @@ Use the TUI for full command support.` });
             blockIdx: this.currentTextBlockIdx,
           });
         } else if (kind === "agent_reasoning") {
+          if (!delta) break;
           lastMsg.blocks = lastMsg.blocks || [];
           if (this.currentThinkingBlockIdx < 0) {
             this.currentThinkingBlockIdx = lastMsg.blocks.length;

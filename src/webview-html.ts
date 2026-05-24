@@ -1089,6 +1089,7 @@ export function getWebviewHtml(
       deny: '${tr.deny}',
       thinkingOpen: '${tr.thinkingOpen}',
       thinkingClose: '${tr.thinkingClose}',
+      thinkingToggle: '${tr.thinkingToggle}',
       welcomeTitle: '${tr.welcomeTitle}',
       welcomeSubtitle: '${tr.welcomeSubtitle}',
       welcomeQuote: '${tr.welcomeQuote}',
@@ -1586,9 +1587,9 @@ export function getWebviewHtml(
             const block = document.createElement('div');
             block.className = 'thinking-block';
             block.setAttribute('data-block-idx', String(bi));
-            const isOpen = msg.status === 'streaming' ? 'open' : '';
-            const arrow = msg.status === 'streaming' ? '▼' : '▶';
-            block.innerHTML = '<div class="thinking-toggle">' + arrow + ' ' + escapeHtml(__i18n.thinkingToggle) + '</div><div class="thinking-content ' + isOpen + '" id="thinking-' + msg.id + '-' + bi + '">' + th + '</div>';
+            const isOpen = 'open';
+            const toggleLabel = __i18n.thinkingOpen;
+            block.innerHTML = '<div class="thinking-toggle">' + escapeHtml(toggleLabel) + '</div><div class="thinking-content ' + isOpen + '" id="thinking-' + msg.id + '-' + bi + '">' + th + '</div>';
             bodyEl.appendChild(block);
           } else if (b.type === 'tool_call') {
             const tcIdx = b.toolCallIdx;
@@ -1615,9 +1616,9 @@ export function getWebviewHtml(
           const th = msg.thinkingHtml !== undefined ? msg.thinkingHtml : escapeHtml(msg.thinking || '');
           const block = document.createElement('div');
           block.className = 'thinking-block';
-          const isOpen = msg.status === 'streaming' ? 'open' : '';
-          const arrow = msg.status === 'streaming' ? '▼' : '▶';
-          block.innerHTML = '<div class="thinking-toggle">' + arrow + ' ' + escapeHtml(__i18n.thinkingToggle) + '</div><div class="thinking-content ' + isOpen + '" id="thinking-' + msg.id + '-0">' + th + '</div>';
+          const isOpen = 'open';
+          const toggleLabel = __i18n.thinkingOpen;
+          block.innerHTML = '<div class="thinking-toggle">' + escapeHtml(toggleLabel) + '</div><div class="thinking-content ' + isOpen + '" id="thinking-' + msg.id + '-0">' + th + '</div>';
           bodyEl.appendChild(block);
         }
         
@@ -2152,7 +2153,7 @@ export function getWebviewHtml(
               const block = document.createElement('div');
               block.className = 'thinking-block';
               block.setAttribute('data-block-idx', String(blockIdx));
-              block.innerHTML = '<div class="thinking-toggle">▼ ' + escapeHtml(__i18n.thinkingToggle) + '</div><div class="thinking-content open" id="thinking-' + msg.messageId + '-' + blockIdx + '"></div>';
+              block.innerHTML = '<div class="thinking-toggle">' + escapeHtml(__i18n.thinkingOpen) + '</div><div class="thinking-content open" id="thinking-' + msg.messageId + '-' + blockIdx + '"></div>';
               const insertBefore = bodyEl.querySelector('[data-block-idx="' + (blockIdx + 1) + '"]');
               if (insertBefore) {
                 bodyEl.insertBefore(block, insertBefore);
@@ -2164,6 +2165,7 @@ export function getWebviewHtml(
           }
           if (thinkingEl) {
             thinkingEl.textContent = msg.thinking || '';
+            thinkingEl.classList.add('open');
             messagesEl.scrollTop = messagesEl.scrollHeight;
           }
           statusTextEl.textContent = __i18n.thinking;
@@ -2196,7 +2198,7 @@ export function getWebviewHtml(
             const block = document.createElement('div');
             block.className = 'thinking-block';
             block.setAttribute('data-block-idx', String(blockIdx));
-            block.innerHTML = '<div class="thinking-toggle">▼ ' + escapeHtml(__i18n.thinkingToggle) + '</div><div class="thinking-content open" id="thinking-' + msg.messageId + '-' + blockIdx + '"></div>';
+            block.innerHTML = '<div class="thinking-toggle">' + escapeHtml(__i18n.thinkingOpen) + '</div><div class="thinking-content open" id="thinking-' + msg.messageId + '-' + blockIdx + '"></div>';
             const insertBefore = bodyEl.querySelector('[data-block-idx="' + (blockIdx + 1) + '"]');
             if (insertBefore) {
               bodyEl.insertBefore(block, insertBefore);
