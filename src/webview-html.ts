@@ -1578,37 +1578,71 @@ export function getWebviewHtml(
       
       const bodyEl = el.querySelector('.message-body');
       
-      if (msg.thinkingHtml !== undefined || msg.thinking !== undefined) {
-        const th = msg.thinkingHtml !== undefined ? msg.thinkingHtml : escapeHtml(msg.thinking || '');
-        const block = document.createElement('div');
-        block.className = 'thinking-block';
-        const isOpen = msg.status === 'streaming' ? 'open' : '';
-        const arrow = msg.status === 'streaming' ? '▼' : '▶';
-        block.innerHTML = '<div class="thinking-toggle">' + arrow + ' ' + escapeHtml(__i18n.thinkingToggle) + '</div><div class="thinking-content ' + isOpen + '" id="thinking-' + msg.id + '">' + th + '</div>';
-        bodyEl.appendChild(block);
-      }
-      
-      if (msg.toolCalls && msg.toolCalls.length > 0) {
-        for (let i = 0; i < msg.toolCalls.length; i++) {
-          const tc = msg.toolCalls[i];
-          const tcEl = document.createElement('div');
-          tcEl.innerHTML = renderToolCall(msg.id, tc, i);
-          bodyEl.appendChild(tcEl.firstElementChild);
+      if (msg.blocks && msg.blocks.length > 0) {
+        for (let bi = 0; bi < msg.blocks.length; bi++) {
+          const b = msg.blocks[bi];
+          if (b.type === 'thinking') {
+            const th = b.contentHtml !== undefined ? b.contentHtml : escapeHtml(b.content || '');
+            const block = document.createElement('div');
+            block.className = 'thinking-block';
+            block.setAttribute('data-block-idx', String(bi));
+            const isOpen = msg.status === 'streaming' ? 'open' : '';
+            const arrow = msg.status === 'streaming' ? '▼' : '▶';
+            block.innerHTML = '<div class="thinking-toggle">' + arrow + ' ' + escapeHtml(__i18n.thinkingToggle) + '</div><div class="thinking-content ' + isOpen + '" id="thinking-' + msg.id + '-' + bi + '">' + th + '</div>';
+            bodyEl.appendChild(block);
+          } else if (b.type === 'tool_call') {
+            const tcIdx = b.toolCallIdx;
+            const tc = msg.toolCalls && msg.toolCalls[tcIdx];
+            if (tc) {
+              const tcEl = document.createElement('div');
+              tcEl.innerHTML = renderToolCall(msg.id, tc, tcIdx);
+              const child = tcEl.firstElementChild;
+              child.setAttribute('data-block-idx', String(bi));
+              bodyEl.appendChild(child);
+            }
+          } else if (b.type === 'text') {
+            const content = b.contentHtml !== undefined ? b.contentHtml : escapeHtml(b.content || '');
+            const contentEl = document.createElement('div');
+            contentEl.className = 'content' + (msg.status === 'streaming' ? ' streaming-indicator' : '');
+            contentEl.id = 'content-' + msg.id + '-' + bi;
+            contentEl.setAttribute('data-block-idx', String(bi));
+            contentEl.innerHTML = content;
+            bodyEl.appendChild(contentEl);
+          }
         }
-      }
-      
-      const content = msg.contentHtml !== undefined ? msg.contentHtml : (msg.content || '');
-      if (content) {
-        const contentEl = document.createElement('div');
-        contentEl.className = 'content' + (msg.status === 'streaming' ? ' streaming-indicator' : '');
-        contentEl.id = 'content-' + msg.id;
-        contentEl.innerHTML = content;
-        bodyEl.appendChild(contentEl);
-      } else if (msg.status === 'streaming') {
-        const contentEl = document.createElement('div');
-        contentEl.className = 'content streaming-indicator';
-        contentEl.id = 'content-' + msg.id;
-        bodyEl.appendChild(contentEl);
+      } else {
+        if (msg.thinkingHtml !== undefined || msg.thinking !== undefined) {
+          const th = msg.thinkingHtml !== undefined ? msg.thinkingHtml : escapeHtml(msg.thinking || '');
+          const block = document.createElement('div');
+          block.className = 'thinking-block';
+          const isOpen = msg.status === 'streaming' ? 'open' : '';
+          const arrow = msg.status === 'streaming' ? '▼' : '▶';
+          block.innerHTML = '<div class="thinking-toggle">' + arrow + ' ' + escapeHtml(__i18n.thinkingToggle) + '</div><div class="thinking-content ' + isOpen + '" id="thinking-' + msg.id + '-0">' + th + '</div>';
+          bodyEl.appendChild(block);
+        }
+        
+        if (msg.toolCalls && msg.toolCalls.length > 0) {
+          for (let i = 0; i < msg.toolCalls.length; i++) {
+            const tc = msg.toolCalls[i];
+            const tcEl = document.createElement('div');
+            tcEl.innerHTML = renderToolCall(msg.id, tc, i);
+            bodyEl.appendChild(tcEl.firstElementChild);
+          }
+        }
+        
+        const content = msg.contentHtml !== undefined ? msg.contentHtml : (msg.content || '');
+        if (content) {
+          const contentEl = document.createElement('div');
+          contentEl.className = 'content' + (msg.status === 'streaming' ? ' streaming-indicator' : '');
+          contentEl.id = 'content-' + msg.id + '-0';
+          contentEl.innerHTML = content;
+          bodyEl.appendChild(contentEl);
+        } else if (msg.status === 'streaming') {
+          const contentEl = document.createElement('div');
+          contentEl.className = 'content streaming-indicator';
+          contentEl.id = 'content-' + msg.id + '-0';
+          bodyEl.appendChild(contentEl);
+        }
       }
       
       messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -2084,14 +2118,21 @@ export function getWebviewHtml(
           break;
 
         case 'updateMessage': {
-          let contentEl = document.getElementById('content-' + msg.messageId);
+          const blockIdx = msg.blockIdx !== undefined ? msg.blockIdx : 0;
+          let contentEl = document.getElementById('content-' + msg.messageId + '-' + blockIdx);
           if (!contentEl) {
             const bodyEl = document.getElementById('body-' + msg.messageId);
             if (bodyEl) {
               contentEl = document.createElement('div');
               contentEl.className = 'content streaming-indicator';
-              contentEl.id = 'content-' + msg.messageId;
-              bodyEl.appendChild(contentEl);
+              contentEl.id = 'content-' + msg.messageId + '-' + blockIdx;
+              contentEl.setAttribute('data-block-idx', String(blockIdx));
+              const insertBefore = bodyEl.querySelector('[data-block-idx="' + (blockIdx + 1) + '"]');
+              if (insertBefore) {
+                bodyEl.insertBefore(contentEl, insertBefore);
+              } else {
+                bodyEl.appendChild(contentEl);
+              }
             }
           }
           if (contentEl) {
@@ -2103,14 +2144,21 @@ export function getWebviewHtml(
         }
 
         case 'updateThinking': {
-          let thinkingEl = document.getElementById('thinking-' + msg.messageId);
+          const blockIdx = msg.blockIdx !== undefined ? msg.blockIdx : 0;
+          let thinkingEl = document.getElementById('thinking-' + msg.messageId + '-' + blockIdx);
           if (!thinkingEl) {
             const bodyEl = document.getElementById('body-' + msg.messageId);
             if (bodyEl) {
               const block = document.createElement('div');
               block.className = 'thinking-block';
-              block.innerHTML = '<div class="thinking-toggle">▼ ' + escapeHtml(__i18n.thinkingToggle) + '</div><div class="thinking-content open" id="thinking-' + msg.messageId + '"></div>';
-              bodyEl.insertBefore(block, bodyEl.firstChild);
+              block.setAttribute('data-block-idx', String(blockIdx));
+              block.innerHTML = '<div class="thinking-toggle">▼ ' + escapeHtml(__i18n.thinkingToggle) + '</div><div class="thinking-content open" id="thinking-' + msg.messageId + '-' + blockIdx + '"></div>';
+              const insertBefore = bodyEl.querySelector('[data-block-idx="' + (blockIdx + 1) + '"]');
+              if (insertBefore) {
+                bodyEl.insertBefore(block, insertBefore);
+              } else {
+                bodyEl.appendChild(block);
+              }
               thinkingEl = block.querySelector('.thinking-content');
             }
           }
@@ -2122,16 +2170,67 @@ export function getWebviewHtml(
           break;
         }
 
+        case 'addTextBlock': {
+          const bodyEl = document.getElementById('body-' + msg.messageId);
+          if (bodyEl) {
+            const blockIdx = msg.blockIdx;
+            const contentEl = document.createElement('div');
+            contentEl.className = 'content streaming-indicator';
+            contentEl.id = 'content-' + msg.messageId + '-' + blockIdx;
+            contentEl.setAttribute('data-block-idx', String(blockIdx));
+            const insertBefore = bodyEl.querySelector('[data-block-idx="' + (blockIdx + 1) + '"]');
+            if (insertBefore) {
+              bodyEl.insertBefore(contentEl, insertBefore);
+            } else {
+              bodyEl.appendChild(contentEl);
+            }
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+          }
+          break;
+        }
+
+        case 'addThinkingBlock': {
+          const bodyEl = document.getElementById('body-' + msg.messageId);
+          if (bodyEl) {
+            const blockIdx = msg.blockIdx;
+            const block = document.createElement('div');
+            block.className = 'thinking-block';
+            block.setAttribute('data-block-idx', String(blockIdx));
+            block.innerHTML = '<div class="thinking-toggle">▼ ' + escapeHtml(__i18n.thinkingToggle) + '</div><div class="thinking-content open" id="thinking-' + msg.messageId + '-' + blockIdx + '"></div>';
+            const insertBefore = bodyEl.querySelector('[data-block-idx="' + (blockIdx + 1) + '"]');
+            if (insertBefore) {
+              bodyEl.insertBefore(block, insertBefore);
+            } else {
+              bodyEl.appendChild(block);
+            }
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+          }
+          break;
+        }
+
         case 'addToolCall': {
           const bodyEl = document.getElementById('body-' + msg.messageId);
           if (bodyEl) {
             const tcEl = document.createElement('div');
             tcEl.innerHTML = renderToolCall(msg.messageId, msg.toolCall, msg.toolCallIdx);
-            const contentEl = document.getElementById('content-' + msg.messageId);
-            if (contentEl) {
-              bodyEl.insertBefore(tcEl.firstElementChild, contentEl);
+            const child = tcEl.firstElementChild;
+            if (msg.blockIdx !== undefined) {
+              child.setAttribute('data-block-idx', String(msg.blockIdx));
+            }
+            if (msg.blockIdx !== undefined) {
+              const insertBefore = bodyEl.querySelector('[data-block-idx="' + (msg.blockIdx + 1) + '"]');
+              if (insertBefore) {
+                bodyEl.insertBefore(child, insertBefore);
+              } else {
+                bodyEl.appendChild(child);
+              }
             } else {
-              bodyEl.appendChild(tcEl.firstElementChild);
+              const contentEl = bodyEl.querySelector('.content');
+              if (contentEl) {
+                bodyEl.insertBefore(child, contentEl);
+              } else {
+                bodyEl.appendChild(child);
+              }
             }
             messagesEl.scrollTop = messagesEl.scrollHeight;
           }
@@ -2241,8 +2340,10 @@ export function getWebviewHtml(
           break;
 
         case 'messageComplete': {
-          const el = document.getElementById('content-' + msg.messageId);
-          if (el) el.classList.remove('streaming-indicator');
+          const msgBodyEl = document.getElementById('body-' + msg.messageId);
+          if (msgBodyEl) {
+            msgBodyEl.querySelectorAll('.content.streaming-indicator').forEach(el => el.classList.remove('streaming-indicator'));
+          }
           if (msg.usage) {
             const msgEl = document.getElementById('msg-' + msg.messageId);
             if (msgEl) {
@@ -2252,13 +2353,29 @@ export function getWebviewHtml(
               msgEl.appendChild(usageEl);
             }
           }
-          if (msg.contentHtml) {
-            const contentEl = document.getElementById('content-' + msg.messageId);
-            if (contentEl) contentEl.innerHTML = msg.contentHtml;
-          }
-          if (msg.thinkingHtml) {
-            const thinkingEl = document.getElementById('thinking-' + msg.messageId);
-            if (thinkingEl) thinkingEl.innerHTML = msg.thinkingHtml;
+          if (msg.blockHtmls && msgBodyEl) {
+            for (const bh of msg.blockHtmls) {
+              const blockEl = msgBodyEl.querySelector('[data-block-idx="' + bh.blockIdx + '"]');
+              if (blockEl) {
+                const contentEl = blockEl.classList.contains('content') ? blockEl : blockEl.querySelector('.content');
+                const thinkingEl = blockEl.classList.contains('thinking-block') ? blockEl.querySelector('.thinking-content') : null;
+                if (contentEl) contentEl.innerHTML = bh.contentHtml;
+                if (thinkingEl) thinkingEl.innerHTML = bh.contentHtml;
+              }
+            }
+          } else {
+            if (msg.contentHtml) {
+              if (msgBodyEl) {
+                const contentEls = msgBodyEl.querySelectorAll('.content');
+                contentEls.forEach(el => { el.innerHTML = msg.contentHtml; });
+              }
+            }
+            if (msg.thinkingHtml) {
+              if (msgBodyEl) {
+                const thinkingEls = msgBodyEl.querySelectorAll('.thinking-content');
+                thinkingEls.forEach(el => { el.innerHTML = msg.thinkingHtml; });
+              }
+            }
           }
           isStreaming = false;
           if (streamingTimeout) { clearTimeout(streamingTimeout); streamingTimeout = null; }

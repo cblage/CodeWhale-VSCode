@@ -122,14 +122,22 @@ function buildApprovalSummary(toolName: string, input: Record<string, unknown>):
 
 // ── UI model ──
 
+interface ContentBlock {
+  type: "text" | "thinking" | "tool_call";
+  content?: string;
+  contentHtml?: string;
+  toolCallIdx?: number;
+}
+
 interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
-  content: string;       // raw markdown during streaming, pre-rendered HTML when posted
-  thinking?: string;     // raw markdown during streaming, pre-rendered HTML when posted
-  contentHtml?: string;  // pre-rendered HTML for display (filled by postMessage)
-  thinkingHtml?: string; // pre-rendered HTML for thinking display
+  content: string;
+  thinking?: string;
+  contentHtml?: string;
+  thinkingHtml?: string;
   toolCalls?: ToolCallInfo[];
+  blocks?: ContentBlock[];
   status: "streaming" | "complete" | "error";
   timestamp: number;
 }
@@ -160,8 +168,10 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   private currentTurnId: string | null = null;
   private pendingApprovals: Map<string, ToolCallInfo> = new Map();
   /** Active agent items for the current turn, keyed by item_id */
-  private activeItems: Map<string, { kind: string; msgId: string; toolCallName?: string; toolCallIdx?: number }> =
+  private activeItems: Map<string, { kind: string; msgId: string; toolCallName?: string; toolCallIdx?: number; blockIdx?: number }> =
     new Map();
+  private currentTextBlockIdx: number = -1;
+  private currentThinkingBlockIdx: number = -1;
   private cycleCount: number = 0;
   private checklistItems: { id: string; content: string; status: string }[] = [];
   private checklistCompletionPct: number = 0;
@@ -382,24 +392,57 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         let content = "";
         let thinking = "";
         const toolCalls: ToolCallInfo[] = [];
+        const blocks: ContentBlock[] = [];
+        let currentTextBlock: ContentBlock | undefined;
+        let currentThinkingBlock: ContentBlock | undefined;
 
-        for (const item of detail.items) {
-          if (item.turn_id !== turn.id) continue;
+        const turnItems = detail.items.filter((it) => it.turn_id === turn.id);
+
+        for (const item of turnItems) {
           switch (item.kind) {
-            case "agent_message":
-              content += item.detail || item.summary;
+            case "agent_message": {
+              const text = item.detail || item.summary;
+              if (!text) break;
+              if (currentTextBlock) {
+                currentTextBlock.content = (currentTextBlock.content || "") + text;
+              } else {
+                currentTextBlock = { type: "text", content: text };
+                blocks.push(currentTextBlock);
+              }
+              content += text;
               break;
-            case "agent_reasoning":
-              thinking += item.detail || item.summary;
+            }
+            case "agent_reasoning": {
+              const th = item.detail || item.summary;
+              if (!th) break;
+              if (currentThinkingBlock) {
+                currentThinkingBlock.content = (currentThinkingBlock.content || "") + th;
+              } else {
+                currentThinkingBlock = { type: "thinking", content: th };
+                blocks.push(currentThinkingBlock);
+              }
+              thinking += th;
               break;
-            case "tool_call":
+            }
+            case "tool_call": {
+              currentTextBlock = undefined;
+              currentThinkingBlock = undefined;
+              const tcIdx = toolCalls.length;
               toolCalls.push({
                 name: item.summary,
                 input: (item.metadata as Record<string, unknown>) || {},
                 output: item.detail || undefined,
                 status: item.status === "completed" ? "complete" : "error",
               });
+              blocks.push({ type: "tool_call", toolCallIdx: tcIdx });
               break;
+            }
+          }
+        }
+
+        for (const b of blocks) {
+          if ((b.type === "text" || b.type === "thinking") && b.content) {
+            try { b.contentHtml = renderMarkdown(b.content); } catch { b.contentHtml = b.content; }
           }
         }
 
@@ -409,6 +452,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           content: content || turn.input_summary.slice(0, 100),
           thinking: thinking || undefined,
           toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+          blocks: blocks.length > 0 ? blocks : undefined,
           status: turn.status === "completed" ? "complete" : "error",
           timestamp: new Date(turn.ended_at || turn.created_at).getTime(),
         };
@@ -453,6 +497,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     this.lastEventSeq = 0;
     this.currentTurnId = null;
     this.activeItems.clear();
+    this.currentTextBlockIdx = -1;
+    this.currentThinkingBlockIdx = -1;
     this.cycleCount = 0;
     this.checklistItems = [];
     this.checklistCompletionPct = 0;
@@ -509,6 +555,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       }
 
       this.activeItems.clear();
+      this.currentTextBlockIdx = -1;
+      this.currentThinkingBlockIdx = -1;
 
       const userMsg: ChatMessage = {
         id: `user-${Date.now()}`,
@@ -527,6 +575,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         status: "streaming",
         timestamp: Date.now(),
         toolCalls: [],
+        blocks: [],
       };
       this.messages.push(assistantMsg);
       this.postMessage({ type: "addMessage", message: assistantMsg });
@@ -578,6 +627,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     this.lastEventSeq = 0;
     this.currentTurnId = null;
     this.activeItems.clear();
+    this.currentTextBlockIdx = -1;
+    this.currentThinkingBlockIdx = -1;
     this.cycleCount = 0;
     this.checklistItems = [];
     this.checklistCompletionPct = 0;
@@ -1506,12 +1557,23 @@ Use the TUI for full command support.` });
           if (lastMsg.thinking) {
             try { thinkingHtml = renderMarkdown(lastMsg.thinking); } catch { thinkingHtml = lastMsg.thinking; }
           }
+          const blockHtmls: { blockIdx: number; contentHtml: string }[] = [];
+          if (lastMsg.blocks) {
+            for (let i = 0; i < lastMsg.blocks.length; i++) {
+              const b = lastMsg.blocks[i];
+              if ((b.type === "text" || b.type === "thinking") && b.content) {
+                try { b.contentHtml = renderMarkdown(b.content); } catch { b.contentHtml = b.content; }
+                blockHtmls.push({ blockIdx: i, contentHtml: b.contentHtml });
+              }
+            }
+          }
           this.postMessage({
             type: "messageComplete",
             messageId: lastMsg.id,
             usage: pl.turn?.usage,
             contentHtml,
             thinkingHtml,
+            blockHtmls,
           });
         }
         this.refreshThreadList();
@@ -1535,12 +1597,23 @@ Use the TUI for full command support.` });
           if (lastMsg.thinking) {
             try { thinkingHtml = renderMarkdown(lastMsg.thinking); } catch { thinkingHtml = lastMsg.thinking; }
           }
+          const blockHtmls: { blockIdx: number; contentHtml: string }[] = [];
+          if (lastMsg.blocks) {
+            for (let i = 0; i < lastMsg.blocks.length; i++) {
+              const b = lastMsg.blocks[i];
+              if ((b.type === "text" || b.type === "thinking") && b.content) {
+                try { b.contentHtml = renderMarkdown(b.content); } catch { b.contentHtml = b.content; }
+                blockHtmls.push({ blockIdx: i, contentHtml: b.contentHtml });
+              }
+            }
+          }
           this.postMessage({
             type: "messageComplete",
             messageId: lastMsg.id,
             error: true,
             contentHtml,
             thinkingHtml,
+            blockHtmls,
           });
         }
         this.stopPeriodicTaskRefresh();
@@ -1676,6 +1749,9 @@ Use the TUI for full command support.` });
         this.activeItems.set(itemId, { kind, msgId: lastMsg.id });
 
         if (kind === "tool_call") {
+          this.currentTextBlockIdx = -1;
+          this.currentThinkingBlockIdx = -1;
+
           const tc: ToolCallInfo = {
             name: pl.item?.summary || "unknown",
             input: pl.tool?.input || {},
@@ -1683,13 +1759,17 @@ Use the TUI for full command support.` });
             itemId,
           };
           lastMsg.toolCalls = lastMsg.toolCalls || [];
+          lastMsg.blocks = lastMsg.blocks || [];
           const tcIdx = lastMsg.toolCalls.length;
           lastMsg.toolCalls.push(tc);
+          const blockIdx = lastMsg.blocks.length;
+          lastMsg.blocks.push({ type: "tool_call", toolCallIdx: tcIdx });
           const entry = {
             kind,
             msgId: lastMsg.id,
             toolCallName: tc.name,
             toolCallIdx: tcIdx,
+            blockIdx,
           };
           this.activeItems.set(itemId, entry);
           if (pl.tool?.id) {
@@ -1699,6 +1779,7 @@ Use the TUI for full command support.` });
             type: "addToolCall",
             messageId: lastMsg.id,
             toolCallIdx: tcIdx,
+            blockIdx,
             toolCall: tc,
           });
         }
@@ -1712,18 +1793,44 @@ Use the TUI for full command support.` });
         const kind = pl.kind;
 
         if (kind === "agent_message") {
+          lastMsg.blocks = lastMsg.blocks || [];
+          if (this.currentTextBlockIdx < 0) {
+            this.currentTextBlockIdx = lastMsg.blocks.length;
+            lastMsg.blocks.push({ type: "text", content: "" });
+            this.postMessage({
+              type: "addTextBlock",
+              messageId: lastMsg.id,
+              blockIdx: this.currentTextBlockIdx,
+            });
+          }
+          const textBlock = lastMsg.blocks[this.currentTextBlockIdx];
+          textBlock.content = (textBlock.content || "") + delta;
           lastMsg.content += delta;
           this.postMessage({
             type: "updateMessage",
             messageId: lastMsg.id,
-            content: lastMsg.content,
+            content: textBlock.content,
+            blockIdx: this.currentTextBlockIdx,
           });
         } else if (kind === "agent_reasoning") {
+          lastMsg.blocks = lastMsg.blocks || [];
+          if (this.currentThinkingBlockIdx < 0) {
+            this.currentThinkingBlockIdx = lastMsg.blocks.length;
+            lastMsg.blocks.push({ type: "thinking", content: "" });
+            this.postMessage({
+              type: "addThinkingBlock",
+              messageId: lastMsg.id,
+              blockIdx: this.currentThinkingBlockIdx,
+            });
+          }
+          const thinkingBlock = lastMsg.blocks[this.currentThinkingBlockIdx];
+          thinkingBlock.content = (thinkingBlock.content || "") + delta;
           lastMsg.thinking = (lastMsg.thinking || "") + delta;
           this.postMessage({
             type: "updateThinking",
             messageId: lastMsg.id,
-            thinking: lastMsg.thinking,
+            thinking: thinkingBlock.content,
+            blockIdx: this.currentThinkingBlockIdx,
           });
         }
         break;
@@ -1860,6 +1967,13 @@ Use the TUI for full command support.` });
         if (m && typeof m.thinking === "string" && m.thinking) {
           try { m.thinkingHtml = renderMarkdown(m.thinking); } catch { m.thinkingHtml = m.thinking; }
         }
+        if (m && Array.isArray(m.blocks)) {
+          for (const b of m.blocks as Record<string, unknown>[]) {
+            if ((b.type === "text" || b.type === "thinking") && typeof b.content === "string" && b.content) {
+              try { b.contentHtml = renderMarkdown(b.content as string); } catch { b.contentHtml = b.content; }
+            }
+          }
+        }
         break;
       }
       case "updateMessage":
@@ -1875,6 +1989,13 @@ Use the TUI for full command support.` });
             }
             if (m && typeof m.thinking === "string" && m.thinking) {
               try { m.thinkingHtml = renderMarkdown(m.thinking); } catch { m.thinkingHtml = m.thinking; }
+            }
+            if (m && Array.isArray(m.blocks)) {
+              for (const b of m.blocks as Record<string, unknown>[]) {
+                if ((b.type === "text" || b.type === "thinking") && typeof b.content === "string" && b.content) {
+                  try { b.contentHtml = renderMarkdown(b.content as string); } catch { b.contentHtml = b.content; }
+                }
+              }
             }
           }
         }
