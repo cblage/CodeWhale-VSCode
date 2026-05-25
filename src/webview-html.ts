@@ -1323,6 +1323,25 @@ export function getWebviewHtml(
 
     let isStreaming = false;
     let streamingTimeout = null;
+    let userScrolledUp = false;
+    const SCROLL_BOTTOM_THRESHOLD = 80;
+
+    function smartScrollToBottom() {
+      if (userScrolledUp) return;
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function isNearBottom() {
+      return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < SCROLL_BOTTOM_THRESHOLD;
+    }
+
+    messagesEl.addEventListener('scroll', function() {
+      if (isNearBottom()) {
+        userScrolledUp = false;
+      } else {
+        userScrolledUp = true;
+      }
+    });
     let threads = [];
     let activeThreadId = null;
     let slashMenuOpen = false;
@@ -1516,6 +1535,7 @@ export function getWebviewHtml(
       if (!text || isStreaming) return;
       inputEl.value = '';
       inputEl.style.height = 'auto';
+      userScrolledUp = false;
       
       if (text.startsWith('/')) {
         const parts = text.split(' ');
@@ -1575,7 +1595,7 @@ export function getWebviewHtml(
       
       el.innerHTML = html;
       messagesEl.appendChild(el);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
+      smartScrollToBottom();
       
       const bodyEl = el.querySelector('.message-body');
       
@@ -1646,7 +1666,7 @@ export function getWebviewHtml(
         }
       }
       
-      messagesEl.scrollTop = messagesEl.scrollHeight;
+      smartScrollToBottom();
     }
 
     function renderToolCall(msgId, tc, tcIdx) {
@@ -2138,7 +2158,7 @@ export function getWebviewHtml(
           }
           if (contentEl) {
             contentEl.textContent = msg.content || '';
-            messagesEl.scrollTop = messagesEl.scrollHeight;
+            smartScrollToBottom();
           }
           statusTextEl.textContent = __i18n.streaming;
           break;
@@ -2166,7 +2186,7 @@ export function getWebviewHtml(
           if (thinkingEl) {
             thinkingEl.textContent = msg.thinking || '';
             thinkingEl.classList.add('open');
-            messagesEl.scrollTop = messagesEl.scrollHeight;
+            smartScrollToBottom();
           }
           statusTextEl.textContent = __i18n.thinking;
           break;
@@ -2186,7 +2206,7 @@ export function getWebviewHtml(
             } else {
               bodyEl.appendChild(contentEl);
             }
-            messagesEl.scrollTop = messagesEl.scrollHeight;
+            smartScrollToBottom();
           }
           break;
         }
@@ -2205,7 +2225,7 @@ export function getWebviewHtml(
             } else {
               bodyEl.appendChild(block);
             }
-            messagesEl.scrollTop = messagesEl.scrollHeight;
+            smartScrollToBottom();
           }
           break;
         }
@@ -2234,7 +2254,7 @@ export function getWebviewHtml(
                 bodyEl.appendChild(child);
               }
             }
-            messagesEl.scrollTop = messagesEl.scrollHeight;
+            smartScrollToBottom();
           }
           break;
         }
@@ -2272,7 +2292,7 @@ export function getWebviewHtml(
               }
               outputEl.textContent = msg.output;
             }
-            messagesEl.scrollTop = messagesEl.scrollHeight;
+            smartScrollToBottom();
           }
           break;
         }
@@ -2298,7 +2318,7 @@ export function getWebviewHtml(
                   + '<button class="btn-deny" data-approval-id="' + msg.approvalId + '" data-decision="deny">' + __i18n.deny + '</button>'
                   + '</div>';
                 tcEl.appendChild(bar);
-                messagesEl.scrollTop = messagesEl.scrollHeight;
+                smartScrollToBottom();
               }
             }
           } else {
@@ -2315,7 +2335,7 @@ export function getWebviewHtml(
                   + '<button class="btn-deny" data-approval-id="' + msg.approvalId + '" data-decision="deny">' + __i18n.deny + '</button>'
                   + '</div>';
                 bodyEl.appendChild(bar);
-                messagesEl.scrollTop = messagesEl.scrollHeight;
+                smartScrollToBottom();
               }
             }
           }
@@ -2430,6 +2450,7 @@ export function getWebviewHtml(
           errEl.className = 'error-banner';
           errEl.innerHTML = '<span class="msg-label error">' + escapeHtml(__i18n.error) + '</span><span>' + escapeHtml(msg.message) + '</span>';
           messagesEl.appendChild(errEl);
+          userScrolledUp = false;
           messagesEl.scrollTop = messagesEl.scrollHeight;
           isStreaming = false;
           if (streamingTimeout) { clearTimeout(streamingTimeout); streamingTimeout = null; }
@@ -2440,7 +2461,7 @@ export function getWebviewHtml(
           infoEl.className = 'system-message';
           infoEl.innerHTML = '<span class="msg-label note">' + escapeHtml(__i18n.note) + '</span><span class="msg-body">' + escapeHtml(msg.message) + '</span>';
           messagesEl.appendChild(infoEl);
-          messagesEl.scrollTop = messagesEl.scrollHeight;
+          smartScrollToBottom();
           break;
         }
 
@@ -2456,7 +2477,7 @@ export function getWebviewHtml(
             infoEl.className = 'system-message';
             infoEl.innerHTML = '<span class="msg-label note">' + escapeHtml(__i18n.note) + '</span><span class="msg-body">' + escapeHtml(__i18n.noPreviousMessage) + '</span>';
             messagesEl.appendChild(infoEl);
-            messagesEl.scrollTop = messagesEl.scrollHeight;
+            smartScrollToBottom();
           }
           break;
         }
