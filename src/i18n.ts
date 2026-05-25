@@ -146,7 +146,9 @@ interface Translations {
   commandNotAvailableInGui: string;
   fileChanges: string;
   viewDiff: string;
+  viewDiffTooltip: string;
   openFile: string;
+  openFileTooltip: string;
   noChanges: string;
   changesThisTurn: string;
   fileCreated: string;
@@ -278,7 +280,9 @@ const en: Translations = {
   commandNotAvailableInGui: "This command is not available in the VSCode extension. Use the TUI terminal instead.",
   fileChanges: "Changes",
   viewDiff: "View Diff",
+  viewDiffTooltip: "Open diff view for this file",
   openFile: "Open File",
+  openFileTooltip: "Open file in editor",
   noChanges: "No file changes this turn",
   changesThisTurn: "Changes This Turn",
   fileCreated: "created",
@@ -410,7 +414,9 @@ const zhCn: Translations = {
   commandNotAvailableInGui: "此命令在 VSCode 扩展中不可用，请使用 TUI 终端。",
   fileChanges: "文件变更",
   viewDiff: "查看差异",
+  viewDiffTooltip: "在差异视图中对比文件变更",
   openFile: "打开文件",
+  openFileTooltip: "在编辑器中打开文件",
   noChanges: "本轮无文件变更",
   changesThisTurn: "本轮文件变更",
   fileCreated: "新建",
@@ -584,7 +590,9 @@ export function webviewTranslations(tr: Translations) {
     commandNotAvailableInGui: tr.commandNotAvailableInGui,
     fileChanges: tr.fileChanges,
     viewDiff: tr.viewDiff,
+    viewDiffTooltip: tr.viewDiffTooltip,
     openFile: tr.openFile,
+    openFileTooltip: tr.openFileTooltip,
     noChanges: tr.noChanges,
     changesThisTurn: tr.changesThisTurn,
     fileCreated: tr.fileCreated,

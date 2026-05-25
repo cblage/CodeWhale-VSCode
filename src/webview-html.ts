@@ -1910,10 +1910,10 @@ export function getWebviewHtml(
       html += '</div>';
       html += '<div class="fc-actions">';
       if (fc.diff) {
-        html += '<button class="fc-view-diff" data-file-path="' + escapeHtml(fc.filePath) + '">' + escapeHtml(__i18n.viewDiff) + '</button>';
+        html += '<button class="fc-view-diff" data-file-path="' + escapeHtml(fc.filePath) + '" title="' + escapeHtml(__i18n.viewDiffTooltip) + '">🔍 ' + escapeHtml(__i18n.viewDiff) + '</button>';
       }
       if (fc.changeType !== 'deleted') {
-        html += '<button class="fc-open-file" data-file-path="' + escapeHtml(fc.filePath) + '">' + escapeHtml(__i18n.openFile) + '</button>';
+        html += '<button class="fc-open-file" data-file-path="' + escapeHtml(fc.filePath) + '" title="' + escapeHtml(__i18n.openFileTooltip) + '">📄 ' + escapeHtml(__i18n.openFile) + '</button>';
       }
       html += '</div>';
       html += '</div>';
@@ -2237,10 +2237,10 @@ export function getWebviewHtml(
           html += '<span style="flex-shrink:0;display:flex;gap:3px">';
           if (fc.diff) {
             _diffStore.set(fc.filePath, fc.diff);
-            html += '<button class="work-fc-view-diff" data-file-path="' + escapeHtml(fc.filePath) + '" style="padding:0 5px;border:1px solid var(--border);border-radius:2px;background:transparent;color:var(--muted);cursor:pointer;font-size:0.75em">🔍</button>';
+            html += '<button class="work-fc-view-diff" data-file-path="' + escapeHtml(fc.filePath) + '" title="' + escapeHtml(__i18n.viewDiffTooltip) + '" style="padding:0 5px;border:1px solid var(--border);border-radius:2px;background:transparent;color:var(--muted);cursor:pointer;font-size:0.75em">🔍</button>';
           }
           if (fc.changeType !== 'deleted') {
-            html += '<button class="work-fc-open-file" data-file-path="' + escapeHtml(fc.filePath) + '" style="padding:0 5px;border:1px solid var(--border);border-radius:2px;background:transparent;color:var(--muted);cursor:pointer;font-size:0.75em">📄</button>';
+            html += '<button class="work-fc-open-file" data-file-path="' + escapeHtml(fc.filePath) + '" title="' + escapeHtml(__i18n.openFileTooltip) + '" style="padding:0 5px;border:1px solid var(--border);border-radius:2px;background:transparent;color:var(--muted);cursor:pointer;font-size:0.75em">📄</button>';
           }
           html += '</span>';
           html += '</div>';
