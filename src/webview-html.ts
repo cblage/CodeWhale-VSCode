@@ -1201,6 +1201,7 @@ export function getWebviewHtml(
 
     const _debugMode = false;
     const _diffStore = new Map();
+    let _diffIdCounter = 0;
     function _dbg(msg) {
       if (!_debugMode) return;
       const panel = document.getElementById('debug-panel');
@@ -1896,7 +1897,8 @@ export function getWebviewHtml(
       const changeTypeLabel = fc.changeType === 'created' ? __i18n.fileCreated : fc.changeType === 'deleted' ? __i18n.fileDeleted : __i18n.fileModified;
       const shortP = fc.filePath.replace(/\\\\/g, '/').split('/').slice(-3).join('/');
       const displayPath = fc.filePath.replace(/\\\\/g, '/').split('/').length > 3 ? '…/' + shortP : fc.filePath;
-      if (fc.diff) _diffStore.set(fc.filePath, fc.diff);
+      const diffKey = fc.filePath + '@' + (++_diffIdCounter);
+      if (fc.diff) _diffStore.set(diffKey, fc.diff);
       let html = '<div class="file-change-card">';
       html += '<div class="fc-header">';
       html += '<span class="fc-path" title="' + escapeHtml(fc.filePath) + '">📝 ' + escapeHtml(displayPath) + '</span>';
@@ -1910,7 +1912,7 @@ export function getWebviewHtml(
       html += '</div>';
       html += '<div class="fc-actions">';
       if (fc.diff) {
-        html += '<button class="fc-view-diff" data-file-path="' + escapeHtml(fc.filePath) + '" title="' + escapeHtml(__i18n.viewDiffTooltip) + '">🔍 ' + escapeHtml(__i18n.viewDiff) + '</button>';
+        html += '<button class="fc-view-diff" data-file-path="' + escapeHtml(fc.filePath) + '" data-diff-key="' + diffKey + '" title="' + escapeHtml(__i18n.viewDiffTooltip) + '">🔍 ' + escapeHtml(__i18n.viewDiff) + '</button>';
       }
       if (fc.changeType !== 'deleted') {
         html += '<button class="fc-open-file" data-file-path="' + escapeHtml(fc.filePath) + '" title="' + escapeHtml(__i18n.openFileTooltip) + '">📄 ' + escapeHtml(__i18n.openFile) + '</button>';
@@ -1948,8 +1950,9 @@ export function getWebviewHtml(
       
       if (target.classList.contains('fc-view-diff')) {
         const filePath = target.getAttribute('data-file-path');
+        const diffKey = target.getAttribute('data-diff-key');
         if (filePath) {
-          vscode.postMessage({ type: 'openDiff', filePath, diff: _diffStore.get(filePath) || undefined });
+          vscode.postMessage({ type: 'openDiff', filePath, diff: (diffKey ? _diffStore.get(diffKey) : undefined) || undefined });
         }
         return;
       }
@@ -1964,8 +1967,9 @@ export function getWebviewHtml(
 
       if (target.classList.contains('work-fc-view-diff')) {
         const filePath = target.getAttribute('data-file-path');
+        const diffKey = target.getAttribute('data-diff-key');
         if (filePath) {
-          vscode.postMessage({ type: 'openDiff', filePath, diff: _diffStore.get(filePath) || undefined });
+          vscode.postMessage({ type: 'openDiff', filePath, diff: (diffKey ? _diffStore.get(diffKey) : undefined) || undefined });
         }
         return;
       }
@@ -2234,10 +2238,11 @@ export function getWebviewHtml(
             if (fc.removedLines > 0) html += '<span style="color:#f44336">-' + fc.removedLines + '</span>';
             html += '</span>';
           }
+          const workDiffKey = fc.filePath + '@' + (++_diffIdCounter);
           html += '<span style="flex-shrink:0;display:flex;gap:3px">';
           if (fc.diff) {
-            _diffStore.set(fc.filePath, fc.diff);
-            html += '<button class="work-fc-view-diff" data-file-path="' + escapeHtml(fc.filePath) + '" title="' + escapeHtml(__i18n.viewDiffTooltip) + '" style="padding:0 5px;border:1px solid var(--border);border-radius:2px;background:transparent;color:var(--muted);cursor:pointer;font-size:0.75em">🔍</button>';
+            _diffStore.set(workDiffKey, fc.diff);
+            html += '<button class="work-fc-view-diff" data-file-path="' + escapeHtml(fc.filePath) + '" data-diff-key="' + workDiffKey + '" title="' + escapeHtml(__i18n.viewDiffTooltip) + '" style="padding:0 5px;border:1px solid var(--border);border-radius:2px;background:transparent;color:var(--muted);cursor:pointer;font-size:0.75em">🔍</button>';
           }
           if (fc.changeType !== 'deleted') {
             html += '<button class="work-fc-open-file" data-file-path="' + escapeHtml(fc.filePath) + '" title="' + escapeHtml(__i18n.openFileTooltip) + '" style="padding:0 5px;border:1px solid var(--border);border-radius:2px;background:transparent;color:var(--muted);cursor:pointer;font-size:0.75em">📄</button>';

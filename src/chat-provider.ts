@@ -131,16 +131,43 @@ function parseDiffStats(diff: string): { added: number; removed: number } {
 function extractDiffFromOutput(output: string): string | undefined {
   const lines = output.split("\n");
   let diffStart = -1;
-  for (let i = 0; i < Math.min(lines.length, 10); i++) {
-    if (lines[i].startsWith("@@") || lines[i].startsWith("---") || lines[i].startsWith("diff ")) {
-      diffStart = i;
+  // Search entire output for diff markers (not just first 10 lines)
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // Git diff header: "diff --git a/... b/..."
+    if (line.startsWith("diff --git ")) { diffStart = i; break; }
+    // Unified diff: "--- a/..." followed by "+++ b/..." within 2 lines
+    if (line.startsWith("--- ") && i + 2 < lines.length && lines[i + 1].startsWith("+++ ")) { diffStart = i; break; }
+    // Fallback: hunk header "@@ -..."
+    if (line.startsWith("@@")) { diffStart = i; break; }
+  }
+  if (diffStart < 0) return undefined;
+
+  // Find the end of the diff: stop at an empty line followed by a non-diff line
+  // This prevents counting prose/summary bullet points as diff lines
+  let diffEnd = lines.length;
+  for (let i = diffStart + 1; i < lines.length; i++) {
+    const line = lines[i];
+    const nextLine = i + 1 < lines.length ? lines[i + 1] : "";
+    // Empty line followed by a line that doesn't look like diff content
+    if (
+      line.trim() === "" &&
+      nextLine.trim() !== "" &&
+      !nextLine.startsWith("+") &&
+      !nextLine.startsWith("-") &&
+      !nextLine.startsWith("@@") &&
+      !nextLine.startsWith(" ") &&
+      !nextLine.startsWith("diff ") &&
+      !nextLine.startsWith("--- ") &&
+      !nextLine.startsWith("+++ ") &&
+      !nextLine.startsWith("index ") &&
+      !nextLine.startsWith("\\")  // "\ No newline at end of file"
+    ) {
+      diffEnd = i + 1; // include the blank line
       break;
     }
   }
-  if (diffStart >= 0) {
-    return lines.slice(diffStart).join("\n");
-  }
-  return undefined;
+  return lines.slice(diffStart, diffEnd).join("\n");
 }
 
 function shortPath(p: string): string {
