@@ -1472,21 +1472,11 @@ Use the TUI for full command support.` });
   }
 
   private showApprovalDialog(
-    approvalId: string,
-    toolName: string,
-    summary: string
+    _approvalId: string,
+    _toolName: string,
+    _summary: string
   ): void {
     this.view?.show?.(true);
-
-    const displayName = friendlyToolName(toolName);
-    vscode.window.showWarningMessage(displayName, { modal: false, detail: summary }, "Allow", "Deny")
-      .then((choice) => {
-        if (choice === "Allow") {
-          this.handleApprovalDecision(approvalId, "allow");
-        } else if (choice === "Deny") {
-          this.handleApprovalDecision(approvalId, "deny");
-        }
-      });
   }
 
   // ── SSE event stream ──
@@ -1644,8 +1634,6 @@ Use the TUI for full command support.` });
         const toolInput = (request || pl) as Record<string, unknown>;
         if (!approvalId) break;
 
-        const summary = buildApprovalSummary(toolName, toolInput);
-
         const lastMsg = this.messages[this.messages.length - 1];
         let tc: ToolCallInfo | undefined;
         let tcIdx: number | undefined;
@@ -1660,6 +1648,10 @@ Use the TUI for full command support.` });
           tc = lastMsg.toolCalls.find((t) => t.status === "running");
           if (tc) tcIdx = lastMsg.toolCalls.indexOf(tc);
         }
+
+        const actualInput = tc?.input || toolInput;
+        const summary = buildApprovalSummary(toolName, actualInput);
+
         if (tc) {
           tc.status = "awaiting_approval";
           tc.approvalId = approvalId;

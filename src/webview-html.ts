@@ -1480,6 +1480,9 @@ export function getWebviewHtml(
     let isComposing = false;
     inputEl.addEventListener('compositionstart', () => { isComposing = true; });
     inputEl.addEventListener('compositionend', () => { isComposing = false; });
+    let messageHistory = [];
+    let historyIndex = -1;
+    let draftBeforeHistory = '';
     inputEl.addEventListener('keydown', (e) => {
       _dbg('keydown: key=' + e.key + ' isComposing=' + isComposing);
       if (isComposing) return;
@@ -1500,6 +1503,38 @@ export function getWebviewHtml(
           slashMenuOpen = false;
         }
         return;
+      }
+      
+      if (e.key === 'ArrowUp' && messageHistory.length > 0) {
+        const pos = inputEl.selectionStart;
+        if (pos === 0) {
+          e.preventDefault();
+          if (historyIndex === -1) {
+            draftBeforeHistory = inputEl.value;
+          }
+          historyIndex = Math.min(historyIndex + 1, messageHistory.length - 1);
+          inputEl.value = messageHistory[historyIndex];
+          inputEl.selectionStart = inputEl.selectionEnd = inputEl.value.length;
+          inputEl.style.height = 'auto';
+          inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+          return;
+        }
+      } else if (e.key === 'ArrowDown' && historyIndex !== -1) {
+        const len = inputEl.value.length;
+        const pos = inputEl.selectionStart;
+        if (pos === len) {
+          e.preventDefault();
+          historyIndex--;
+          if (historyIndex === -1) {
+            inputEl.value = draftBeforeHistory;
+          } else {
+            inputEl.value = messageHistory[historyIndex];
+          }
+          inputEl.selectionStart = inputEl.selectionEnd = 0;
+          inputEl.style.height = 'auto';
+          inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+          return;
+        }
       }
       
       if (e.key === 'Enter' && !e.shiftKey) {
@@ -1536,6 +1571,10 @@ export function getWebviewHtml(
       inputEl.value = '';
       inputEl.style.height = 'auto';
       userScrolledUp = false;
+      messageHistory.unshift(text);
+      if (messageHistory.length > 200) messageHistory.length = 200;
+      historyIndex = -1;
+      draftBeforeHistory = '';
       
       if (text.startsWith('/')) {
         const parts = text.split(' ');
