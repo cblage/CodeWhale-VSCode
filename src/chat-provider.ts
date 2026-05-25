@@ -152,6 +152,26 @@ function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max - 1) + "…" : s;
 }
 
+function extractToolNameFromSummary(summary: string): string {
+  const idx = summary.indexOf(":");
+  if (idx > 0) return summary.slice(0, idx).trim();
+  const spaceIdx = summary.indexOf(" ");
+  if (spaceIdx > 0) return summary.slice(0, spaceIdx).trim();
+  return summary.trim();
+}
+
+function extractFilePathFromDiff(diff: string): string {
+  for (const line of diff.split("\n")) {
+    const m = line.match(/^\+\+\+ b\/(.+)$/);
+    if (m) return m[1];
+  }
+  for (const line of diff.split("\n")) {
+    const m = line.match(/^--- a\/(.+)$/);
+    if (m) return m[1];
+  }
+  return "";
+}
+
 function friendlyToolName(raw: string): string {
   if (FRIENDLY_TOOL_NAMES[raw]) return FRIENDLY_TOOL_NAMES[raw];
   if (raw.startsWith("mcp__")) return raw.slice(4).replace(/__/g, " / ");
@@ -512,8 +532,9 @@ export class ChatProvider implements vscode.WebviewViewProvider {
               currentTextBlock = undefined;
               currentThinkingBlock = undefined;
               const tcIdx = toolCalls.length;
+              const rawName = extractToolNameFromSummary(item.summary || "");
               const tc: ToolCallInfo = {
-                name: item.summary,
+                name: rawName,
                 input: (item.metadata as Record<string, unknown>) || {},
                 output: item.detail || undefined,
                 status: item.status === "completed" ? "complete" : "error",
@@ -544,26 +565,30 @@ export class ChatProvider implements vscode.WebviewViewProvider {
               currentTextBlock = undefined;
               currentThinkingBlock = undefined;
               const tcIdx2 = toolCalls.length;
-              const fcFilePath = item.summary || "";
               const fcOutput = item.detail || "";
               const fcDiff = extractDiffFromOutput(fcOutput);
               const fcStats = fcDiff ? parseDiffStats(fcDiff) : { added: 0, removed: 0 };
               const fcMeta = (item.metadata as Record<string, unknown>) || {};
+              const fcToolName = extractToolNameFromSummary(item.summary || "");
+              let fcFilePath = fcDiff ? extractFilePathFromDiff(fcDiff) : "";
+              if (!fcFilePath && fcMeta.file_path) fcFilePath = fcMeta.file_path as string;
+              if (!fcFilePath && fcMeta.path) fcFilePath = fcMeta.path as string;
               const fcChangeType = (fcMeta.change_type as "created" | "modified" | "deleted") ||
-                (fcFilePath && fcDiff ? "modified" : "modified");
+                (fcToolName === "delete_file" ? "deleted" :
+                 fcToolName === "write_file" && !fcDiff ? "created" : "modified");
               const fcTc: ToolCallInfo = {
-                name: "file_change",
-                displayName: "File Change",
+                name: fcToolName || "file_change",
+                displayName: friendlyToolName(fcToolName || "file_change"),
                 input: fcMeta,
                 output: fcOutput,
                 status: item.status === "completed" ? "complete" : "error",
-                fileChange: {
+                fileChange: fcFilePath ? {
                   filePath: fcFilePath,
                   changeType: fcChangeType,
                   addedLines: fcStats.added,
                   removedLines: fcStats.removed,
                   diff: fcDiff,
-                },
+                } : undefined,
               };
               toolCalls.push(fcTc);
               blocks.push({ type: "tool_call", toolCallIdx: tcIdx2 });
@@ -589,6 +614,16 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           timestamp: new Date(turn.ended_at || turn.created_at).getTime(),
         };
         this.messages.push(assistantMsg);
+
+        for (const tc of toolCalls) {
+          if (tc.fileChange) {
+            this.turnFileChanges.push(tc.fileChange);
+          }
+        }
+      }
+
+      if (this.turnFileChanges.length > 0) {
+        this.refreshWorkPanel();
       }
 
       for (const turn of detail.turns) {
@@ -2103,12 +2138,13 @@ Use the TUI for full command support.` });
 
         this.activeItems.set(itemId, { kind, msgId: lastMsg.id });
 
-        if (kind === "tool_call") {
+        if (kind === "tool_call" || kind === "file_change" || kind === "command_execution") {
           this.currentTextBlockIdx = -1;
           this.currentThinkingBlockIdx = -1;
 
+          const rawToolName = pl.tool?.name || "";
           const tc: ToolCallInfo = {
-            name: pl.item?.summary || "unknown",
+            name: rawToolName || pl.item?.summary || "unknown",
             input: pl.tool?.input || {},
             status: "running",
             itemId,
@@ -2122,7 +2158,7 @@ Use the TUI for full command support.` });
           const entry = {
             kind,
             msgId: lastMsg.id,
-            toolCallName: tc.name,
+            toolCallName: rawToolName || tc.name,
             toolCallIdx: tcIdx,
             blockIdx,
           };
@@ -2207,9 +2243,11 @@ Use the TUI for full command support.` });
         const active = this.activeItems.get(itemId);
         this.activeItems.delete(itemId);
 
-        if (kind === "tool_call") {
+        if (kind === "tool_call" || kind === "file_change" || kind === "command_execution") {
           const tcIdx = active?.toolCallIdx;
           const tc = tcIdx !== undefined ? lastMsg.toolCalls?.[tcIdx] : undefined;
+          const toolName = active?.toolCallName || extractToolNameFromSummary(pl.item?.summary || "");
+
           if (tc) {
             tc.status = "complete";
             tc.output = pl.item?.detail || pl.item?.summary;
@@ -2221,37 +2259,48 @@ Use the TUI for full command support.` });
               status: "complete",
               output: tc.output,
             });
+          }
 
-            const toolName = active?.toolCallName || "";
-            if (isFileChangeTool(toolName) && tc.input) {
-              const filePath = extractFilePath(toolName, tc.input);
-              if (filePath) {
-                const output = tc.output || "";
-                const diff = extractDiffFromOutput(output);
-                const stats = diff ? parseDiffStats(diff) : { added: 0, removed: 0 };
-                const changeType: "created" | "modified" | "deleted" =
-                  toolName === "delete_file" ? "deleted" :
-                  toolName === "write_file" && !diff ? "created" : "modified";
-                const fc: FileChangeInfo = {
-                  filePath,
-                  changeType,
-                  addedLines: stats.added,
-                  removedLines: stats.removed,
-                  diff,
-                };
+          if (isFileChangeTool(toolName)) {
+            let filePath = "";
+            let diff: string | undefined;
+            if (tc?.input) {
+              filePath = extractFilePath(toolName, tc.input);
+            }
+            const output = pl.item?.detail || tc?.output || "";
+            diff = extractDiffFromOutput(output);
+            if (!filePath && diff) {
+              filePath = extractFilePathFromDiff(diff);
+            }
+            if (!filePath && pl.item?.metadata) {
+              const meta = pl.item.metadata;
+              filePath = (meta.file_path || meta.path || "") as string;
+            }
+            if (filePath) {
+              const stats = diff ? parseDiffStats(diff) : { added: 0, removed: 0 };
+              const changeType: "created" | "modified" | "deleted" =
+                toolName === "delete_file" ? "deleted" :
+                toolName === "write_file" && !diff ? "created" : "modified";
+              const fc: FileChangeInfo = {
+                filePath,
+                changeType,
+                addedLines: stats.added,
+                removedLines: stats.removed,
+                diff,
+              };
+              if (tc) {
                 tc.fileChange = fc;
-                this.turnFileChanges.push(fc);
-                this.postMessage({
-                  type: "fileChangeDetected",
-                  messageId: lastMsg.id,
-                  toolCallIdx: tcIdx!,
-                  fileChange: fc,
-                });
-                this.refreshWorkPanel();
               }
+              this.turnFileChanges.push(fc);
+              this.postMessage({
+                type: "fileChangeDetected",
+                messageId: lastMsg.id,
+                toolCallIdx: tcIdx ?? -1,
+                fileChange: fc,
+              });
+              this.refreshWorkPanel();
             }
           }
-          const toolName = active?.toolCallName || "";
           if (pl.item?.metadata?.task_updates) {
             const checklist = (pl.item.metadata.task_updates as Record<string, unknown>).checklist;
             if (checklist && typeof checklist === "object") {
