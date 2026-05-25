@@ -10,14 +10,14 @@ const STARTUP_TIMEOUT_MS = 10000;
 const HEALTH_RETRY_INTERVAL_MS = 300;
 
 function resolveEnginePath(configuredPath: string): string {
-  if (configuredPath !== "deepseek") {
+  if (configuredPath !== "codewhale") {
     return configuredPath;
   }
   const candidates = [
-    "/opt/homebrew/lib/node_modules/deepseek-tui/bin/downloads/deepseek",
-    "/usr/local/lib/node_modules/deepseek-tui/bin/downloads/deepseek",
-    path.join(process.env.HOME || "", ".npm-global/lib/node_modules/deepseek-tui/bin/downloads/deepseek"),
-    path.join(process.env.HOME || "", ".local/share/deepseek-tui/bin/downloads/deepseek"),
+    "/opt/homebrew/lib/node_modules/codewhale/bin/downloads/codewhale",
+    "/usr/local/lib/node_modules/codewhale/bin/downloads/codewhale",
+    path.join(process.env.HOME || "", ".npm-global/lib/node_modules/codewhale/bin/downloads/codewhale"),
+    path.join(process.env.HOME || "", ".local/share/codewhale/bin/downloads/codewhale"),
   ];
   for (const candidate of candidates) {
     try {
@@ -26,7 +26,7 @@ function resolveEnginePath(configuredPath: string): string {
       }
     } catch { /* skip */ }
   }
-  return "deepseek";
+  return "codewhale";
 }
 
 /** Find a free TCP port by binding to port 0 */
@@ -41,7 +41,7 @@ function findFreePort(): Promise<number> {
   });
 }
 
-export class DeepSeekEngine {
+export class CodeWhaleEngine {
   private process: ChildProcess | null = null;
   private _port: number = 7878;
   private _host: string = "127.0.0.1";
@@ -143,8 +143,8 @@ export class DeepSeekEngine {
     this.log(`Tasks dir: ${tasksDir}`);
 
     // 3. Start fresh engine
-    const cfg = vscode.workspace.getConfiguration("deepseek");
-    const configuredPath = cfg.get<string>("enginePath", "deepseek");
+    const cfg = vscode.workspace.getConfiguration("codewhale");
+    const configuredPath = cfg.get<string>("enginePath", "codewhale");
     const enginePath = resolveEnginePath(configuredPath);
 
     this.log(
@@ -206,11 +206,11 @@ export class DeepSeekEngine {
     await this.waitForHealth();
 
     if (spawnError) {
-      throw new Error(`Failed to start engine: ${spawnError}. Is 'deepseek' installed and in PATH?`);
+      throw new Error(`Failed to start engine: ${spawnError}. Is 'codewhale' installed and in PATH?`);
     }
 
     if (exited || !this.process) {
-      throw new Error("Engine process exited immediately. Is 'deepseek' installed and in PATH?");
+      throw new Error("Engine process exited immediately. Is 'codewhale' installed and in PATH?");
     }
 
     this._running = true;
@@ -278,7 +278,7 @@ export class DeepSeekEngine {
   }
 
   private log(msg: string): void {
-    const line = `[DeepSeek Engine] ${msg}`;
+    const line = `[CodeWhale Engine] ${msg}`;
     this.outputChannel.appendLine(line);
     try {
       const logFile = path.join(this.context.globalStorageUri.fsPath, "engine.log");

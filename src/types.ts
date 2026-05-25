@@ -1,6 +1,6 @@
-export { DeepSeekEngine } from "./engine";
+export { CodeWhaleEngine } from "./engine";
 export {
-  DeepSeekApiClient,
+  CodeWhaleApiClient,
   type ThreadRecord,
   type TurnRecord,
   type TurnItemRecord,

@@ -47,7 +47,7 @@ const COMMANDS: SlashCommand[] = [
   { name: "/hooks", desc: "Manage hooks", category: "core", availability: "unavailable", helpText: "Not available: Hooks are TUI-specific lifecycle callbacks. Configure via ~/.deepseek/config.toml." },
   { name: "/subagents", desc: "List sub-agents", category: "core", availability: "unavailable", helpText: "Not available: Sub-agent management requires TUI's runtime environment." },
   { name: "/agent", desc: "Spawn a sub-agent", category: "core", availability: "unavailable", helpText: "Not available: Sub-agent spawning requires TUI's runtime environment." },
-  { name: "/links", desc: "Show DeepSeek links", category: "core", availability: "full", helpText: "/links - Show DeepSeek links" },
+  { name: "/links", desc: "Show CodeWhale links", category: "core", availability: "full", helpText: "/links - Show CodeWhale links" },
   { name: "/feedback", desc: "Send feedback", category: "core", availability: "full", helpText: "/feedback - Send feedback" },
   { name: "/attach", desc: "Attach a file", category: "core", availability: "partial", helpText: "File attachments are not yet supported in GUI. Use the TUI for /attach support." },
   { name: "/anchor", desc: "Set anchor points", category: "core", availability: "full", helpText: "/anchor <text> | /anchor list | /anchor remove <n> - Anchors are auto-injected after compaction" },

@@ -8,7 +8,7 @@ marked.setOptions({
 
 /**
  * Render Markdown to safe HTML for display in the webview.
- * All content from the DeepSeek model is rendered through this pipeline.
+ * All content from the CodeWhale / DeepSeek model is rendered through this pipeline.
  */
 export function renderMarkdown(text: string): string {
   if (!text) return "";

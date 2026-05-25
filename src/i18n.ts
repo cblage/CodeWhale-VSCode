@@ -21,6 +21,8 @@ interface Translations {
   processing: string;
   error: string;
   approvalAwaiting: string;
+  userInputRequired: string;
+  userInputAwaiting: string;
   noConversations: string;
   noTasks: string;
   threadsCount: (n: number) => string;
@@ -83,6 +85,7 @@ interface Translations {
   commandConfig: string;
   commandSettings: string;
   commandClear: string;
+  commandInterrupt: string;
   commandHelp: string;
   commandCompact: string;
   commandExit: string;
@@ -141,6 +144,16 @@ interface Translations {
   commandStatusline: string;
   commandLogout: string;
   commandNotAvailableInGui: string;
+  fileChanges: string;
+  viewDiff: string;
+  openFile: string;
+  noChanges: string;
+  changesThisTurn: string;
+  fileCreated: string;
+  fileModified: string;
+  fileDeleted: string;
+  addedLines: string;
+  removedLines: string;
 }
 
 const en: Translations = {
@@ -148,15 +161,17 @@ const en: Translations = {
   history: "History", threads: "Threads", tasks: "Tasks", work: "Work",
   newThread: "+ New", compact: "⬒ Compact", interrupt: "■ Stop",
   toggleHistory: "Click to toggle history", send: "Send",
-  inputPlaceholder: "Ask DeepSeek...",
+  inputPlaceholder: "Ask CodeWhale...",
   initializing: "Initializing...", ready: "Ready",
   thinking: "Thinking...", streaming: "Streaming...", processing: "Processing...",
   error: "Error", approvalAwaiting: "⏳ Awaiting approval...",
+  userInputRequired: "Input required",
+  userInputAwaiting: "⏳ Awaiting your input...",
   noConversations: "No conversations yet", noTasks: "No tasks",
   threadsCount: (n) => `${n} thread${n !== 1 ? "s" : ""}`,
   modelLabel: "Model", workspaceLabel: "Workspace",
   modeLabel: "Mode", reasoningEffortLabel: "Reasoning Effort",
-  welcomeTitle: "DeepSeek",
+  welcomeTitle: "CodeWhale",
   welcomeSubtitle: "Technology serves the enduring mission of civilization",
   welcomeQuote: "To establish the heart for heaven and earth, to secure life for the people, to continue the lost learning of past sages, and to establish peace for all generations.",
   welcomeQuoteAuthor: "— Zhang Zai",
@@ -188,9 +203,9 @@ const en: Translations = {
   contextCompacted: "Context compacted", compactFailed: "Compact failed",
   sendFailed: "Failed to send message", initFailed: "Failed to initialize",
   eventStreamError: "Event stream error",
-  engineRestarted: "DeepSeek engine restarted",
+  engineRestarted: "CodeWhale engine restarted",
   engineRestartFailed: "Failed to restart engine",
-  engineNotRunning: "DeepSeek engine is not running",
+  engineNotRunning: "CodeWhale engine is not running",
   approvalRequired: "Approval required", allow: "Allow", deny: "Deny",
   thinkingToggle: "▶ Thinking", thinkingOpen: "▼ Thinking", thinkingClose: "▶ Thinking",
   threadsCountPattern: "{n} threads",
@@ -202,6 +217,7 @@ const en: Translations = {
   commandConfig: "/config - Open settings",
   commandSettings: "/settings - Show current settings",
   commandClear: "/clear - Clear chat",
+  commandInterrupt: "/interrupt - Interrupt current turn",
   commandHelp: "/help - Show help",
   commandCompact: "/compact - Compact context",
   commandExit: "/exit - Close sidebar",
@@ -235,7 +251,7 @@ const en: Translations = {
   commandHooks: "/hooks - Manage hooks",
   commandSubagents: "/subagents - List sub-agents",
   commandAgent: "/agent - Spawn a sub-agent",
-  commandLinks: "/links - Show DeepSeek links",
+  commandLinks: "/links - Show CodeWhale links",
   commandFeedback: "/feedback - Send feedback",
   commandAttach: "/attach - Attach a file",
   commandAnchor: "/anchor <text> | list | remove <n> - Manage compaction anchors",
@@ -260,6 +276,16 @@ const en: Translations = {
   commandStatusline: "/statusline - Status line info",
   commandLogout: "/logout - Logout",
   commandNotAvailableInGui: "This command is not available in the VSCode extension. Use the TUI terminal instead.",
+  fileChanges: "Changes",
+  viewDiff: "View Diff",
+  openFile: "Open File",
+  noChanges: "No file changes this turn",
+  changesThisTurn: "Changes This Turn",
+  fileCreated: "created",
+  fileModified: "modified",
+  fileDeleted: "deleted",
+  addedLines: "+{n}",
+  removedLines: "-{n}",
 };
 
 const zhCn: Translations = {
@@ -267,15 +293,17 @@ const zhCn: Translations = {
   history: "历史", threads: "会话", tasks: "任务", work: "工作",
   newThread: "+ 新建", compact: "⬒ 压缩", interrupt: "■ 停止",
   toggleHistory: "点击切换历史", send: "发送",
-  inputPlaceholder: "向 DeepSeek 提问...",
+  inputPlaceholder: "向 CodeWhale 提问...",
   initializing: "初始化中...", ready: "就绪",
   thinking: "思考中...", streaming: "输出中...", processing: "处理中...",
   error: "错误", approvalAwaiting: "⏳ 等待审批...",
+  userInputRequired: "需要输入",
+  userInputAwaiting: "⏳ 等待您的输入...",
   noConversations: "暂无会话", noTasks: "暂无任务",
   threadsCount: (n) => `${n} 个会话`,
   modelLabel: "模型", workspaceLabel: "工作区",
   modeLabel: "模式", reasoningEffortLabel: "思考深度",
-  welcomeTitle: "DeepSeek",
+  welcomeTitle: "CodeWhale",
   welcomeSubtitle: "科技服务文明传承的长线使命",
   welcomeQuote: "为天地立心，为生民立命，为往圣继绝学，为万世开太平。",
   welcomeQuoteAuthor: "—— 张载",
@@ -307,9 +335,9 @@ const zhCn: Translations = {
   contextCompacted: "上下文已压缩", compactFailed: "压缩失败",
   sendFailed: "发送消息失败", initFailed: "初始化失败",
   eventStreamError: "事件流错误",
-  engineRestarted: "DeepSeek 引擎已重启",
+  engineRestarted: "CodeWhale 引擎已重启",
   engineRestartFailed: "重启引擎失败",
-  engineNotRunning: "DeepSeek 引擎未运行",
+  engineNotRunning: "CodeWhale 引擎未运行",
   approvalRequired: "需要审批", allow: "允许", deny: "拒绝",
   thinkingToggle: "▶ 思考过程", thinkingOpen: "▼ 思考过程", thinkingClose: "▶ 思考过程",
   threadsCountPattern: "{n} 个会话",
@@ -321,6 +349,7 @@ const zhCn: Translations = {
   commandConfig: "/config - 打开设置",
   commandSettings: "/settings - 显示当前设置",
   commandClear: "/clear - 清空聊天",
+  commandInterrupt: "/interrupt - 中断当前对话",
   commandHelp: "/help - 显示帮助",
   commandCompact: "/compact - 压缩上下文",
   commandExit: "/exit - 关闭侧边栏",
@@ -354,7 +383,7 @@ const zhCn: Translations = {
   commandHooks: "/hooks - 管理钩子",
   commandSubagents: "/subagents - 列出子代理",
   commandAgent: "/agent - 启动子代理",
-  commandLinks: "/links - 显示 DeepSeek 链接",
+  commandLinks: "/links - 显示 CodeWhale 链接",
   commandFeedback: "/feedback - 发送反馈",
   commandAttach: "/attach - 附加文件",
   commandAnchor: "/anchor <文本> | list | remove <n> - 管理压缩锚点",
@@ -379,6 +408,16 @@ const zhCn: Translations = {
   commandStatusline: "/statusline - 状态栏信息",
   commandLogout: "/logout - 登出",
   commandNotAvailableInGui: "此命令在 VSCode 扩展中不可用，请使用 TUI 终端。",
+  fileChanges: "文件变更",
+  viewDiff: "查看差异",
+  openFile: "打开文件",
+  noChanges: "本轮无文件变更",
+  changesThisTurn: "本轮文件变更",
+  fileCreated: "新建",
+  fileModified: "修改",
+  fileDeleted: "删除",
+  addedLines: "+{n}",
+  removedLines: "-{n}",
 };
 
 const translations: Record<string, Translations> = {
@@ -425,6 +464,8 @@ export function webviewTranslations(tr: Translations) {
     processing: tr.processing,
     error: tr.error,
     approvalAwaiting: tr.approvalAwaiting,
+    userInputRequired: tr.userInputRequired,
+    userInputAwaiting: tr.userInputAwaiting,
     noConversations: tr.noConversations,
     noTasks: tr.noTasks,
     threadsCountPattern: tr.threadsCountPattern,
@@ -482,6 +523,7 @@ export function webviewTranslations(tr: Translations) {
     commandConfig: tr.commandConfig,
     commandSettings: tr.commandSettings,
     commandClear: tr.commandClear,
+    commandInterrupt: tr.commandInterrupt,
     commandHelp: tr.commandHelp,
     commandCompact: tr.commandCompact,
     commandExit: tr.commandExit,
@@ -540,5 +582,15 @@ export function webviewTranslations(tr: Translations) {
     commandStatusline: tr.commandStatusline,
     commandLogout: tr.commandLogout,
     commandNotAvailableInGui: tr.commandNotAvailableInGui,
+    fileChanges: tr.fileChanges,
+    viewDiff: tr.viewDiff,
+    openFile: tr.openFile,
+    noChanges: tr.noChanges,
+    changesThisTurn: tr.changesThisTurn,
+    fileCreated: tr.fileCreated,
+    fileModified: tr.fileModified,
+    fileDeleted: tr.fileDeleted,
+    addedLines: tr.addedLines,
+    removedLines: tr.removedLines,
   };
 }

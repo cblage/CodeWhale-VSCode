@@ -1,7 +1,6 @@
-# Source code (already bundled into dist/extension.js)
+# Source code (already bundled into dist/extension.js by webpack)
 src/**
-**/*.ts
-**/*.ts.map
+node_modules/**
 
 # Build configuration (not needed at runtime)
 tsconfig.json
@@ -24,6 +23,3 @@ package-lock.json
 
 # Source maps (save ~50% dist/ space)
 dist/*.map
-
-# Redundant: marked is already bundled into extension.js by webpack
-node_modules/marked/**

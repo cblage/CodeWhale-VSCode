@@ -1,25 +1,37 @@
 {
-  "name": "deepseek-vscode",
+  "name": "codewhale-vscode",
   "displayName": "%displayName%",
   "description": "%description%",
   "version": "0.1.0",
-  "publisher": "deepseek",
-  "repository": "https://github.com/HengQuWorld/DeepSeek-GUI",
+  "publisher": "hengquworld",
+  "repository": "https://github.com/HengQuWorld/CodeWhale-VSCode",
   "engines": {
     "vscode": "^1.85.0"
   },
+  "icon": "media/icon.png",
   "categories": [
-    "Programming Languages",
-    "Machine Learning",
+    "AI",
     "Chat"
   ],
   "keywords": [
+    "codewhale",
     "deepseek",
     "ai",
     "coding",
     "agent",
-    "chat"
+    "chat",
+    "llm",
+    "copilot",
+    "assistant"
   ],
+  "homepage": "https://github.com/HengQuWorld/CodeWhale-VSCode#readme",
+  "bugs": {
+    "url": "https://github.com/HengQuWorld/CodeWhale-VSCode/issues"
+  },
+  "galleryBanner": {
+    "color": "#4D6BFE",
+    "theme": "dark"
+  },
   "activationEvents": [
     "onStartupFinished"
   ],
@@ -28,58 +40,58 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "deepseek",
+          "id": "codewhale",
           "title": "%viewsContainers.activitybar.title%",
           "icon": "media/icon.svg"
         }
       ]
     },
     "views": {
-      "deepseek": [
+      "codewhale": [
         {
           "type": "webview",
-          "id": "deepseek.chat",
+          "id": "codewhale.chat",
           "name": "%views.chat.name%"
         }
       ]
     },
     "commands": [
       {
-        "command": "deepseek.openChat",
+        "command": "codewhale.openChat",
         "title": "%commands.openChat.title%"
       },
       {
-        "command": "deepseek.newThread",
+        "command": "codewhale.newThread",
         "title": "%commands.newThread.title%"
       },
       {
-        "command": "deepseek.compactContext",
+        "command": "codewhale.compactContext",
         "title": "%commands.compactContext.title%"
       },
       {
-        "command": "deepseek.restartEngine",
+        "command": "codewhale.restartEngine",
         "title": "%commands.restartEngine.title%"
       }
     ],
     "configuration": {
-      "title": "DeepSeek",
+      "title": "CodeWhale",
       "properties": {
-        "deepseek.enginePath": {
+        "codewhale.enginePath": {
           "type": "string",
-          "default": "deepseek",
+          "default": "codewhale",
           "description": "%config.enginePath.description%"
         },
-        "deepseek.enginePort": {
+        "codewhale.enginePort": {
           "type": "number",
           "default": 7878,
           "description": "%config.enginePort.description%"
         },
-        "deepseek.defaultModel": {
+        "codewhale.defaultModel": {
           "type": "string",
           "default": "deepseek-v4-pro",
           "description": "%config.defaultModel.description%"
         },
-        "deepseek.defaultMode": {
+        "codewhale.defaultMode": {
           "type": "string",
           "enum": [
             "agent",
@@ -89,7 +101,7 @@
           "default": "agent",
           "description": "%config.defaultMode.description%"
         },
-        "deepseek.reasoningEffort": {
+        "codewhale.reasoningEffort": {
           "type": "string",
           "enum": [
             "auto",
@@ -102,12 +114,12 @@
           "default": "auto",
           "description": "%config.reasoningEffort.description%"
         },
-        "deepseek.autoStartEngine": {
+        "codewhale.autoStartEngine": {
           "type": "boolean",
           "default": true,
           "description": "%config.autoStartEngine.description%"
         },
-        "deepseek.autoApprove": {
+        "codewhale.autoApprove": {
           "type": "boolean",
           "default": false,
           "description": "%config.autoApprove.description%"

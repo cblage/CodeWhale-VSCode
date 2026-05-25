@@ -1,19 +1,19 @@
 import * as vscode from "vscode";
-import { DeepSeekEngine } from "./engine";
-import { DeepSeekApiClient } from "./api-client";
+import { CodeWhaleEngine } from "./engine";
+import { CodeWhaleApiClient } from "./api-client";
 import { ChatProvider } from "./chat-provider";
 import { t } from "./i18n";
 
-let engine: DeepSeekEngine;
-let api: DeepSeekApiClient;
+let engine: CodeWhaleEngine;
+let api: CodeWhaleApiClient;
 let chatProvider: ChatProvider;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  const outputChannel = vscode.window.createOutputChannel("DeepSeek");
+  const outputChannel = vscode.window.createOutputChannel("CodeWhale");
   context.subscriptions.push(outputChannel);
 
-  engine = new DeepSeekEngine(outputChannel, context);
-  api = new DeepSeekApiClient(engine.baseUrl, engine.token ?? undefined);
+  engine = new CodeWhaleEngine(outputChannel, context);
+  api = new CodeWhaleApiClient(engine.baseUrl, engine.token ?? undefined);
 
   context.subscriptions.push(engine);
 
@@ -28,25 +28,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("deepseek.openChat", () => {
-      vscode.commands.executeCommand("workbench.view.extension.deepseek");
+    vscode.commands.registerCommand("codewhale.openChat", () => {
+      vscode.commands.executeCommand("workbench.view.extension.codewhale");
     })
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("deepseek.newThread", () => {
+    vscode.commands.registerCommand("codewhale.newThread", () => {
       chatProvider.handleNewThreadCommand();
     })
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("deepseek.compactContext", () => {
+    vscode.commands.registerCommand("codewhale.compactContext", () => {
       chatProvider.handleCompactCommand();
     })
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("deepseek.restartEngine", async () => {
+    vscode.commands.registerCommand("codewhale.restartEngine", async () => {
       try {
         await engine.restart();
         api.setBaseUrl(engine.baseUrl);
@@ -60,7 +60,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
-  outputChannel.appendLine("DeepSeek extension activated");
+  outputChannel.appendLine("CodeWhale extension activated");
 }
 
 export function deactivate(): void {

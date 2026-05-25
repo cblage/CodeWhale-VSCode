@@ -68,6 +68,7 @@ export interface WebviewTranslations {
   commandConfig: string;
   commandSettings: string;
   commandClear: string;
+  commandInterrupt: string;
   commandHelp: string;
   commandCompact: string;
   commandExit: string;
@@ -142,7 +143,7 @@ export function getWebviewHtml(
   <meta http-equiv="Content-Security-Policy"
     content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DeepSeek Chat</title>
+  <title>CodeWhale Chat</title>
   <style nonce="${nonce}">
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -538,11 +539,47 @@ export function getWebviewHtml(
     .thinking-content {
       display: none;
       margin-top: 6px;
-      white-space: pre-wrap;
-      line-height: 1.5;
+      line-height: 1.6;
     }
     .thinking-content.open { 
       display: block; 
+    }
+    .thinking-stream {
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: inherit;
+    }
+    .thinking-content p { margin: 4px 0; }
+    .thinking-content ul, .thinking-content ol {
+      margin: 4px 0; padding-left: 20px;
+    }
+    .thinking-content li { margin: 2px 0; }
+    .thinking-content code {
+      background: rgba(128,128,128,0.15);
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-size: 0.9em;
+      font-family: var(--vscode-editor-font-family, monospace);
+    }
+    .thinking-content pre {
+      background: var(--input-bg);
+      padding: 8px;
+      border-radius: 4px;
+      overflow-x: auto;
+      margin: 6px 0;
+    }
+    .thinking-content pre code {
+      background: none; padding: 0;
+    }
+    .thinking-content blockquote {
+      border-left: 2px solid var(--muted);
+      margin: 6px 0; padding-left: 10px;
+      color: var(--muted);
+    }
+    .thinking-content strong { color: var(--fg); }
+    .thinking-content h1, .thinking-content h2, .thinking-content h3,
+    .thinking-content h4, .thinking-content h5, .thinking-content h6 {
+      margin: 8px 0 4px; color: var(--fg); font-weight: 600;
     }
 
     .tool-call {
@@ -570,6 +607,70 @@ export function getWebviewHtml(
       white-space: pre-wrap;
       max-height: 200px;
       overflow-y: auto;
+    }
+
+    .file-change-card {
+      margin-top: 6px;
+      padding: 6px 10px;
+      border: 1px solid var(--brand-primary);
+      border-radius: 4px;
+      background: rgba(0, 122, 204, 0.06);
+      font-size: 0.85em;
+    }
+    .file-change-card .fc-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .file-change-card .fc-path {
+      font-family: var(--vscode-editor-font-family, monospace);
+      font-weight: 600;
+      color: var(--fg);
+      word-break: break-all;
+    }
+    .file-change-card .fc-badge {
+      font-size: 0.8em;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-weight: 500;
+    }
+    .file-change-card .fc-badge.created {
+      background: rgba(76, 175, 80, 0.15);
+      color: #4caf50;
+    }
+    .file-change-card .fc-badge.modified {
+      background: rgba(33, 150, 243, 0.15);
+      color: #2196f3;
+    }
+    .file-change-card .fc-badge.deleted {
+      background: rgba(244, 67, 54, 0.15);
+      color: #f44336;
+    }
+    .file-change-card .fc-stats {
+      font-family: var(--vscode-editor-font-family, monospace);
+      font-size: 0.85em;
+    }
+    .file-change-card .fc-stats .added { color: #4caf50; }
+    .file-change-card .fc-stats .removed { color: #f44336; }
+    .file-change-card .fc-actions {
+      margin-top: 4px;
+      display: flex;
+      gap: 6px;
+    }
+    .file-change-card .fc-actions button {
+      padding: 2px 10px;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      background: var(--input-bg);
+      color: var(--fg);
+      cursor: pointer;
+      font-size: 0.85em;
+    }
+    .file-change-card .fc-actions button:hover {
+      background: var(--brand-primary);
+      color: white;
+      border-color: var(--brand-primary);
     }
     
     @keyframes spin {
@@ -601,6 +702,44 @@ export function getWebviewHtml(
     }
     .approval-bar .btn-allow { background: #5cb85c; color: white; }
     .approval-bar .btn-deny { background: #d9534f; color: white; }
+
+    .user-input-bar {
+      margin-top: 8px;
+      padding: 10px;
+      border-radius: 6px;
+      background: rgba(255, 193, 7, 0.1);
+      border-left: 3px solid #ffc107;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .user-input-icon { font-size: 1.2em; }
+    .user-input-content { flex: 1; }
+    .user-input-question { margin-bottom: 8px; }
+    .user-input-header { font-weight: bold; font-size: 0.9em; color: var(--text); margin-bottom: 3px; }
+    .user-input-text { font-size: 0.85em; color: var(--muted); margin-bottom: 4px; }
+    .user-input-options { display: flex; gap: 8px; flex-wrap: wrap; }
+    .btn-user-input-option {
+      padding: 6px 12px;
+      background: rgba(92, 184, 92, 0.15);
+      border: 1px solid #5cb85c;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.8em;
+      color: #5cb85c;
+      transition: all 0.2s;
+    }
+    .btn-user-input-option:hover { background: rgba(92, 184, 92, 0.3); }
+    .user-input-buttons { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
+    .btn-user-input-cancel {
+      padding: 4px 10px;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 0.8em;
+      background: #d9534f;
+      color: white;
+    }
 
     .usage-info {
       font-size: 0.75em;
@@ -1061,6 +1200,7 @@ export function getWebviewHtml(
     });
 
     const _debugMode = false;
+    const _diffStore = new Map();
     function _dbg(msg) {
       if (!_debugMode) return;
       const panel = document.getElementById('debug-panel');
@@ -1356,6 +1496,7 @@ export function getWebviewHtml(
       { name: '/config', desc: '${tr.commandConfig}', category: 'config' },
       { name: '/settings', desc: '${tr.commandSettings}', category: 'config' },
       { name: '/clear', desc: '${tr.commandClear}', category: 'core' },
+      { name: '/interrupt', desc: '${tr.commandInterrupt}', category: 'core' },
       { name: '/help', desc: '${tr.commandHelp}', category: 'core' },
       { name: '/compact', desc: '${tr.commandCompact}', category: 'session' },
       { name: '/exit', desc: '${tr.commandExit}', category: 'core' },
@@ -1567,7 +1708,8 @@ export function getWebviewHtml(
 
     function sendMessage() {
       const text = inputEl.value.trim();
-      if (!text || isStreaming) return;
+      if (!text) return;
+      if (isStreaming && !text.startsWith('/interrupt') && !text.startsWith('/clear')) return;
       inputEl.value = '';
       inputEl.style.height = 'auto';
       userScrolledUp = false;
@@ -1732,7 +1874,9 @@ export function getWebviewHtml(
       let html = '<div class="tool-call" id="tc-' + msgId + '-' + tcIdx + '">';
       html += '<span class="tool-name">🔧 ' + escapeHtml(tc.displayName || tc.name) + '</span>';
       html += ' <span class="tool-status" style="color:var(--muted)">' + statusIcon + ' ' + statusText + '</span>';
-      if (tc.output) {
+      if (tc.fileChange) {
+        html += renderFileChangeCard(tc.fileChange);
+      } else if (tc.output) {
         html += '<div class="tool-output">' + escapeHtml(tc.output) + '</div>';
       }
       if (tc.status === 'awaiting_approval' && tc.approvalId) {
@@ -1744,6 +1888,34 @@ export function getWebviewHtml(
         html += '<button class="btn-deny" data-approval-id="' + tc.approvalId + '" data-decision="deny">' + __i18n.deny + '</button>';
         html += '</div></div>';
       }
+      html += '</div>';
+      return html;
+    }
+
+    function renderFileChangeCard(fc) {
+      const changeTypeLabel = fc.changeType === 'created' ? __i18n.fileCreated : fc.changeType === 'deleted' ? __i18n.fileDeleted : __i18n.fileModified;
+      const shortP = fc.filePath.replace(/\\\\/g, '/').split('/').slice(-3).join('/');
+      const displayPath = fc.filePath.replace(/\\\\/g, '/').split('/').length > 3 ? '…/' + shortP : fc.filePath;
+      if (fc.diff) _diffStore.set(fc.filePath, fc.diff);
+      let html = '<div class="file-change-card">';
+      html += '<div class="fc-header">';
+      html += '<span class="fc-path" title="' + escapeHtml(fc.filePath) + '">📝 ' + escapeHtml(displayPath) + '</span>';
+      html += '<span class="fc-badge ' + fc.changeType + '">' + escapeHtml(changeTypeLabel) + '</span>';
+      if (fc.addedLines > 0 || fc.removedLines > 0) {
+        html += '<span class="fc-stats">';
+        if (fc.addedLines > 0) html += '<span class="added">+' + fc.addedLines + '</span> ';
+        if (fc.removedLines > 0) html += '<span class="removed">-' + fc.removedLines + '</span>';
+        html += '</span>';
+      }
+      html += '</div>';
+      html += '<div class="fc-actions">';
+      if (fc.diff) {
+        html += '<button class="fc-view-diff" data-file-path="' + escapeHtml(fc.filePath) + '">' + escapeHtml(__i18n.viewDiff) + '</button>';
+      }
+      if (fc.changeType !== 'deleted') {
+        html += '<button class="fc-open-file" data-file-path="' + escapeHtml(fc.filePath) + '">' + escapeHtml(__i18n.openFile) + '</button>';
+      }
+      html += '</div>';
       html += '</div>';
       return html;
     }
@@ -1774,6 +1946,38 @@ export function getWebviewHtml(
     messagesEl.addEventListener('click', (e) => {
       const target = e.target;
       
+      if (target.classList.contains('fc-view-diff')) {
+        const filePath = target.getAttribute('data-file-path');
+        if (filePath) {
+          vscode.postMessage({ type: 'openDiff', filePath, diff: _diffStore.get(filePath) || undefined });
+        }
+        return;
+      }
+
+      if (target.classList.contains('fc-open-file')) {
+        const filePath = target.getAttribute('data-file-path');
+        if (filePath) {
+          vscode.postMessage({ type: 'openFile', filePath });
+        }
+        return;
+      }
+
+      if (target.classList.contains('work-fc-view-diff')) {
+        const filePath = target.getAttribute('data-file-path');
+        if (filePath) {
+          vscode.postMessage({ type: 'openDiff', filePath, diff: _diffStore.get(filePath) || undefined });
+        }
+        return;
+      }
+      
+      if (target.classList.contains('work-fc-open-file')) {
+        const filePath = target.getAttribute('data-file-path');
+        if (filePath) {
+          vscode.postMessage({ type: 'openFile', filePath });
+        }
+        return;
+      }
+      
       // Handle thinking toggle
       if (target.classList.contains('thinking-toggle')) {
         toggleThinking(target);
@@ -1785,6 +1989,31 @@ export function getWebviewHtml(
         const decision = target.getAttribute('data-decision');
         if (approvalId && decision) {
           decideApproval(approvalId, decision);
+        }
+      }
+
+      // Handle user input option buttons
+      if (target.classList.contains('btn-user-input-option')) {
+        const inputId = target.getAttribute('data-input-id');
+        const questionId = target.getAttribute('data-question-id');
+        const optionIdx = target.getAttribute('data-option-idx');
+        const optionLabel = target.getAttribute('data-option-label');
+        if (inputId && questionId && optionIdx !== null && optionLabel) {
+          vscode.postMessage({
+            type: 'userInputSelect',
+            inputId,
+            questionId,
+            optionIdx: parseInt(optionIdx),
+            optionLabel,
+          });
+        }
+      }
+
+      // Handle user input cancel button
+      if (target.classList.contains('btn-user-input-cancel')) {
+        const inputId = target.getAttribute('data-input-id');
+        if (inputId) {
+          vscode.postMessage({ type: 'userInputCancel', inputId });
         }
       }
     });
@@ -1919,7 +2148,7 @@ export function getWebviewHtml(
       }
     }
 
-    let workState = { goal: null, checklist: [], checklistCompletionPct: 0, strategy: [], cycleCount: 0, coherenceState: 'healthy', coherenceLabel: '' };
+    let workState = { goal: null, checklist: [], checklistCompletionPct: 0, strategy: [], cycleCount: 0, coherenceState: 'healthy', coherenceLabel: '', fileChanges: [] };
 
     function renderWork() {
       const container = document.getElementById('tab-work');
@@ -1985,6 +2214,38 @@ export function getWebviewHtml(
         const section = document.createElement('div');
         section.className = 'work-section';
         section.innerHTML = '<div style="font-size:0.8em;color:var(--muted)">' + escapeHtml(__i18n.cycles) + ': ' + workState.cycleCount + '</div>';
+        container.appendChild(section);
+      }
+      if (workState.fileChanges && workState.fileChanges.length > 0) {
+        const section = document.createElement('div');
+        section.className = 'work-section';
+        let html = '<div class="work-section-title">' + escapeHtml(__i18n.fileChanges) + ' <span style="font-weight:400;color:var(--muted);font-size:0.9em">(' + workState.fileChanges.length + ')</span></div>';
+        for (const fc of workState.fileChanges) {
+          const changeTypeLabel = fc.changeType === 'created' ? __i18n.fileCreated : fc.changeType === 'deleted' ? __i18n.fileDeleted : __i18n.fileModified;
+          const shortP = fc.filePath.replace(/\\\\/g, '/').split('/').slice(-3).join('/');
+          const displayPath = fc.filePath.replace(/\\\\/g, '/').split('/').length > 3 ? '…/' + shortP : fc.filePath;
+          const badgeColor = fc.changeType === 'created' ? '#4caf50' : fc.changeType === 'deleted' ? '#f44336' : '#2196f3';
+          html += '<div class="work-checklist-item" style="display:flex;align-items:center;gap:6px;padding:3px 0;flex-wrap:wrap">';
+          html += '<span style="flex-shrink:0;font-size:0.8em;padding:1px 5px;border-radius:3px;background:' + badgeColor + '22;color:' + badgeColor + '">' + escapeHtml(changeTypeLabel) + '</span>';
+          html += '<span style="font-family:var(--vscode-editor-font-family,monospace);font-size:0.85em;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapeHtml(fc.filePath) + '">' + escapeHtml(displayPath) + '</span>';
+          if (fc.addedLines > 0 || fc.removedLines > 0) {
+            html += '<span style="font-family:var(--vscode-editor-font-family,monospace);font-size:0.8em;flex-shrink:0">';
+            if (fc.addedLines > 0) html += '<span style="color:#4caf50">+' + fc.addedLines + '</span>';
+            if (fc.removedLines > 0) html += '<span style="color:#f44336">-' + fc.removedLines + '</span>';
+            html += '</span>';
+          }
+          html += '<span style="flex-shrink:0;display:flex;gap:3px">';
+          if (fc.diff) {
+            _diffStore.set(fc.filePath, fc.diff);
+            html += '<button class="work-fc-view-diff" data-file-path="' + escapeHtml(fc.filePath) + '" style="padding:0 5px;border:1px solid var(--border);border-radius:2px;background:transparent;color:var(--muted);cursor:pointer;font-size:0.75em">🔍</button>';
+          }
+          if (fc.changeType !== 'deleted') {
+            html += '<button class="work-fc-open-file" data-file-path="' + escapeHtml(fc.filePath) + '" style="padding:0 5px;border:1px solid var(--border);border-radius:2px;background:transparent;color:var(--muted);cursor:pointer;font-size:0.75em">📄</button>';
+          }
+          html += '</span>';
+          html += '</div>';
+        }
+        section.innerHTML = html;
         container.appendChild(section);
       }
     }
@@ -2139,6 +2400,7 @@ export function getWebviewHtml(
             cycleCount: msg.cycleCount || 0,
             coherenceState: msg.coherenceState || 'healthy',
             coherenceLabel: msg.coherenceLabel || '',
+            fileChanges: msg.fileChanges || [],
           };
           renderWork();
           break;
@@ -2223,7 +2485,11 @@ export function getWebviewHtml(
             }
           }
           if (thinkingEl) {
-            thinkingEl.textContent = msg.thinking || '';
+            if (!thinkingEl.querySelector('.thinking-stream')) {
+              thinkingEl.innerHTML = '<div class="thinking-stream"></div>';
+            }
+            const streamEl = thinkingEl.querySelector('.thinking-stream');
+            if (streamEl) streamEl.textContent = msg.thinking || '';
             thinkingEl.classList.add('open');
             smartScrollToBottom();
           }
@@ -2336,6 +2602,28 @@ export function getWebviewHtml(
           break;
         }
 
+        case 'fileChangeDetected': {
+          const tcEl = document.getElementById('tc-' + msg.messageId + '-' + msg.toolCallIdx);
+          if (tcEl && msg.fileChange) {
+            const existingOutput = tcEl.querySelector('.tool-output');
+            if (existingOutput) existingOutput.remove();
+            const existingCard = tcEl.querySelector('.file-change-card');
+            if (!existingCard) {
+              const card = document.createElement('div');
+              card.innerHTML = renderFileChangeCard(msg.fileChange);
+              const cardEl = card.firstElementChild;
+              const approvalBar = tcEl.querySelector('.approval-bar');
+              if (approvalBar) {
+                tcEl.insertBefore(cardEl, approvalBar);
+              } else {
+                tcEl.appendChild(cardEl);
+              }
+            }
+            smartScrollToBottom();
+          }
+          break;
+        }
+
         case 'approvalRequired': {
           const summaryText = escapeHtml(msg.summary || __i18n.approvalRequired);
           const rememberLabel = '<label class="approval-remember"><input type="checkbox" data-approval-id="' + msg.approvalId + '" class="remember-check" /> Remember for this tool</label>';
@@ -2400,6 +2688,59 @@ export function getWebviewHtml(
           statusTextEl.textContent = __i18n.streaming;
           break;
 
+        case 'userInputRequired': {
+          const inputId = msg.inputId;
+          const questions = msg.questions || [];
+          let questionsHtml = '';
+          for (const q of questions) {
+            questionsHtml += '<div class="user-input-question">';
+            questionsHtml += '<div class="user-input-header">' + escapeHtml(q.header) + '</div>';
+            questionsHtml += '<div class="user-input-text">' + escapeHtml(q.question) + '</div>';
+            questionsHtml += '<div class="user-input-options">';
+            for (let optIdx = 0; optIdx < (q.options || []).length; optIdx++) {
+              const opt = q.options[optIdx];
+              questionsHtml += '<button class="btn-user-input-option" data-input-id="' + inputId + '" data-question-id="' + q.id + '" data-option-idx="' + optIdx + '" data-option-label="' + escapeHtml(opt.label) + '">' + escapeHtml(opt.label) + ': ' + escapeHtml(opt.description || '') + '</button>';
+            }
+            questionsHtml += '</div></div>';
+          }
+
+          if (statusTextEl) {
+            statusTextEl.textContent = __i18n.userInputAwaiting;
+          }
+          const bodyEl = document.getElementById('body-' + msg.messageId);
+          if (bodyEl) {
+            const bar = document.createElement('div');
+            bar.className = 'user-input-bar';
+            bar.id = 'user-input-' + inputId;
+            bar.innerHTML = '<div class="user-input-icon">❓</div>'
+              + '<div class="user-input-content">' + questionsHtml + '</div>'
+              + '<div class="user-input-buttons">'
+              + '<button class="btn-user-input-cancel" data-input-id="' + inputId + '">' + __i18n.cancel + '</button>'
+              + '</div>';
+            bodyEl.appendChild(bar);
+            smartScrollToBottom();
+          }
+          break;
+        }
+
+        case 'userInputResolved':
+          document.querySelectorAll('.user-input-bar').forEach(bar => bar.remove());
+          if (!msg.cancelled) {
+            document.querySelectorAll('.tool-status').forEach(span => {
+              if (span.textContent && span.textContent.includes(__i18n.userInputAwaiting)) {
+                span.textContent = '✓ submitted';
+              }
+            });
+          } else {
+            document.querySelectorAll('.tool-status').forEach(span => {
+              if (span.textContent && span.textContent.includes(__i18n.userInputAwaiting)) {
+                span.textContent = '✗ cancelled';
+              }
+            });
+          }
+          statusTextEl.textContent = __i18n.streaming;
+          break;
+
         case 'messageComplete': {
           const msgBodyEl = document.getElementById('body-' + msg.messageId);
           if (msgBodyEl) {
@@ -2446,6 +2787,14 @@ export function getWebviewHtml(
 
         case 'turnStarted':
           statusTextEl.textContent = __i18n.processing;
+          break;
+
+        case 'turnInterrupted':
+          isStreaming = false;
+          if (streamingTimeout) { clearTimeout(streamingTimeout); streamingTimeout = null; }
+          statusTextEl.textContent = __i18n.ready;
+          document.querySelectorAll('.approval-bar').forEach(bar => bar.remove());
+          document.querySelectorAll('.user-input-bar').forEach(bar => bar.remove());
           break;
 
         case 'sessionStats': {

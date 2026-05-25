@@ -4,8 +4,8 @@ import * as path from "path";
 import * as os from "os";
 import { exec } from "child_process";
 import {
-  DeepSeekApiClient,
-  DeepSeekEngine,
+  CodeWhaleApiClient,
+  CodeWhaleEngine,
   RuntimeEvent,
   ThreadRecord,
   TurnRecord,
@@ -99,6 +99,50 @@ const TOOL_APPROVAL_SUMMARIES: Record<string, (input: Record<string, unknown>) =
   run_tests: () => "Run tests",
 };
 
+const FILE_CHANGE_TOOLS = new Set([
+  "write_file",
+  "edit_file",
+  "apply_patch",
+  "replace_text",
+  "delete_file",
+  "move_file",
+  "copy_file",
+  "create_directory",
+]);
+
+function isFileChangeTool(toolName: string): boolean {
+  return FILE_CHANGE_TOOLS.has(toolName) || FILE_CHANGE_TOOLS.has(toolName.toLowerCase());
+}
+
+function extractFilePath(_toolName: string, input: Record<string, unknown>): string {
+  return (input.file_path || input.path || input.destination || input.source || "") as string;
+}
+
+function parseDiffStats(diff: string): { added: number; removed: number } {
+  let added = 0;
+  let removed = 0;
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("+") && !line.startsWith("+++")) added++;
+    else if (line.startsWith("-") && !line.startsWith("---")) removed++;
+  }
+  return { added, removed };
+}
+
+function extractDiffFromOutput(output: string): string | undefined {
+  const lines = output.split("\n");
+  let diffStart = -1;
+  for (let i = 0; i < Math.min(lines.length, 10); i++) {
+    if (lines[i].startsWith("@@") || lines[i].startsWith("---") || lines[i].startsWith("diff ")) {
+      diffStart = i;
+      break;
+    }
+  }
+  if (diffStart >= 0) {
+    return lines.slice(diffStart).join("\n");
+  }
+  return undefined;
+}
+
 function shortPath(p: string): string {
   const parts = p.replace(/\\/g, "/").split("/");
   return parts.length > 3 ? "…/" + parts.slice(-3).join("/") : p;
@@ -151,22 +195,38 @@ interface ToolCallInfo {
   approvalId?: string;
   approvalSummary?: string;
   itemId?: string;
+  fileChange?: FileChangeInfo;
+}
+
+interface FileChangeInfo {
+  filePath: string;
+  changeType: "created" | "modified" | "deleted";
+  addedLines: number;
+  removedLines: number;
+  diff?: string;
+  oldContent?: string;
+  newContent?: string;
 }
 
 // ── Provider ──
 
 export class ChatProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = "deepseek.chat";
+  public static readonly viewType = "codewhale.chat";
 
   private view?: vscode.WebviewView;
-  private api: DeepSeekApiClient;
-  private engine: DeepSeekEngine;
+  private api: CodeWhaleApiClient;
+  private engine: CodeWhaleEngine;
   private currentThread: ThreadRecord | null = null;
   private messages: ChatMessage[] = [];
   private eventController: AbortController | null = null;
   private lastEventSeq: number = 0;
   private currentTurnId: string | null = null;
   private pendingApprovals: Map<string, ToolCallInfo> = new Map();
+  private pendingUserInputs: Map<string, {
+    questions: Array<{ header: string; id: string; question: string; options: Array<{ label: string; description: string }> }>;
+    answers: Array<{ id: string; label: string; value: string }>;
+    answeredQuestions: Set<string>;
+  }> = new Map();
   /** Active agent items for the current turn, keyed by item_id */
   private activeItems: Map<string, { kind: string; msgId: string; toolCallName?: string; toolCallIdx?: number; blockIdx?: number }> =
     new Map();
@@ -187,11 +247,12 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   private lastOutputTokens: number = 0;
   private totalInputTokens: number = 0;
   private totalOutputTokens: number = 0;
+  private turnFileChanges: FileChangeInfo[] = [];
 
   constructor(
     private readonly extensionUri: vscode.Uri,
-    engine: DeepSeekEngine,
-    api: DeepSeekApiClient
+    engine: CodeWhaleEngine,
+    api: CodeWhaleApiClient
   ) {
     this.engine = engine;
     this.api = api;
@@ -199,7 +260,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
 
   private debugLog(msg: string): void {
     try {
-      const logDir = path.join(os.homedir(), ".deepseek-gui-logs");
+      const logDir = path.join(os.homedir(), ".codewhale-vscode-logs");
       if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
       fs.appendFileSync(path.join(logDir, "debug.log"), `${new Date().toISOString()} ${msg}\n`);
     } catch { /* ignore */ }
@@ -275,14 +336,31 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           !!msg.remember
         );
         break;
+      case "userInputSelect":
+        await this.handleUserInputSelect(
+          msg.inputId as string,
+          msg.questionId as string,
+          msg.optionIdx as number,
+          msg.optionLabel as string
+        );
+        break;
+      case "userInputCancel":
+        await this.handleUserInputCancel(msg.inputId as string);
+        break;
       case "loadThread":
         await this.loadThread(msg.threadId as string);
         break;
       case "webviewReady":
-        if (this.engine.isRunning) {
+        try {
+          await this.engine.ensureRunning();
           this.api.setBaseUrl(this.engine.baseUrl);
           this.api.setToken(this.engine.token);
           await this.syncWebviewState();
+        } catch (err) {
+          this.postMessage({
+            type: "error",
+            message: `Failed to initialize: ${(err as Error).message}`,
+          });
         }
         break;
       case "refreshSidebar":
@@ -292,6 +370,12 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           this.refreshTaskList();
           this.refreshWorkPanel();
         }
+        break;
+      case "openDiff":
+        this.handleOpenDiff(msg.filePath as string, msg.diff as string | undefined);
+        break;
+      case "openFile":
+        this.handleOpenFile(msg.filePath as string);
         break;
     }
   }
@@ -428,13 +512,61 @@ export class ChatProvider implements vscode.WebviewViewProvider {
               currentTextBlock = undefined;
               currentThinkingBlock = undefined;
               const tcIdx = toolCalls.length;
-              toolCalls.push({
+              const tc: ToolCallInfo = {
                 name: item.summary,
                 input: (item.metadata as Record<string, unknown>) || {},
                 output: item.detail || undefined,
                 status: item.status === "completed" ? "complete" : "error",
-              });
+              };
+              if (isFileChangeTool(tc.name) && tc.input) {
+                const filePath = extractFilePath(tc.name, tc.input);
+                if (filePath) {
+                  const output = tc.output || "";
+                  const diff = extractDiffFromOutput(output);
+                  const stats = diff ? parseDiffStats(diff) : { added: 0, removed: 0 };
+                  const changeType: "created" | "modified" | "deleted" =
+                    tc.name === "delete_file" ? "deleted" :
+                    tc.name === "write_file" && !diff ? "created" : "modified";
+                  tc.fileChange = {
+                    filePath,
+                    changeType,
+                    addedLines: stats.added,
+                    removedLines: stats.removed,
+                    diff,
+                  };
+                }
+              }
+              toolCalls.push(tc);
               blocks.push({ type: "tool_call", toolCallIdx: tcIdx });
+              break;
+            }
+            case "file_change": {
+              currentTextBlock = undefined;
+              currentThinkingBlock = undefined;
+              const tcIdx2 = toolCalls.length;
+              const fcFilePath = item.summary || "";
+              const fcOutput = item.detail || "";
+              const fcDiff = extractDiffFromOutput(fcOutput);
+              const fcStats = fcDiff ? parseDiffStats(fcDiff) : { added: 0, removed: 0 };
+              const fcMeta = (item.metadata as Record<string, unknown>) || {};
+              const fcChangeType = (fcMeta.change_type as "created" | "modified" | "deleted") ||
+                (fcFilePath && fcDiff ? "modified" : "modified");
+              const fcTc: ToolCallInfo = {
+                name: "file_change",
+                displayName: "File Change",
+                input: fcMeta,
+                output: fcOutput,
+                status: item.status === "completed" ? "complete" : "error",
+                fileChange: {
+                  filePath: fcFilePath,
+                  changeType: fcChangeType,
+                  addedLines: fcStats.added,
+                  removedLines: fcStats.removed,
+                  diff: fcDiff,
+                },
+              };
+              toolCalls.push(fcTc);
+              blocks.push({ type: "tool_call", toolCallIdx: tcIdx2 });
               break;
             }
           }
@@ -504,6 +636,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     this.checklistCompletionPct = 0;
     this.coherenceState = "healthy";
     this.coherenceLabel = "";
+    this.turnFileChanges = [];
     this.resetSessionStats();
 
     try {
@@ -538,7 +671,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       this.api.setToken(this.engine.token);
 
       if (!this.currentThread) {
-        const cfg = vscode.workspace.getConfiguration("deepseek");
+        const cfg = vscode.workspace.getConfiguration("codewhale");
         const model = cfg.get<string>("defaultModel", "deepseek-v4-pro");
         const mode = cfg.get<string>("defaultMode", "agent");
         const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -557,6 +690,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       this.activeItems.clear();
       this.currentTextBlockIdx = -1;
       this.currentThinkingBlockIdx = -1;
+      this.turnFileChanges = [];
 
       const userMsg: ChatMessage = {
         id: `user-${Date.now()}`,
@@ -584,7 +718,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       let threadOk = true;
       try { await this.api.getThread(this.currentThread.id); } catch { threadOk = false; }
       if (!threadOk) {
-        const cfg = vscode.workspace.getConfiguration("deepseek");
+        const cfg = vscode.workspace.getConfiguration("codewhale");
         const mode = cfg.get<string>("defaultMode", "agent");
         const autoApprove = cfg.get<boolean>("autoApprove", false);
         this.currentThread = await this.api.createThread({
@@ -598,7 +732,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         this.refreshThreadList();
       }
 
-      const cfg = vscode.workspace.getConfiguration("deepseek");
+      const cfg = vscode.workspace.getConfiguration("codewhale");
       const reasoningEffort = cfg.get<string>("reasoningEffort", "auto");
       const mode = cfg.get<string>("defaultMode", "agent");
       const model = this.getCurrentModel();
@@ -634,6 +768,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     this.checklistCompletionPct = 0;
     this.coherenceState = "healthy";
     this.coherenceLabel = "";
+    this.turnFileChanges = [];
     this.resetSessionStats();
     this.postMessage({ type: "clearChat" });
   }
@@ -665,7 +800,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
 
   /** Push the current work state to the webview Work panel */
   private refreshWorkPanel(): void {
-    const cfg = vscode.workspace.getConfiguration("deepseek");
+    const cfg = vscode.workspace.getConfiguration("codewhale");
     const goal = cfg.get<string | undefined>("goalObjective") || null;
     this.postMessage({
       type: "workState",
@@ -676,6 +811,13 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       cycleCount: this.cycleCount,
       coherenceState: this.coherenceState,
       coherenceLabel: this.coherenceLabel,
+      fileChanges: this.turnFileChanges.map(fc => ({
+        filePath: fc.filePath,
+        changeType: fc.changeType,
+        addedLines: fc.addedLines,
+        removedLines: fc.removedLines,
+        diff: fc.diff,
+      })),
     });
   }
 
@@ -694,9 +836,22 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   }
 
   private async handleInterrupt(): Promise<void> {
-    if (this.currentThread && this.currentTurnId) {
+    if (this.currentThread) {
       try {
-        await this.api.interruptTurn(this.currentThread.id, this.currentTurnId);
+        await this.engine.ensureRunning();
+        this.api.setBaseUrl(this.engine.baseUrl);
+        this.api.setToken(this.engine.token);
+
+        if (this.currentTurnId) {
+          try {
+            await this.api.interruptTurn(this.currentThread.id, this.currentTurnId);
+          } catch {
+            // ignore - turn may already be completed
+          }
+        }
+
+        this.currentTurnId = null;
+        this.postMessage({ type: "turnInterrupted" });
       } catch {
         // ignore
       }
@@ -718,7 +873,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   }
 
   private async handleSlashCommand(command: string, args: string): Promise<void> {
-    const cfg = vscode.workspace.getConfiguration("deepseek");
+    const cfg = vscode.workspace.getConfiguration("codewhale");
     const notAvailable = () => {
       const tr = t();
       this.postMessage({ type: "info", message: tr.commandNotAvailableInGui });
@@ -773,11 +928,15 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         break;
       }
       case "/config": {
-        vscode.commands.executeCommand("workbench.action.openSettings", "deepseek");
+        vscode.commands.executeCommand("workbench.action.openSettings", "codewhale");
         break;
       }
       case "/settings": {
-        this.postMessage({ type: "info", message: `Current settings:\n- Mode: ${cfg.get<string>("defaultMode", "agent")}\n- Model: ${cfg.get<string>("defaultModel", "deepseek-v4-pro")}\n- Reasoning Effort: ${cfg.get<string>("reasoningEffort", "auto")}\n- Engine Path: ${cfg.get<string>("enginePath", "deepseek")}\n- Auto Start Engine: ${cfg.get<boolean>("autoStartEngine", true)}` });
+        this.postMessage({ type: "info", message: `Current settings:\n- Mode: ${cfg.get<string>("defaultMode", "agent")}\n- Model: ${cfg.get<string>("defaultModel", "deepseek-v4-pro")}\n- Reasoning Effort: ${cfg.get<string>("reasoningEffort", "auto")}\n- Engine Path: ${cfg.get<string>("enginePath", "codewhale")}\n- Auto Start Engine: ${cfg.get<boolean>("autoStartEngine", true)}` });
+        break;
+      }
+      case "/interrupt": {
+        await this.handleInterrupt();
         break;
       }
       case "/clear": {
@@ -851,7 +1010,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         break;
       }
       case "/tokens": {
-        const cfg2 = vscode.workspace.getConfiguration("deepseek");
+        const cfg2 = vscode.workspace.getConfiguration("codewhale");
         const currency2 = cfg2.get<string>("costCurrency", "usd");
         const costStr2 = currency2 === "cny"
           ? formatCostAmount(this.sessionCostCny, "cny")
@@ -862,7 +1021,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         break;
       }
       case "/cost": {
-        const cfg3 = vscode.workspace.getConfiguration("deepseek");
+        const cfg3 = vscode.workspace.getConfiguration("codewhale");
         const currency3 = cfg3.get<string>("costCurrency", "usd");
         const costStr3 = currency3 === "cny"
           ? formatCostAmount(this.sessionCostCny, "cny")
@@ -893,7 +1052,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           await this.engine.ensureRunning();
           this.api.setBaseUrl(this.engine.baseUrl);
           if (taskSub === "add" && taskRest) {
-            const cfg = vscode.workspace.getConfiguration("deepseek");
+            const cfg = vscode.workspace.getConfiguration("codewhale");
             const task = await this.api.createTask({
               prompt: taskRest,
               model: cfg.get<string>("defaultModel", "deepseek-v4-pro"),
@@ -965,12 +1124,12 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         break;
       }
       case "/init": {
-        vscode.commands.executeCommand("workbench.action.openSettings", "deepseek");
-        this.postMessage({ type: "info", message: "Use the VSCode settings to configure DeepSeek. Open settings with /config." });
+        vscode.commands.executeCommand("workbench.action.openSettings", "codewhale");
+        this.postMessage({ type: "info", message: "Use the VSCode settings to configure CodeWhale. Open settings with /config." });
         break;
       }
       case "/mcp": {
-        vscode.commands.executeCommand("workbench.action.openSettings", "deepseek.mcp");
+        vscode.commands.executeCommand("workbench.action.openSettings", "codewhale");
         this.postMessage({ type: "info", message: "MCP server configuration is available in VSCode settings." });
         break;
       }
@@ -997,6 +1156,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
 /settings - Show current settings
 /clear - Clear chat
 /compact - Compact context
+/interrupt - Interrupt current turn (use when stuck)
 /rename <title> - Rename thread
 /save - Save conversation
 /export - Export conversation
@@ -1008,7 +1168,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
 /init - Open settings for initialization
 /mcp - Open MCP settings
 /provider - Show provider info
-/links - Show DeepSeek links
+/links - Show CodeWhale links
 /feedback - Send feedback
 /exit - Close sidebar
 
@@ -1479,6 +1639,171 @@ Use the TUI for full command support.` });
     this.view?.show?.(true);
   }
 
+  private async showUserInputDialog(
+    _inputId: string,
+    _questions: Array<{ header: string; id: string; question: string; options: Array<{ label: string; description: string }> }>
+  ): Promise<void> {
+  }
+
+  private async handleUserInputSelect(
+    inputId: string,
+    questionId: string,
+    optionIdx: number,
+    optionLabel: string
+  ): Promise<void> {
+    const pending = this.pendingUserInputs.get(inputId);
+    if (!pending) return;
+
+    pending.answers.push({
+      id: questionId,
+      label: optionLabel,
+      value: optionLabel,
+    });
+    pending.answeredQuestions.add(questionId);
+
+    const allAnswered = pending.questions.every(q => pending.answeredQuestions.has(q.id));
+    if (allAnswered) {
+      try {
+        await this.api.submitUserInput(this.currentThread!.id, inputId, pending.answers);
+        this.pendingUserInputs.delete(inputId);
+        this.postMessage({
+          type: "userInputResolved",
+          inputId,
+          cancelled: false,
+          answers: pending.answers,
+        });
+      } catch (err) {
+        const errorMsg = (err as Error).message;
+        this.postMessage({
+          type: "error",
+          message: `Failed to submit user input: ${errorMsg}. Use /interrupt to clear the stuck turn.`,
+        });
+        this.pendingUserInputs.delete(inputId);
+      }
+    }
+  }
+
+  private async handleUserInputCancel(inputId: string): Promise<void> {
+    try {
+      await this.api.submitUserInput(this.currentThread!.id, inputId, []);
+    } catch {
+      // ignore cancellation errors
+    }
+    this.pendingUserInputs.delete(inputId);
+    this.postMessage({
+      type: "userInputResolved",
+      inputId,
+      cancelled: true,
+    });
+    this.postMessage({
+      type: "info",
+      message: "User input cancelled. The turn will be interrupted. Use /interrupt if needed.",
+    });
+  }
+
+  private async handleOpenDiff(filePath: string, diff?: string): Promise<void> {
+    try {
+      const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!workspace) return;
+
+      const absPath = path.isAbsolute(filePath) ? filePath : path.join(workspace, filePath);
+      const currentUri = vscode.Uri.file(absPath);
+
+      if (diff) {
+        const oldContent = this.reconstructOldContent(absPath, diff);
+        const oldUri = vscode.Uri.parse(`codewhale-diff:${absPath}?old`);
+        const provider = new (class implements vscode.TextDocumentContentProvider {
+          private content = oldContent;
+          onDidChange?: vscode.Event<vscode.Uri>;
+          provideTextDocumentContent(): string { return this.content; }
+        })();
+        const disposable = vscode.workspace.registerTextDocumentContentProvider("codewhale-diff", provider);
+        const title = `${path.basename(filePath)} (Diff)`;
+        await vscode.commands.executeCommand("vscode.diff", oldUri, currentUri, title);
+        setTimeout(() => disposable.dispose(), 30000);
+      } else {
+        const doc = await vscode.workspace.openTextDocument(currentUri);
+        await vscode.window.showTextDocument(doc);
+      }
+    } catch (err) {
+      this.postMessage({ type: "error", message: `Failed to open diff: ${(err as Error).message}` });
+    }
+  }
+
+  private async handleOpenFile(filePath: string): Promise<void> {
+    try {
+      const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!workspace) return;
+      const absPath = path.isAbsolute(filePath) ? filePath : path.join(workspace, filePath);
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absPath));
+      await vscode.window.showTextDocument(doc);
+    } catch (err) {
+      this.postMessage({ type: "error", message: `Failed to open file: ${(err as Error).message}` });
+    }
+  }
+
+  private reconstructOldContent(absPath: string, diff: string): string {
+    try {
+      let current = "";
+      try { current = fs.readFileSync(absPath, "utf-8"); } catch { current = ""; }
+      const lines = current.split("\n");
+      const result: string[] = [];
+      let lineIdx = 0;
+
+      const hunkRegex = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
+      const hunks: { oldStart: number; oldCount: number; newStart: number; newCount: number; lines: string[] }[] = [];
+      let currentHunk: typeof hunks[0] | null = null;
+
+      for (const line of diff.split("\n")) {
+        const hunkMatch = line.match(hunkRegex);
+        if (hunkMatch) {
+          currentHunk = {
+            oldStart: parseInt(hunkMatch[1]),
+            oldCount: parseInt(hunkMatch[2] || "1"),
+            newStart: parseInt(hunkMatch[3]),
+            newCount: parseInt(hunkMatch[4] || "1"),
+            lines: [],
+          };
+          hunks.push(currentHunk);
+        } else if (currentHunk) {
+          currentHunk.lines.push(line);
+        }
+      }
+
+      if (hunks.length === 0) return current;
+
+      for (const hunk of hunks) {
+        while (lineIdx < hunk.newStart - 1 && lineIdx < lines.length) {
+          result.push(lines[lineIdx]);
+          lineIdx++;
+        }
+        for (const hLine of hunk.lines) {
+          if (hLine.startsWith("+")) {
+            // skip added lines
+          } else if (hLine.startsWith("-")) {
+            result.push(hLine.slice(1));
+          } else if (hLine.startsWith(" ")) {
+            result.push(hLine.slice(1));
+            lineIdx++;
+          }
+        }
+        while (lineIdx < lines.length) {
+          const nextHunk = hunks[hunks.indexOf(hunk) + 1];
+          if (nextHunk && lineIdx >= nextHunk.newStart - 1) break;
+          result.push(lines[lineIdx]);
+          lineIdx++;
+        }
+      }
+      while (lineIdx < lines.length) {
+        result.push(lines[lineIdx]);
+        lineIdx++;
+      }
+      return result.join("\n");
+    } catch {
+      return "";
+    }
+  }
+
   // ── SSE event stream ──
 
   private subscribeToEvents(): void {
@@ -1718,6 +2043,44 @@ Use the TUI for full command support.` });
         });
         break;
       }
+
+      case "user_input.required": {
+        const pl = event.payload as {
+          id?: string;
+          request?: {
+            questions?: Array<{
+              header: string;
+              id: string;
+              question: string;
+              options: Array<{ label: string; description: string }>;
+            }>;
+          };
+        };
+        const inputId = pl.id;
+        const questions = pl.request?.questions;
+        if (!inputId || !questions) break;
+
+        const lastMsg = this.messages[this.messages.length - 1];
+        let messageId: string | undefined;
+        if (event.item_id) {
+          const active = this.activeItems.get(event.item_id);
+          if (active) {
+            messageId = active.msgId;
+          }
+        }
+        if (!messageId) {
+          messageId = lastMsg?.id;
+        }
+
+        this.pendingUserInputs.set(inputId, { questions, answers: [], answeredQuestions: new Set() });
+        this.postMessage({
+          type: "userInputRequired",
+          messageId,
+          inputId,
+          questions,
+        });
+        break;
+      }
     }
     } catch (err) {
       this.debugLog(`handleRuntimeEvent error on ${event.event}: ${(err as Error).message}`);
@@ -1858,6 +2221,35 @@ Use the TUI for full command support.` });
               status: "complete",
               output: tc.output,
             });
+
+            const toolName = active?.toolCallName || "";
+            if (isFileChangeTool(toolName) && tc.input) {
+              const filePath = extractFilePath(toolName, tc.input);
+              if (filePath) {
+                const output = tc.output || "";
+                const diff = extractDiffFromOutput(output);
+                const stats = diff ? parseDiffStats(diff) : { added: 0, removed: 0 };
+                const changeType: "created" | "modified" | "deleted" =
+                  toolName === "delete_file" ? "deleted" :
+                  toolName === "write_file" && !diff ? "created" : "modified";
+                const fc: FileChangeInfo = {
+                  filePath,
+                  changeType,
+                  addedLines: stats.added,
+                  removedLines: stats.removed,
+                  diff,
+                };
+                tc.fileChange = fc;
+                this.turnFileChanges.push(fc);
+                this.postMessage({
+                  type: "fileChangeDetected",
+                  messageId: lastMsg.id,
+                  toolCallIdx: tcIdx!,
+                  fileChange: fc,
+                });
+                this.refreshWorkPanel();
+              }
+            }
           }
           const toolName = active?.toolCallName || "";
           if (pl.item?.metadata?.task_updates) {
@@ -1904,7 +2296,7 @@ Use the TUI for full command support.` });
     const totalCacheMiss = this.lastCacheMissTokens;
     const total = totalCacheHit + totalCacheMiss;
     const cacheHitRate = total > 0 ? (totalCacheHit / total * 100) : 0;
-    const cfg = vscode.workspace.getConfiguration("deepseek");
+    const cfg = vscode.workspace.getConfiguration("codewhale");
     const currency = cfg.get<string>("costCurrency", "usd");
     const costDisplay = currency === "cny"
       ? formatCostAmount(this.sessionCostCny, "cny")
@@ -1934,17 +2326,17 @@ Use the TUI for full command support.` });
   }
 
   private getCurrentModel(): string {
-    const cfg = vscode.workspace.getConfiguration("deepseek");
+    const cfg = vscode.workspace.getConfiguration("codewhale");
     return cfg.get<string>("defaultModel", "deepseek-v4-pro");
   }
 
   private getCurrentMode(): string {
-    const cfg = vscode.workspace.getConfiguration("deepseek");
+    const cfg = vscode.workspace.getConfiguration("codewhale");
     return cfg.get<string>("defaultMode", "agent");
   }
 
   private getCurrentReasoningEffort(): string {
-    const cfg = vscode.workspace.getConfiguration("deepseek");
+    const cfg = vscode.workspace.getConfiguration("codewhale");
     return cfg.get<string>("reasoningEffort", "auto");
   }
 

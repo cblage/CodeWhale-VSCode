@@ -165,7 +165,7 @@ export interface TaskRecord {
 
 export type EventListener = (event: RuntimeEvent) => void;
 
-export class DeepSeekApiClient {
+export class CodeWhaleApiClient {
   private authToken: string | null;
 
   constructor(private baseUrl: string, token?: string) {
@@ -285,6 +285,16 @@ export class DeepSeekApiClient {
     remember = false
   ): Promise<void> {
     await this.post(`/v1/approvals/${approvalId}`, { decision, remember });
+  }
+
+  // ── User Input ──
+
+  async submitUserInput(
+    threadId: string,
+    inputId: string,
+    answers: Array<{ id: string; label: string; value: string }>
+  ): Promise<void> {
+    await this.post(`/v1/user-input/${threadId}/${inputId}`, { answers });
   }
 
   // ── Detail ──
