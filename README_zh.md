@@ -78,11 +78,50 @@ CodeWhale VSCode 是 [CodeWhale](https://github.com/Hmbown/CodeWhale.git) 的 **
 
 ## 快速开始
 
-1. 从 VS Code 插件市场或源码 **安装扩展**。
-2. **安装引擎** — 参见上方 [前置条件](#前置条件--系统要求)。
-3. 从活动栏打开 **CodeWhale** 面板（层叠图标）。
-4. 引擎自动启动 — 等待"就绪"指示。
-5. 开始对话：提问、请求代码或描述任务。
+### 1. 安装引擎
+
+打开终端，安装 `codewhale` CLI：
+
+```bash
+npm install -g codewhale
+```
+
+确认引擎已安装：
+
+```bash
+codewhale --version
+```
+
+> `codewhale` CLI 是本扩展背后的 AI 引擎。你也可以直接从[源代码仓库](https://github.com/Hmbown/CodeWhale.git)编译安装。
+
+### 2. 安装扩展
+
+**方式 A — VS Code 插件市场**（推荐）：
+在 VS Code 扩展面板（`Cmd+Shift+X`）中搜索 "CodeWhale"，点击安装。
+
+**方式 B — 从源码构建**：
+```bash
+git clone https://github.com/HengQuWorld/CodeWhale-VSCode.git
+cd CodeWhale-VSCode
+npm install
+npm run compile
+npx @vscode/vsce package --no-dependencies
+```
+然后从 VS Code 扩展菜单中点击 `Install from VSIX...`，选择生成的 `.vsix` 文件。
+
+### 3. 打开 CodeWhale
+
+点击活动栏中的 **CodeWhale 图标**（左侧边缘的层叠鲸鱼图标）。引擎会自动启动——你会在状态栏看到"就绪"指示。
+
+### 4. 开始对话
+
+在聊天面板中输入内容。试试你的第一条命令：
+
+```
+我的项目里有哪些文件？
+```
+
+就这么简单。代理会读取你的工作区并回答。
 
 ### 快速命令
 
@@ -116,17 +155,17 @@ CodeWhale VSCode 是 [CodeWhale](https://github.com/Hmbown/CodeWhale.git) 的 **
 
 ## 配置说明
 
-通过 VS Code 设置配置 CodeWhale（`Cmd+,` → 搜索 "codewhale"）。
+通过 VS Code 设置配置 CodeWhale（`Cmd+,` → 搜索 "brotherwhale"）。
 
 | 设置项 | 默认值 | 说明 |
 |---|---|---|
-| `codewhale.enginePath` | `"codewhale"` | codewhale 程序路径 |
-| `codewhale.enginePort` | `7878` | CodeWhale 运行时 API 端口 |
-| `codewhale.defaultModel` | `"deepseek-v4-pro"` | 新线程的默认模型 |
-| `codewhale.defaultMode` | `"agent"` | 默认模式（agent / plan / yolo） |
-| `codewhale.reasoningEffort` | `"auto"` | 推理深度级别 |
-| `codewhale.autoStartEngine` | `true` | 激活时自动启动引擎 |
-| `codewhale.autoApprove` | `false` | Agent 模式下自动审批工具调用 |
+| `brotherwhale.enginePath` | `"codewhale"` | codewhale 程序路径 |
+| `brotherwhale.enginePort` | `7878` | CodeWhale 运行时 API 端口 |
+| `brotherwhale.defaultModel` | `"deepseek-v4-pro"` | 新线程的默认模型 |
+| `brotherwhale.defaultMode` | `"agent"` | 默认模式（agent / plan / yolo） |
+| `brotherwhale.reasoningEffort` | `"auto"` | 推理深度级别 |
+| `brotherwhale.autoStartEngine` | `true` | 激活时自动启动引擎 |
+| `brotherwhale.autoApprove` | `false` | Agent 模式下自动审批工具调用 |
 
 ---
 
@@ -142,35 +181,37 @@ CodeWhale VSCode 是 [CodeWhale](https://github.com/Hmbown/CodeWhale.git) 的 **
 - 确认已安装 VS Code 1.85+。
 
 ### 找不到引擎
-- 在 `codewhale.enginePath` 中设置引擎程序的完整路径。
+- 在 `brotherwhale.enginePath` 中设置引擎程序的完整路径。
 - 常见路径：`/opt/homebrew/bin/codewhale`、`/usr/local/bin/codewhale`。
+
+### 安装 VSIX
+```bash
+code --install-extension /path/to/brotherwhale-vscode-0.1.0.vsix --force
+```
+
+> **Trae CN 用户**：如果 `code` 命令不可用，使用完整路径：
+> ```bash
+> "/Applications/Trae CN.app/Contents/Resources/app/bin/code" --install-extension /path/to/brotherwhale-vscode-0.1.0.vsix --force
+> ```
 
 ---
 
 ## 隐私与数据
 
-CodeWhale 连接到本地运行的 CodeWhale 引擎。对话数据不会发送到外部服务器，仅发送到你 CodeWhale 配置中指定的 AI 模型提供商。有关提供商配置和数据处理的详细信息，请参阅 [CodeWhale 文档](https://github.com/Hmbown/CodeWhale.git)。
+CodeWhale 连接的是**本地运行**的引擎。对话数据只发送到你 CodeWhale 配置中指定的 AI 模型提供商。你完全掌控提供商、模型和数据流向。
 
 ---
 
 ## 开发指南
 
 ```bash
-# 克隆仓库
 git clone https://github.com/HengQuWorld/CodeWhale-VSCode.git
 cd CodeWhale-VSCode
-
-# 安装依赖
 npm install
-
-# 开发模式编译
-npm run compile
-
-# 运行测试
-npm test
-
-# 打包扩展
-npx @vscode/vsce package --no-dependencies
+npm run compile   # 开发模式编译（含 source map）
+npm test          # 运行测试
+npm run package   # 生产模式编译（压缩）
+npx @vscode/vsce package --no-dependencies  # 打包 VSIX
 ```
 
 ---

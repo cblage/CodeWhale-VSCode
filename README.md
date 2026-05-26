@@ -78,11 +78,50 @@ The extension will attempt to locate the `codewhale` binary automatically from s
 
 ## Getting Started
 
-1. **Install the extension** from the VS Code Marketplace or from source.
-2. **Install the engine** — see [Prerequisites](#prerequisites--requirements) above.
-3. Open the **CodeWhale** panel from the activity bar (the layered icon).
-4. The engine starts automatically — wait for the "Ready" indicator.
-5. Start chatting: ask a question, request code, or describe a task.
+### 1. Install the Engine
+
+Open a terminal and install the `codewhale` CLI:
+
+```bash
+npm install -g codewhale
+```
+
+Verify the engine is installed:
+
+```bash
+codewhale --version
+```
+
+> The `codewhale` CLI is the AI engine that powers this extension. The [source repository](https://github.com/Hmbown/CodeWhale.git) is available if you'd like to build from source instead.
+
+### 2. Install the Extension
+
+**Option A — VS Code Marketplace** (recommended):
+Search for "CodeWhale" in the VS Code extensions panel (`Cmd+Shift+X`) and click Install.
+
+**Option B — Build from source**:
+```bash
+git clone https://github.com/HengQuWorld/CodeWhale-VSCode.git
+cd CodeWhale-VSCode
+npm install
+npm run compile
+npx @vscode/vsce package --no-dependencies
+```
+Then install the generated `.vsix` file from the VS Code extensions menu (`Install from VSIX...`).
+
+### 3. Open CodeWhale
+
+Click the **CodeWhale icon** in the activity bar (the layered whale icon on the left edge of VS Code). The engine starts automatically — you'll see a "Ready" indicator in the status bar.
+
+### 4. Start a Conversation
+
+Type something in the chat panel. Try your first command:
+
+```
+What files are in my project?
+```
+
+That's it. The agent reads your workspace and responds.
 
 ### Quick Commands
 
@@ -116,17 +155,17 @@ The extension will attempt to locate the `codewhale` binary automatically from s
 
 ## Configuration
 
-CodeWhale is configurable via VS Code settings (`Cmd+,` → search "codewhale").
+CodeWhale is configurable via VS Code settings (`Cmd+,` → search "brotherwhale").
 
 | Setting | Default | Description |
 |---|---|---|
-| `codewhale.enginePath` | `"codewhale"` | Path to the codewhale binary |
-| `codewhale.enginePort` | `7878` | Port for the CodeWhale runtime API |
-| `codewhale.defaultModel` | `"deepseek-v4-pro"` | Default model for new threads |
-| `codewhale.defaultMode` | `"agent"` | Default mode (agent / plan / yolo) |
-| `codewhale.reasoningEffort` | `"auto"` | Reasoning effort level |
-| `codewhale.autoStartEngine` | `true` | Auto-start engine on activation |
-| `codewhale.autoApprove` | `false` | Auto-approve tool calls in agent mode |
+| `brotherwhale.enginePath` | `"codewhale"` | Path to the codewhale binary |
+| `brotherwhale.enginePort` | `7878` | Port for the CodeWhale runtime API |
+| `brotherwhale.defaultModel` | `"deepseek-v4-pro"` | Default model for new threads |
+| `brotherwhale.defaultMode` | `"agent"` | Default mode (agent / plan / yolo) |
+| `brotherwhale.reasoningEffort` | `"auto"` | Reasoning effort level |
+| `brotherwhale.autoStartEngine` | `true` | Auto-start engine on activation |
+| `brotherwhale.autoApprove` | `false` | Auto-approve tool calls in agent mode |
 
 ---
 
@@ -142,35 +181,37 @@ CodeWhale is configurable via VS Code settings (`Cmd+,` → search "codewhale").
 - Ensure VS Code 1.85+ is installed.
 
 ### Engine not found
-- Set the full path to the engine binary in `codewhale.enginePath`.
+- Set the full path to the engine binary in `brotherwhale.enginePath`.
 - Common paths: `/opt/homebrew/bin/codewhale`, `/usr/local/bin/codewhale`.
+
+### Installing the VSIX
+```bash
+code --install-extension /path/to/brotherwhale-vscode-0.1.0.vsix --force
+```
+
+> **Trae CN users**: if `code` is not available, use the full path:
+> ```bash
+> "/Applications/Trae CN.app/Contents/Resources/app/bin/code" --install-extension /path/to/brotherwhale-vscode-0.1.0.vsix --force
+> ```
 
 ---
 
 ## Privacy & Data
 
-CodeWhale connects to your locally running CodeWhale engine. No conversation data is sent to external servers beyond the AI model provider configured in your CodeWhale setup. See the [CodeWhale documentation](https://github.com/Hmbown/CodeWhale.git) for details on provider configuration and data handling.
+CodeWhale connects to your **locally running** engine. No conversation data is sent anywhere beyond the AI model provider configured in your CodeWhale setup. You control the provider, the model, and the data flow.
 
 ---
 
 ## Development
 
 ```bash
-# Clone
 git clone https://github.com/HengQuWorld/CodeWhale-VSCode.git
 cd CodeWhale-VSCode
-
-# Install dependencies
 npm install
-
-# Compile in development mode
-npm run compile
-
-# Run tests
-npm test
-
-# Package the extension
-npx @vscode/vsce package --no-dependencies
+npm run compile   # development build with source maps
+npm test          # run tests
+npm run package   # production build (minified)
+npx @vscode/vsce package --no-dependencies  # build VSIX
 ```
 
 ---
