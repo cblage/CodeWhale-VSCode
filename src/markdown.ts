@@ -1,7 +1,7 @@
 import { marked } from "marked";
 
 // Configure for chat-friendly output
-marked.setOptions({
+marked.use({
   breaks: true, // single line breaks → <br>
   gfm: true,    // tables, strikethrough, task lists, etc.
 });

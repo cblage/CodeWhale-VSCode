@@ -136,11 +136,8 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "dependencies": {
-    "marked": "^18.0.4"
-  },
   "devDependencies": {
-    "@types/marked": "^5.0.2",
+    "marked": "^18.0.4",
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^2.22.0",
