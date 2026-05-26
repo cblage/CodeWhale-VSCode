@@ -1,24 +1,76 @@
 import * as vscode from "vscode";
-import { spawn, ChildProcess } from "child_process";
+import { spawn, exec, ChildProcess } from "child_process";
 import * as http from "http";
 import * as net from "net";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 
 const HEALTH_TIMEOUT_MS = 3000;
 const STARTUP_TIMEOUT_MS = 10000;
 const HEALTH_RETRY_INTERVAL_MS = 300;
+const isWindows = process.platform === "win32";
+
+function homeDir(): string {
+  return os.homedir();
+}
+
+function killProcessOnPort(port: number): Promise<void> {
+  return new Promise((resolve) => {
+    if (isWindows) {
+      exec(
+        `netstat -ano | findstr :${port} | findstr LISTENING`,
+        { timeout: 5000, windowsHide: true },
+        (err, stdout) => {
+          if (err || !stdout) { resolve(); return; }
+          const lines = stdout.trim().split(/\r?\n/);
+          const pids = new Set<string>();
+          for (const line of lines) {
+            const parts = line.trim().split(/\s+/);
+            const pid = parts[parts.length - 1];
+            if (pid && /^\d+$/.test(pid)) pids.add(pid);
+          }
+          if (pids.size === 0) { resolve(); return; }
+          const pidList = Array.from(pids).join(",");
+          exec(`taskkill /PID ${pidList} /T /F`, { timeout: 5000, windowsHide: true }, () => resolve());
+        },
+      );
+    } else {
+      exec(
+        `lsof -ti:${port} | xargs kill -9 2>/dev/null`,
+        { timeout: 3000 },
+        () => resolve(),
+      );
+    }
+  });
+}
 
 function resolveEnginePath(configuredPath: string): string {
   if (configuredPath !== "codewhale") {
     return configuredPath;
   }
-  const candidates = [
-    "/opt/homebrew/lib/node_modules/codewhale/bin/downloads/codewhale",
-    "/usr/local/lib/node_modules/codewhale/bin/downloads/codewhale",
-    path.join(process.env.HOME || "", ".npm-global/lib/node_modules/codewhale/bin/downloads/codewhale"),
-    path.join(process.env.HOME || "", ".local/share/codewhale/bin/downloads/codewhale"),
-  ];
+
+  const candidates: string[] = [];
+
+  if (isWindows) {
+    const appData = process.env.APPDATA || path.join(homeDir(), "AppData", "Roaming");
+    const localAppData = process.env.LOCALAPPDATA || path.join(homeDir(), "AppData", "Local");
+    candidates.push(
+      path.join(appData, "npm", "node_modules", "codewhale", "bin", "downloads", "codewhale.exe"),
+      path.join(appData, "npm", "node_modules", "codewhale", "bin", "downloads", "codewhale.cmd"),
+      path.join(localAppData, "Yarn", "Data", "global", "node_modules", "codewhale", "bin", "downloads", "codewhale.exe"),
+      path.join(homeDir(), "AppData", "Roaming", "nvm", "v" + process.version.slice(1), "node_modules", "codewhale", "bin", "downloads", "codewhale.exe"),
+    );
+  } else {
+    candidates.push(
+      "/opt/homebrew/lib/node_modules/codewhale/bin/downloads/codewhale",
+      "/usr/local/lib/node_modules/codewhale/bin/downloads/codewhale",
+      path.join(homeDir(), ".npm-global/lib/node_modules/codewhale/bin/downloads/codewhale"),
+      path.join(homeDir(), ".local/share/codewhale/bin/downloads/codewhale"),
+      "/home/linuxbrew/.linuxbrew/lib/node_modules/codewhale/bin/downloads/codewhale",
+    );
+  }
+
   for (const candidate of candidates) {
     try {
       if (fs.existsSync(candidate)) {
@@ -26,7 +78,7 @@ function resolveEnginePath(configuredPath: string): string {
       }
     } catch { /* skip */ }
   }
-  return "codewhale";
+  return isWindows ? "codewhale.exe" : "codewhale";
 }
 
 /** Find a free TCP port by binding to port 0 */
@@ -126,10 +178,7 @@ export class CodeWhaleEngine {
       const savedPort = parseInt(fs.readFileSync(portFile, "utf8").trim(), 10);
       if (savedPort > 0) {
         this.log(`Killing any orphan process on port ${savedPort}...`);
-        const { exec } = require("child_process");
-        await new Promise<void>((resolve) => {
-          exec(`lsof -ti:${savedPort} | xargs kill -9 2>/dev/null`, { timeout: 3000 }, () => resolve());
-        });
+        await killProcessOnPort(savedPort);
         await new Promise(resolve => setTimeout(resolve, 300));
       }
     } catch { /* no port file */ }
@@ -139,7 +188,7 @@ export class CodeWhaleEngine {
     this.log(`Selected free port: ${this._port}`);
 
     // 2. Use a dedicated tasks directory under the extension's storage
-    const tasksDir = this.context.globalStorageUri.fsPath + "/tasks";
+    const tasksDir = path.join(this.context.globalStorageUri.fsPath, "tasks");
     this.log(`Tasks dir: ${tasksDir}`);
 
     // 3. Start fresh engine
@@ -152,15 +201,38 @@ export class CodeWhaleEngine {
     );
     this.log(`With DEEPSEEK_TASKS_DIR=${tasksDir}`);
 
-    const extraPaths = ["/opt/homebrew/bin", "/usr/local/bin", "/home/linuxbrew/.linuxbrew/bin"];
-    const extendedEnv = {
-      ...process.env,
+    const extraPaths = isWindows
+      ? [
+          path.join(process.env.APPDATA || path.join(homeDir(), "AppData", "Roaming"), "npm"),
+        ]
+      : ["/opt/homebrew/bin", "/usr/local/bin", "/home/linuxbrew/.linuxbrew/bin"];
+
+    const pathSep = isWindows ? ";" : ":";
+    const pathKey = isWindows ? "Path" : "PATH";
+    const existingPath = process.env.PATH || process.env.Path || "";
+    const extendedEnv: Record<string, string> = {
+      ...process.env as Record<string, string>,
       DEEPSEEK_TASKS_DIR: tasksDir,
-      PATH: [
-        ...(process.env.PATH || "").split(":"),
-        ...extraPaths.filter((p) => !((process.env.PATH || "").includes(p))),
-      ].join(":"),
+      [pathKey]: [
+        ...existingPath.split(pathSep),
+        ...extraPaths.filter((p) => !existingPath.split(pathSep).includes(p)),
+      ].join(pathSep),
     };
+    if (isWindows && pathKey === "Path" && process.env.PATH) {
+      delete extendedEnv.PATH;
+    }
+    if (!isWindows && process.env.Path) {
+      delete extendedEnv.Path;
+    }
+
+    const spawnOptions: import("child_process").SpawnOptions = {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: extendedEnv,
+      windowsHide: true,
+    };
+    if (!isWindows) {
+      spawnOptions.detached = true;
+    }
 
     this.process = spawn(enginePath, [
       "serve",
@@ -170,11 +242,7 @@ export class CodeWhaleEngine {
       "--port",
       String(this._port),
       "--insecure",
-    ], {
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: true,
-      env: extendedEnv,
-    });
+    ], spawnOptions);
 
     this.process.stdout?.on("data", (data: Buffer) => {
       this.log(`[stdout] ${data.toString().trim()}`);
@@ -201,7 +269,9 @@ export class CodeWhaleEngine {
       spawnError = err.message;
     });
 
-    this.process.unref?.();
+    if (!isWindows) {
+      this.process.unref?.();
+    }
 
     await this.waitForHealth();
 
@@ -220,7 +290,16 @@ export class CodeWhaleEngine {
   async stop(): Promise<void> {
     if (this.process) {
       this.log("Stopping engine...");
-      try { this.process.kill("SIGTERM"); } catch { /* already dead */ }
+      try {
+        if (isWindows) {
+          spawn("taskkill", ["/PID", String(this.process.pid), "/T", "/F"], {
+            stdio: "ignore",
+            windowsHide: true,
+          });
+        } else {
+          this.process.kill("SIGTERM");
+        }
+      } catch { /* already dead */ }
       this.process = null;
       this._running = false;
     }
