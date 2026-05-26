@@ -199,6 +199,42 @@ function extractFilePathFromDiff(diff: string): string {
   return "";
 }
 
+function parseDiffToSides(diff: string): { oldContent: string; newContent: string } {
+  const oldLines: string[] = [];
+  const newLines: string[] = [];
+  const hunkRegex = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
+  let inHunk = false;
+
+  for (const line of diff.split("\n")) {
+    if (hunkRegex.test(line)) {
+      inHunk = true;
+      continue;
+    }
+    if (!inHunk) continue;
+    if (line.startsWith("---") || line.startsWith("+++") || line.startsWith("diff ") || line.startsWith("index ")) {
+      continue;
+    }
+    if (line.startsWith("+")) {
+      newLines.push(line.slice(1));
+    } else if (line.startsWith("-")) {
+      oldLines.push(line.slice(1));
+    } else if (line.startsWith(" ")) {
+      oldLines.push(line.slice(1));
+      newLines.push(line.slice(1));
+    } else if (line.startsWith("\\")) {
+      continue;
+    } else {
+      oldLines.push(line);
+      newLines.push(line);
+    }
+  }
+
+  if (oldLines.length === 0 && newLines.length === 0) {
+    return { oldContent: "", newContent: "" };
+  }
+  return { oldContent: oldLines.join("\n"), newContent: newLines.join("\n") };
+}
+
 function friendlyToolName(raw: string): string {
   if (FRIENDLY_TOOL_NAMES[raw]) return FRIENDLY_TOOL_NAMES[raw];
   if (raw.startsWith("mcp__")) return raw.slice(4).replace(/__/g, " / ");
@@ -253,6 +289,7 @@ interface FileChangeInfo {
   diff?: string;
   oldContent?: string;
   newContent?: string;
+  toolName?: string;
 }
 
 // ── Provider ──
@@ -581,6 +618,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
                     addedLines: stats.added,
                     removedLines: stats.removed,
                     diff,
+                    toolName: tc.name,
                   };
                 }
               }
@@ -615,6 +653,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
                   addedLines: fcStats.added,
                   removedLines: fcStats.removed,
                   diff: fcDiff,
+                  toolName: fcToolName || "file_change",
                 } : undefined,
               };
               toolCalls.push(fcTc);
@@ -879,6 +918,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         addedLines: fc.addedLines,
         removedLines: fc.removedLines,
         diff: fc.diff,
+        toolName: fc.toolName,
       })),
     });
   }
@@ -1763,27 +1803,44 @@ Use the TUI for full command support.` });
     });
   }
 
+  private diffContentStore = new Map<string, string>();
+  private diffProviderDisposable: vscode.Disposable | null = null;
+
+  private ensureDiffProvider(): void {
+    if (this.diffProviderDisposable) return;
+
+    const store = this.diffContentStore;
+    const provider: vscode.TextDocumentContentProvider = {
+      onDidChange: undefined,
+      provideTextDocumentContent(uri: vscode.Uri): string {
+        return store.get(uri.toString()) || "";
+      },
+    };
+    this.diffProviderDisposable = vscode.workspace.registerTextDocumentContentProvider("codewhale-diff", provider);
+  }
+
   private async handleOpenDiff(filePath: string, diff?: string): Promise<void> {
     try {
       const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       if (!workspace) return;
 
       const absPath = path.isAbsolute(filePath) ? filePath : path.join(workspace, filePath);
-      const currentUri = vscode.Uri.file(absPath);
 
       if (diff) {
-        const oldContent = this.reconstructOldContent(absPath, diff);
-        const oldUri = vscode.Uri.parse(`codewhale-diff:${absPath}?old`);
-        const provider = new (class implements vscode.TextDocumentContentProvider {
-          private content = oldContent;
-          onDidChange?: vscode.Event<vscode.Uri>;
-          provideTextDocumentContent(): string { return this.content; }
-        })();
-        const disposable = vscode.workspace.registerTextDocumentContentProvider("codewhale-diff", provider);
+        this.ensureDiffProvider();
+
+        const { oldContent, newContent } = parseDiffToSides(diff);
+        const diffId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        const oldUri = vscode.Uri.parse(`codewhale-diff:${absPath}?old&id=${diffId}`);
+        const newUri = vscode.Uri.parse(`codewhale-diff:${absPath}?new&id=${diffId}`);
+
+        this.diffContentStore.set(oldUri.toString(), oldContent);
+        this.diffContentStore.set(newUri.toString(), newContent);
+
         const title = `${path.basename(filePath)} (Diff)`;
-        await vscode.commands.executeCommand("vscode.diff", oldUri, currentUri, title);
-        setTimeout(() => disposable.dispose(), 30000);
+        await vscode.commands.executeCommand("vscode.diff", oldUri, newUri, title);
       } else {
+        const currentUri = vscode.Uri.file(absPath);
         const doc = await vscode.workspace.openTextDocument(currentUri);
         await vscode.window.showTextDocument(doc);
       }
@@ -1801,68 +1858,6 @@ Use the TUI for full command support.` });
       await vscode.window.showTextDocument(doc);
     } catch (err) {
       this.postMessage({ type: "error", message: `Failed to open file: ${(err as Error).message}` });
-    }
-  }
-
-  private reconstructOldContent(absPath: string, diff: string): string {
-    try {
-      let current = "";
-      try { current = fs.readFileSync(absPath, "utf-8"); } catch { current = ""; }
-      const lines = current.split("\n");
-      const result: string[] = [];
-      let lineIdx = 0;
-
-      const hunkRegex = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
-      const hunks: { oldStart: number; oldCount: number; newStart: number; newCount: number; lines: string[] }[] = [];
-      let currentHunk: typeof hunks[0] | null = null;
-
-      for (const line of diff.split("\n")) {
-        const hunkMatch = line.match(hunkRegex);
-        if (hunkMatch) {
-          currentHunk = {
-            oldStart: parseInt(hunkMatch[1]),
-            oldCount: parseInt(hunkMatch[2] || "1"),
-            newStart: parseInt(hunkMatch[3]),
-            newCount: parseInt(hunkMatch[4] || "1"),
-            lines: [],
-          };
-          hunks.push(currentHunk);
-        } else if (currentHunk) {
-          currentHunk.lines.push(line);
-        }
-      }
-
-      if (hunks.length === 0) return current;
-
-      for (const hunk of hunks) {
-        while (lineIdx < hunk.newStart - 1 && lineIdx < lines.length) {
-          result.push(lines[lineIdx]);
-          lineIdx++;
-        }
-        for (const hLine of hunk.lines) {
-          if (hLine.startsWith("+")) {
-            // skip added lines
-          } else if (hLine.startsWith("-")) {
-            result.push(hLine.slice(1));
-          } else if (hLine.startsWith(" ")) {
-            result.push(hLine.slice(1));
-            lineIdx++;
-          }
-        }
-        while (lineIdx < lines.length) {
-          const nextHunk = hunks[hunks.indexOf(hunk) + 1];
-          if (nextHunk && lineIdx >= nextHunk.newStart - 1) break;
-          result.push(lines[lineIdx]);
-          lineIdx++;
-        }
-      }
-      while (lineIdx < lines.length) {
-        result.push(lines[lineIdx]);
-        lineIdx++;
-      }
-      return result.join("\n");
-    } catch {
-      return "";
     }
   }
 
@@ -2314,17 +2309,20 @@ Use the TUI for full command support.` });
                 addedLines: stats.added,
                 removedLines: stats.removed,
                 diff,
+                toolName,
               };
               if (tc) {
                 tc.fileChange = fc;
               }
               this.turnFileChanges.push(fc);
-              this.postMessage({
-                type: "fileChangeDetected",
-                messageId: lastMsg.id,
-                toolCallIdx: tcIdx ?? -1,
-                fileChange: fc,
-              });
+              if (tcIdx !== undefined) {
+                this.postMessage({
+                  type: "fileChangeDetected",
+                  messageId: lastMsg.id,
+                  toolCallIdx: tcIdx,
+                  fileChange: fc,
+                });
+              }
               this.refreshWorkPanel();
             }
           }
@@ -2469,6 +2467,9 @@ Use the TUI for full command support.` });
   private cleanup(): void {
     this.eventController?.abort();
     this.eventController = null;
+    this.diffContentStore.clear();
+    this.diffProviderDisposable?.dispose();
+    this.diffProviderDisposable = null;
   }
 
   dispose(): void {

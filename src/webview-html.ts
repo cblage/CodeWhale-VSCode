@@ -1910,6 +1910,10 @@ export function getWebviewHtml(
         html += '</span>';
       }
       html += '</div>';
+      if (fc.toolName) {
+        const friendlyName = fc.toolName.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+        html += '<div class="fc-tool-info" style="font-size:0.8em;color:var(--muted);padding:2px 8px">🔧 ' + escapeHtml(friendlyName) + '</div>';
+      }
       html += '<div class="fc-actions">';
       if (fc.diff) {
         html += '<button class="fc-view-diff" data-file-path="' + escapeHtml(fc.filePath) + '" data-diff-key="' + diffKey + '" title="' + escapeHtml(__i18n.viewDiffTooltip) + '">🔍 ' + escapeHtml(__i18n.viewDiff) + '</button>';
@@ -2232,6 +2236,10 @@ export function getWebviewHtml(
           html += '<div class="work-checklist-item" style="display:flex;align-items:center;gap:6px;padding:3px 0;flex-wrap:wrap">';
           html += '<span style="flex-shrink:0;font-size:0.8em;padding:1px 5px;border-radius:3px;background:' + badgeColor + '22;color:' + badgeColor + '">' + escapeHtml(changeTypeLabel) + '</span>';
           html += '<span style="font-family:var(--vscode-editor-font-family,monospace);font-size:0.85em;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapeHtml(fc.filePath) + '">' + escapeHtml(displayPath) + '</span>';
+          if (fc.toolName) {
+            const fn = fc.toolName.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+            html += '<span style="font-size:0.75em;color:var(--muted);flex-shrink:0">🔧' + escapeHtml(fn) + '</span>';
+          }
           if (fc.addedLines > 0 || fc.removedLines > 0) {
             html += '<span style="font-family:var(--vscode-editor-font-family,monospace);font-size:0.8em;flex-shrink:0">';
             if (fc.addedLines > 0) html += '<span style="color:#4caf50">+' + fc.addedLines + '</span>';
