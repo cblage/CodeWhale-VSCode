@@ -143,7 +143,7 @@ export class CodeWhaleEngine {
     this.log(`Tasks dir: ${tasksDir}`);
 
     // 3. Start fresh engine
-    const cfg = vscode.workspace.getConfiguration("codewhale");
+    const cfg = vscode.workspace.getConfiguration("brotherwhale");
     const configuredPath = cfg.get<string>("enginePath", "codewhale");
     const enginePath = resolveEnginePath(configuredPath);
 

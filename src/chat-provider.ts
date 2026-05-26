@@ -237,7 +237,7 @@ function parseDiffToSides(diff: string): { oldContent: string; newContent: strin
 
 function friendlyToolName(raw: string): string {
   if (FRIENDLY_TOOL_NAMES[raw]) return FRIENDLY_TOOL_NAMES[raw];
-  if (raw.startsWith("mcp__")) return raw.slice(4).replace(/__/g, " / ");
+  if (raw.startsWith("mcp__")) return raw.slice(5).replace(/__/g, " / ");
   return raw.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
@@ -295,7 +295,7 @@ interface FileChangeInfo {
 // ── Provider ──
 
 export class ChatProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = "codewhale.chat";
+  public static readonly viewType = "brotherwhale.chat";
 
   private view?: vscode.WebviewView;
   private api: CodeWhaleApiClient;
@@ -772,7 +772,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       this.api.setToken(this.engine.token);
 
       if (!this.currentThread) {
-        const cfg = vscode.workspace.getConfiguration("codewhale");
+        const cfg = vscode.workspace.getConfiguration("brotherwhale");
         const model = cfg.get<string>("defaultModel", "deepseek-v4-pro");
         const mode = cfg.get<string>("defaultMode", "agent");
         const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -819,7 +819,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       let threadOk = true;
       try { await this.api.getThread(this.currentThread.id); } catch { threadOk = false; }
       if (!threadOk) {
-        const cfg = vscode.workspace.getConfiguration("codewhale");
+        const cfg = vscode.workspace.getConfiguration("brotherwhale");
         const mode = cfg.get<string>("defaultMode", "agent");
         const autoApprove = cfg.get<boolean>("autoApprove", false);
         this.currentThread = await this.api.createThread({
@@ -833,7 +833,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         this.refreshThreadList();
       }
 
-      const cfg = vscode.workspace.getConfiguration("codewhale");
+      const cfg = vscode.workspace.getConfiguration("brotherwhale");
       const reasoningEffort = cfg.get<string>("reasoningEffort", "auto");
       const mode = cfg.get<string>("defaultMode", "agent");
       const model = this.getCurrentModel();
@@ -901,7 +901,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
 
   /** Push the current work state to the webview Work panel */
   private refreshWorkPanel(): void {
-    const cfg = vscode.workspace.getConfiguration("codewhale");
+    const cfg = vscode.workspace.getConfiguration("brotherwhale");
     const goal = cfg.get<string | undefined>("goalObjective") || null;
     this.postMessage({
       type: "workState",
@@ -975,7 +975,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   }
 
   private async handleSlashCommand(command: string, args: string): Promise<void> {
-    const cfg = vscode.workspace.getConfiguration("codewhale");
+    const cfg = vscode.workspace.getConfiguration("brotherwhale");
     const notAvailable = () => {
       const tr = t();
       this.postMessage({ type: "info", message: tr.commandNotAvailableInGui });
@@ -1030,7 +1030,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         break;
       }
       case "/config": {
-        vscode.commands.executeCommand("workbench.action.openSettings", "codewhale");
+        vscode.commands.executeCommand("workbench.action.openSettings", "brotherwhale");
         break;
       }
       case "/settings": {
@@ -1112,7 +1112,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         break;
       }
       case "/tokens": {
-        const cfg2 = vscode.workspace.getConfiguration("codewhale");
+        const cfg2 = vscode.workspace.getConfiguration("brotherwhale");
         const currency2 = cfg2.get<string>("costCurrency", "usd");
         const costStr2 = currency2 === "cny"
           ? formatCostAmount(this.sessionCostCny, "cny")
@@ -1123,7 +1123,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         break;
       }
       case "/cost": {
-        const cfg3 = vscode.workspace.getConfiguration("codewhale");
+        const cfg3 = vscode.workspace.getConfiguration("brotherwhale");
         const currency3 = cfg3.get<string>("costCurrency", "usd");
         const costStr3 = currency3 === "cny"
           ? formatCostAmount(this.sessionCostCny, "cny")
@@ -1154,7 +1154,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           await this.engine.ensureRunning();
           this.api.setBaseUrl(this.engine.baseUrl);
           if (taskSub === "add" && taskRest) {
-            const cfg = vscode.workspace.getConfiguration("codewhale");
+            const cfg = vscode.workspace.getConfiguration("brotherwhale");
             const task = await this.api.createTask({
               prompt: taskRest,
               model: cfg.get<string>("defaultModel", "deepseek-v4-pro"),
@@ -1226,12 +1226,12 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         break;
       }
       case "/init": {
-        vscode.commands.executeCommand("workbench.action.openSettings", "codewhale");
+        vscode.commands.executeCommand("workbench.action.openSettings", "brotherwhale");
         this.postMessage({ type: "info", message: "Use the VSCode settings to configure CodeWhale. Open settings with /config." });
         break;
       }
       case "/mcp": {
-        vscode.commands.executeCommand("workbench.action.openSettings", "codewhale");
+        vscode.commands.executeCommand("workbench.action.openSettings", "brotherwhale");
         this.postMessage({ type: "info", message: "MCP server configuration is available in VSCode settings." });
         break;
       }
@@ -1816,7 +1816,7 @@ Use the TUI for full command support.` });
         return store.get(uri.toString()) || "";
       },
     };
-    this.diffProviderDisposable = vscode.workspace.registerTextDocumentContentProvider("codewhale-diff", provider);
+    this.diffProviderDisposable = vscode.workspace.registerTextDocumentContentProvider("brotherwhale-diff", provider);
   }
 
   private async handleOpenDiff(filePath: string, diff?: string): Promise<void> {
@@ -1831,8 +1831,8 @@ Use the TUI for full command support.` });
 
         const { oldContent, newContent } = parseDiffToSides(diff);
         const diffId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-        const oldUri = vscode.Uri.parse(`codewhale-diff:${absPath}?old&id=${diffId}`);
-        const newUri = vscode.Uri.parse(`codewhale-diff:${absPath}?new&id=${diffId}`);
+        const oldUri = vscode.Uri.parse(`brotherwhale-diff:${absPath}?old&id=${diffId}`);
+        const newUri = vscode.Uri.parse(`brotherwhale-diff:${absPath}?new&id=${diffId}`);
 
         this.diffContentStore.set(oldUri.toString(), oldContent);
         this.diffContentStore.set(newUri.toString(), newContent);
@@ -2370,7 +2370,7 @@ Use the TUI for full command support.` });
     const totalCacheMiss = this.lastCacheMissTokens;
     const total = totalCacheHit + totalCacheMiss;
     const cacheHitRate = total > 0 ? (totalCacheHit / total * 100) : 0;
-    const cfg = vscode.workspace.getConfiguration("codewhale");
+    const cfg = vscode.workspace.getConfiguration("brotherwhale");
     const currency = cfg.get<string>("costCurrency", "usd");
     const costDisplay = currency === "cny"
       ? formatCostAmount(this.sessionCostCny, "cny")
@@ -2400,17 +2400,17 @@ Use the TUI for full command support.` });
   }
 
   private getCurrentModel(): string {
-    const cfg = vscode.workspace.getConfiguration("codewhale");
+    const cfg = vscode.workspace.getConfiguration("brotherwhale");
     return cfg.get<string>("defaultModel", "deepseek-v4-pro");
   }
 
   private getCurrentMode(): string {
-    const cfg = vscode.workspace.getConfiguration("codewhale");
+    const cfg = vscode.workspace.getConfiguration("brotherwhale");
     return cfg.get<string>("defaultMode", "agent");
   }
 
   private getCurrentReasoningEffort(): string {
-    const cfg = vscode.workspace.getConfiguration("codewhale");
+    const cfg = vscode.workspace.getConfiguration("brotherwhale");
     return cfg.get<string>("reasoningEffort", "auto");
   }
 

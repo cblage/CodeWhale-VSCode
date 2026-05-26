@@ -1,5 +1,5 @@
 {
-  "name": "codewhale-vscode",
+  "name": "brotherwhale-vscode",
   "displayName": "%displayName%",
   "description": "%description%",
   "version": "0.1.0",
@@ -40,58 +40,58 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "codewhale",
+          "id": "brotherwhale",
           "title": "%viewsContainers.activitybar.title%",
           "icon": "media/icon.svg"
         }
       ]
     },
     "views": {
-      "codewhale": [
+      "brotherwhale": [
         {
           "type": "webview",
-          "id": "codewhale.chat",
+          "id": "brotherwhale.chat",
           "name": "%views.chat.name%"
         }
       ]
     },
     "commands": [
       {
-        "command": "codewhale.openChat",
+        "command": "brotherwhale.openChat",
         "title": "%commands.openChat.title%"
       },
       {
-        "command": "codewhale.newThread",
+        "command": "brotherwhale.newThread",
         "title": "%commands.newThread.title%"
       },
       {
-        "command": "codewhale.compactContext",
+        "command": "brotherwhale.compactContext",
         "title": "%commands.compactContext.title%"
       },
       {
-        "command": "codewhale.restartEngine",
+        "command": "brotherwhale.restartEngine",
         "title": "%commands.restartEngine.title%"
       }
     ],
     "configuration": {
-      "title": "CodeWhale",
+      "title": "BrotherWhale",
       "properties": {
-        "codewhale.enginePath": {
+        "brotherwhale.enginePath": {
           "type": "string",
           "default": "codewhale",
           "description": "%config.enginePath.description%"
         },
-        "codewhale.enginePort": {
+        "brotherwhale.enginePort": {
           "type": "number",
           "default": 7878,
           "description": "%config.enginePort.description%"
         },
-        "codewhale.defaultModel": {
+        "brotherwhale.defaultModel": {
           "type": "string",
           "default": "deepseek-v4-pro",
           "description": "%config.defaultModel.description%"
         },
-        "codewhale.defaultMode": {
+        "brotherwhale.defaultMode": {
           "type": "string",
           "enum": [
             "agent",
@@ -101,7 +101,7 @@
           "default": "agent",
           "description": "%config.defaultMode.description%"
         },
-        "codewhale.reasoningEffort": {
+        "brotherwhale.reasoningEffort": {
           "type": "string",
           "enum": [
             "auto",
@@ -114,12 +114,12 @@
           "default": "auto",
           "description": "%config.reasoningEffort.description%"
         },
-        "codewhale.autoStartEngine": {
+        "brotherwhale.autoStartEngine": {
           "type": "boolean",
           "default": true,
           "description": "%config.autoStartEngine.description%"
         },
-        "codewhale.autoApprove": {
+        "brotherwhale.autoApprove": {
           "type": "boolean",
           "default": false,
           "description": "%config.autoApprove.description%"
@@ -136,6 +136,9 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
+  "dependencies": {
+    "marked": "^18.0.4"
+  },
   "devDependencies": {
     "@types/marked": "^5.0.2",
     "@types/node": "^20.11.0",
@@ -144,7 +147,6 @@
     "ts-loader": "^9.5.0",
     "typescript": "^5.4.0",
     "vitest": "^4.1.7",
-    "marked": "^18.0.4",
     "webpack": "^5.90.0",
     "webpack-cli": "^5.1.0"
   }

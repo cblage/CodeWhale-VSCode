@@ -28,25 +28,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("codewhale.openChat", () => {
-      vscode.commands.executeCommand("workbench.view.extension.codewhale");
+    vscode.commands.registerCommand("brotherwhale.openChat", () => {
+      vscode.commands.executeCommand("workbench.view.extension.brotherwhale");
     })
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("codewhale.newThread", () => {
+    vscode.commands.registerCommand("brotherwhale.newThread", () => {
       chatProvider.handleNewThreadCommand();
     })
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("codewhale.compactContext", () => {
+    vscode.commands.registerCommand("brotherwhale.compactContext", () => {
       chatProvider.handleCompactCommand();
     })
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("codewhale.restartEngine", async () => {
+    vscode.commands.registerCommand("brotherwhale.restartEngine", async () => {
       try {
         await engine.restart();
         api.setBaseUrl(engine.baseUrl);
