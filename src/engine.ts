@@ -63,6 +63,8 @@ function resolveEnginePath(configuredPath: string): string {
     );
   } else {
     candidates.push(
+      path.join(homeDir(), ".cargo", "bin", "codewhale"),
+      path.join(homeDir(), ".cargo", "bin", "codewhale-tui"),
       "/opt/homebrew/lib/node_modules/codewhale/bin/downloads/codewhale",
       "/usr/local/lib/node_modules/codewhale/bin/downloads/codewhale",
       path.join(homeDir(), ".npm-global/lib/node_modules/codewhale/bin/downloads/codewhale"),
@@ -126,9 +128,26 @@ export class CodeWhaleEngine {
   }
 
   private _starting: Promise<void> | null = null;
+  private _workspaceKey: string = "";
+
+  private getWorkspaceKey(): string {
+    const ws = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!ws) return "global";
+    const hash = ws.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 32);
+    return `ws_${hash}`;
+  }
+
+  private getPortFile(): string {
+    const key = this.getWorkspaceKey();
+    return path.join(this.context.globalStorageUri.fsPath, `serve.${key}.port`);
+  }
+
+  private getLegacyPortFile(): string {
+    return path.join(this.context.globalStorageUri.fsPath, "serve.port");
+  }
 
   async ensureRunning(): Promise<void> {
-    if (this._running && this.process) {
+    if (this._running && this.process && this._workspaceKey === this.getWorkspaceKey()) {
       return;
     }
     if (this._starting) {
@@ -143,37 +162,50 @@ export class CodeWhaleEngine {
   }
 
   private async _doEnsureRunning(): Promise<void> {
-    if (this._running && this.process) {
+    const currentKey = this.getWorkspaceKey();
+    if (this._running && this.process && this._workspaceKey === currentKey) {
       return;
     }
 
-    const portFile = path.join(this.context.globalStorageUri.fsPath, "serve.port");
-    try {
-      const savedPort = parseInt(fs.readFileSync(portFile, "utf8").trim(), 10);
-      if (savedPort > 0 && savedPort < 65536) {
-        this._port = savedPort;
-        this.log(`Found saved port ${this._port}, checking health...`);
-        if (await this.checkHealth()) {
-          this._running = true;
-          this.log(`Reusing existing engine on port ${this._port}`);
-          return;
-        }
-        this.log(`Saved port ${this._port} not responding, starting new instance`);
+    const portFile = this.getPortFile();
+    const legacyPortFile = this.getLegacyPortFile();
+
+    const savedPort = this.tryReadPort(portFile) ?? this.tryReadPort(legacyPortFile);
+    if (savedPort !== null) {
+      this._port = savedPort;
+      this.log(`Found saved port ${this._port}, checking health...`);
+      if (await this.checkHealth()) {
+        this._running = true;
+        this._workspaceKey = currentKey;
+        this.log(`Reusing existing engine on port ${this._port}`);
+        return;
       }
-    } catch { /* no port file */ }
+      this.log(`Saved port ${this._port} not responding, starting new instance`);
+    }
 
     await this.start();
 
     try {
       fs.mkdirSync(this.context.globalStorageUri.fsPath, { recursive: true });
       fs.writeFileSync(portFile, String(this._port));
+      this._workspaceKey = currentKey;
     } catch { /* ignore */ }
+  }
+
+  private tryReadPort(file: string): number | null {
+    try {
+      const port = parseInt(fs.readFileSync(file, "utf8").trim(), 10);
+      if (port > 0 && port < 65536) {
+        return port;
+      }
+    } catch { /* no file or invalid */ }
+    return null;
   }
 
   async start(): Promise<void> {
     await this.stop();
 
-    const portFile = path.join(this.context.globalStorageUri.fsPath, "serve.port");
+    const portFile = this.getPortFile();
     try {
       const savedPort = parseInt(fs.readFileSync(portFile, "utf8").trim(), 10);
       if (savedPort > 0) {
@@ -195,9 +227,24 @@ export class CodeWhaleEngine {
     const cfg = vscode.workspace.getConfiguration("brotherwhale");
     const configuredPath = cfg.get<string>("enginePath", "codewhale");
     const enginePath = resolveEnginePath(configuredPath);
+    const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+    const baseArgs: string[] = [];
+    if (workspacePath) {
+      baseArgs.push("--workspace", workspacePath);
+    }
+    baseArgs.push(
+      "serve",
+      "--http",
+      "--host",
+      this._host,
+      "--port",
+      String(this._port),
+      "--insecure"
+    );
 
     this.log(
-      `Starting: ${enginePath} serve --http --host ${this._host} --port ${this._port} --insecure`
+      `Starting: ${enginePath} ${baseArgs.join(" ")}`
     );
     this.log(`With DEEPSEEK_TASKS_DIR=${tasksDir}`);
 
@@ -234,15 +281,7 @@ export class CodeWhaleEngine {
       spawnOptions.detached = true;
     }
 
-    this.process = spawn(enginePath, [
-      "serve",
-      "--http",
-      "--host",
-      this._host,
-      "--port",
-      String(this._port),
-      "--insecure",
-    ], spawnOptions);
+    this.process = spawn(enginePath, baseArgs, spawnOptions);
 
     this.process.stdout?.on("data", (data: Buffer) => {
       this.log(`[stdout] ${data.toString().trim()}`);

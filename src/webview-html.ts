@@ -1764,7 +1764,7 @@ export function getWebviewHtml(
       });
     }
 
-    function addMessage(msg) {
+    function addMessage(msg, showRole) {
       const welcomeEl = messagesEl.querySelector('.welcome-screen');
       if (welcomeEl) welcomeEl.remove();
 
@@ -1772,7 +1772,10 @@ export function getWebviewHtml(
       el.className = 'message ' + msg.role;
       el.id = 'msg-' + msg.id;
 
-      let html = '<div class="role">' + escapeHtml(msg.role) + '</div>';
+      let html = '';
+      if (showRole !== false) {
+        html += '<div class="role">' + escapeHtml(msg.role) + '</div>';
+      }
       html += '<div class="message-body" id="body-' + msg.id + '"></div>';
       
       el.innerHTML = html;
@@ -2425,7 +2428,10 @@ export function getWebviewHtml(
         case 'loadHistory':
           closeTaskDetail();
           messagesEl.innerHTML = '';
-          for (const m of msg.messages) addMessage(m);
+          for (const m of msg.messages) {
+            const showRole = !msg.compactMode || !!m._realContent;
+            addMessage(m, showRole);
+          }
           break;
 
         case 'threadLoaded':

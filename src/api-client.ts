@@ -163,6 +163,156 @@ export interface TaskRecord {
   auto_approve: boolean;
 }
 
+export interface SkillEntry {
+  name: string;
+  description: string;
+  path: string;
+  enabled: boolean;
+  is_bundled: boolean;
+}
+
+export interface SkillsResponse {
+  directory: string;
+  directories: string[];
+  warnings: string[];
+  skills: SkillEntry[];
+}
+
+export interface SetSkillEnabledResponse {
+  name: string;
+  enabled: boolean;
+}
+
+export interface SessionMetadata {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  total_tokens: number;
+  model: string;
+  workspace: string;
+  mode?: string | null;
+  cost?: {
+    session_cost_usd: number;
+    session_cost_cny: number;
+    subagent_cost_usd: number;
+    subagent_cost_cny: number;
+  };
+  parent_session_id?: string | null;
+  forked_from_message_count?: number | null;
+}
+
+export interface SessionsResponse {
+  sessions: SessionMetadata[];
+}
+
+export interface SessionDetailResponse {
+  metadata: SessionMetadata;
+  messages: Record<string, unknown>[];
+  system_prompt?: string | null;
+}
+
+export interface ResumeSessionResponse {
+  thread_id: string;
+  session_id: string;
+  message_count: number;
+  summary: string;
+}
+
+export interface WorkspaceStatusResponse {
+  workspace: string;
+  git_repo: boolean;
+  branch?: string | null;
+  staged: number;
+  unstaged: number;
+  untracked: number;
+  ahead?: number | null;
+  behind?: number | null;
+}
+
+export interface RuntimeInfoResponse {
+  bind_host: string;
+  port: number;
+  auth_required: boolean;
+  version: string;
+}
+
+export interface UsageTotals {
+  input_tokens: number;
+  output_tokens: number;
+  cached_tokens: number;
+  reasoning_tokens: number;
+  cost_usd: number;
+  turns: number;
+}
+
+export interface UsageBucket {
+  key: string;
+  input_tokens: number;
+  output_tokens: number;
+  cached_tokens: number;
+  reasoning_tokens: number;
+  cost_usd: number;
+  turns: number;
+}
+
+export interface UsageAggregation {
+  since?: string | null;
+  until?: string | null;
+  group_by: string;
+  totals: UsageTotals;
+  buckets: UsageBucket[];
+}
+
+export type AutomationStatus = "active" | "paused";
+export type AutomationRunStatus = "queued" | "running" | "completed" | "failed" | "canceled";
+
+export interface AutomationRecord {
+  schema_version: number;
+  id: string;
+  name: string;
+  prompt: string;
+  rrule: string;
+  cwds: string[];
+  status: AutomationStatus;
+  created_at: string;
+  updated_at: string;
+  next_run_at?: string | null;
+  last_run_at?: string | null;
+}
+
+export interface AutomationRunRecord {
+  schema_version: number;
+  id: string;
+  automation_id: string;
+  scheduled_for: string;
+  status: AutomationRunStatus;
+  created_at: string;
+  started_at?: string | null;
+  ended_at?: string | null;
+  task_id?: string | null;
+  thread_id?: string | null;
+  turn_id?: string | null;
+  error?: string | null;
+}
+
+export interface CreateAutomationRequest {
+  name: string;
+  prompt: string;
+  rrule: string;
+  cwds?: string[];
+  status?: AutomationStatus;
+}
+
+export interface UpdateAutomationRequest {
+  name?: string;
+  prompt?: string;
+  rrule?: string;
+  cwds?: string[];
+  status?: AutomationStatus;
+}
+
 export type EventListener = (event: RuntimeEvent) => void;
 
 export class CodeWhaleApiClient {
@@ -338,6 +488,105 @@ export class CodeWhaleApiClient {
     await this.post(`/v1/tasks/${taskId}/cancel`, {});
   }
 
+  // ── Skills ──
+
+  async listSkills(): Promise<SkillsResponse> {
+    return (await this.get("/v1/skills")) as SkillsResponse;
+  }
+
+  async setSkillEnabled(name: string, enabled: boolean): Promise<SetSkillEnabledResponse> {
+    return (await this.post(`/v1/skills/${name}`, { enabled })) as SetSkillEnabledResponse;
+  }
+
+  // ── Sessions ──
+
+  async listSessions(opts?: { limit?: number; search?: string }): Promise<SessionsResponse> {
+    const params = new URLSearchParams();
+    if (opts?.limit) params.set("limit", String(opts.limit));
+    if (opts?.search) params.set("search", opts.search);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return (await this.get(`/v1/sessions${qs}`)) as SessionsResponse;
+  }
+
+  async getSession(sessionId: string): Promise<SessionDetailResponse> {
+    return (await this.get(`/v1/sessions/${sessionId}`)) as SessionDetailResponse;
+  }
+
+  async deleteSession(sessionId: string): Promise<void> {
+    await this.delete(`/v1/sessions/${sessionId}`);
+  }
+
+  async resumeSessionThread(sessionId: string, opts?: { model?: string; mode?: string }): Promise<ResumeSessionResponse> {
+    const body: Record<string, unknown> = {};
+    if (opts?.model) body.model = opts.model;
+    if (opts?.mode) body.mode = opts.mode;
+    return (await this.post(`/v1/sessions/${sessionId}/resume-thread`, body)) as ResumeSessionResponse;
+  }
+
+  // ── Workspace ──
+
+  async getWorkspaceStatus(): Promise<WorkspaceStatusResponse> {
+    return (await this.get("/v1/workspace/status")) as WorkspaceStatusResponse;
+  }
+
+  // ── Runtime ──
+
+  async getRuntimeInfo(): Promise<RuntimeInfoResponse> {
+    return (await this.get("/v1/runtime/info")) as RuntimeInfoResponse;
+  }
+
+  // ── Usage ──
+
+  async getUsage(opts?: { since?: string; until?: string; group_by?: string }): Promise<UsageAggregation> {
+    const params = new URLSearchParams();
+    if (opts?.since) params.set("since", opts.since);
+    if (opts?.until) params.set("until", opts.until);
+    if (opts?.group_by) params.set("group_by", opts.group_by);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return (await this.get(`/v1/usage${qs}`)) as UsageAggregation;
+  }
+
+  // ── Automations ──
+
+  async listAutomations(): Promise<AutomationRecord[]> {
+    return (await this.get("/v1/automations")) as AutomationRecord[];
+  }
+
+  async getAutomation(automationId: string): Promise<AutomationRecord> {
+    return (await this.get(`/v1/automations/${automationId}`)) as AutomationRecord;
+  }
+
+  async createAutomation(req: CreateAutomationRequest): Promise<AutomationRecord> {
+    return (await this.post("/v1/automations", req)) as AutomationRecord;
+  }
+
+  async updateAutomation(automationId: string, req: UpdateAutomationRequest): Promise<AutomationRecord> {
+    return (await this.patch(`/v1/automations/${automationId}`, req)) as AutomationRecord;
+  }
+
+  async deleteAutomation(automationId: string): Promise<void> {
+    await this.delete(`/v1/automations/${automationId}`);
+  }
+
+  async runAutomation(automationId: string): Promise<AutomationRecord> {
+    return (await this.post(`/v1/automations/${automationId}/run`, {})) as AutomationRecord;
+  }
+
+  async pauseAutomation(automationId: string): Promise<AutomationRecord> {
+    return (await this.post(`/v1/automations/${automationId}/pause`, {})) as AutomationRecord;
+  }
+
+  async resumeAutomation(automationId: string): Promise<AutomationRecord> {
+    return (await this.post(`/v1/automations/${automationId}/resume`, {})) as AutomationRecord;
+  }
+
+  async listAutomationRuns(automationId: string, opts?: { limit?: number }): Promise<AutomationRunRecord[]> {
+    const params = new URLSearchParams();
+    if (opts?.limit) params.set("limit", String(opts.limit));
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return (await this.get(`/v1/automations/${automationId}/runs${qs}`)) as AutomationRunRecord[];
+  }
+
   // ── SSE Event Stream ──
 
   streamEvents(
@@ -422,6 +671,10 @@ export class CodeWhaleApiClient {
 
   private async patch(path: string, body: unknown): Promise<unknown> {
     return this.request("PATCH", path, body);
+  }
+
+  private async delete(path: string): Promise<unknown> {
+    return this.request("DELETE", path, undefined);
   }
 
   private request(

@@ -24,8 +24,11 @@ const FRIENDLY_TOOL_NAMES: Record<string, string> = {
   replace_text: "Replace text",
   exec_shell: "Run command",
   exec_shell_wait: "Run command (wait)",
+  task_shell_wait: "Shell task",
   list_directory: "List directory",
+  list_dir: "List directory",
   search_files: "Search files",
+  file_search: "Search files",
   move_file: "Move file",
   copy_file: "Copy file",
   delete_file: "Delete file",
@@ -109,6 +112,17 @@ const FILE_CHANGE_TOOLS = new Set([
   "copy_file",
   "create_directory",
 ]);
+
+function stripTurnMeta(text: string): string {
+  const trimmed = text.trimStart();
+  if (trimmed.startsWith("<turn_meta>")) {
+    const closePos = trimmed.indexOf("</turn_meta>");
+    if (closePos !== -1) {
+      return trimmed.slice(closePos + "</turn_meta>".length).trimStart();
+    }
+  }
+  return trimmed;
+}
 
 function isFileChangeTool(toolName: string): boolean {
   return FILE_CHANGE_TOOLS.has(toolName) || FILE_CHANGE_TOOLS.has(toolName.toLowerCase());
@@ -301,6 +315,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   private api: CodeWhaleApiClient;
   private engine: CodeWhaleEngine;
   private currentThread: ThreadRecord | null = null;
+  private viewingSessionId: string | null = null;
   private messages: ChatMessage[] = [];
   private eventController: AbortController | null = null;
   private lastEventSeq: number = 0;
@@ -724,6 +739,188 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private async loadSessionMessages(sessionId: string): Promise<void> {
+    const session = await this.api.getSession(sessionId);
+    const title = session.metadata.title || "Session";
+
+    this.cleanup();
+    this.currentThread = null;
+    this.viewingSessionId = sessionId;
+    this.messages = [];
+    this.lastEventSeq = 0;
+    this.currentTurnId = null;
+    this.activeItems.clear();
+    this.currentTextBlockIdx = -1;
+    this.currentThinkingBlockIdx = -1;
+    this.cycleCount = 0;
+    this.checklistItems = [];
+    this.checklistCompletionPct = 0;
+    this.coherenceState = "healthy";
+    this.coherenceLabel = "";
+    this.turnFileChanges = [];
+    this.resetSessionStats();
+
+    const rawMessages = session.messages as Array<{
+      role: string;
+      content: Array<{
+        type: string;
+        text?: string;
+        thinking?: string;
+        id?: string;
+        name?: string;
+        input?: Record<string, unknown>;
+        tool_use_id?: string;
+        content?: string;
+        content_blocks?: Array<{ type: string; text?: string }>;
+        is_error?: boolean;
+      }>;
+    }>;
+
+    const globalToolCalls: ToolCallInfo[] = [];
+    const globalToolIdMap: Map<string, number> = new Map();
+
+    let i = 0;
+    while (i < rawMessages.length) {
+      const msg = rawMessages[i];
+
+      if (msg.role === "user" && msg.content.every((b) => b.type === "tool_result")) {
+        for (const block of msg.content) {
+          if (block.type === "tool_result" && block.tool_use_id) {
+            const idx = globalToolIdMap.get(block.tool_use_id);
+            if (idx !== undefined && globalToolCalls[idx]) {
+              const outputText = typeof block.content === "string" ? block.content : "";
+              globalToolCalls[idx].output = outputText;
+              globalToolCalls[idx].status = block.is_error ? "error" : "complete";
+            }
+          }
+        }
+        i++;
+        continue;
+      }
+
+      if (msg.role === "user") {
+        const textBlocks: string[] = [];
+        while (i < rawMessages.length && rawMessages[i].role === "user") {
+          for (const block of rawMessages[i].content || []) {
+            if (block.type === "text" && block.text) {
+              textBlocks.push(block.text);
+            }
+          }
+          i++;
+        }
+
+        const combined = stripTurnMeta(textBlocks.join("\n"));
+        if (!combined.trim()) continue;
+
+        this.messages.push({
+          id: `user-turn-${this.messages.length}`,
+          role: "user",
+          content: combined,
+          status: "complete" as const,
+          timestamp: Date.now(),
+          _realContent: true,
+        } as ChatMessage & { _realContent: boolean });
+      } else {
+        const blocks: ContentBlock[] = [];
+        const turnToolCallIndices: number[] = [];
+
+        while (i < rawMessages.length && rawMessages[i].role !== "user") {
+          for (const block of rawMessages[i].content || []) {
+            if (block.type === "text" && block.text) {
+              blocks.push({ type: "text", content: block.text });
+            } else if (block.type === "thinking" && (block.thinking || block.text)) {
+              blocks.push({ type: "thinking", content: block.thinking || block.text || "" });
+            } else if ((block.type === "tool_use" || block.type === "server_tool_use") && block.id && block.name) {
+              const idx = globalToolCalls.length;
+              globalToolIdMap.set(block.id, idx);
+              globalToolCalls.push({
+                name: block.name,
+                displayName: FRIENDLY_TOOL_NAMES[block.name] || block.name,
+                input: block.input || {},
+                status: "pending",
+                itemId: block.id,
+              });
+              blocks.push({ type: "tool_call", toolCallIdx: idx });
+              turnToolCallIndices.push(idx);
+            } else if (block.type === "tool_result" && block.tool_use_id) {
+              const idx = globalToolIdMap.get(block.tool_use_id);
+              if (idx !== undefined && globalToolCalls[idx]) {
+                const outputText = typeof block.content === "string" ? block.content : "";
+                globalToolCalls[idx].output = outputText;
+                globalToolCalls[idx].status = block.is_error ? "error" : "complete";
+              }
+            }
+          }
+          i++;
+        }
+
+        while (i < rawMessages.length && rawMessages[i].role === "user"
+          && rawMessages[i].content.every((b) => b.type === "tool_result")) {
+          for (const block of rawMessages[i].content) {
+            if (block.type === "tool_result" && block.tool_use_id) {
+              const idx = globalToolIdMap.get(block.tool_use_id);
+              if (idx !== undefined && globalToolCalls[idx]) {
+                const outputText = typeof block.content === "string" ? block.content : "";
+                globalToolCalls[idx].output = outputText;
+                globalToolCalls[idx].status = block.is_error ? "error" : "complete";
+              }
+            }
+          }
+          i++;
+        }
+
+        const finalText = blocks
+          .filter((b) => b.type === "text")
+          .map((b) => b.content || "")
+          .join("\n")
+          .trim();
+        const hasThinking = blocks.some((b) => b.type === "thinking");
+
+        const turnToolCalls = turnToolCallIndices.length > 0
+          ? turnToolCallIndices.map((idx) => globalToolCalls[idx])
+          : undefined;
+
+        if (!finalText && !hasThinking && !turnToolCalls) continue;
+
+        if (turnToolCallIndices.length > 0) {
+          const globalToLocal = new Map<number, number>();
+          turnToolCallIndices.forEach((gIdx, lIdx) => globalToLocal.set(gIdx, lIdx));
+          for (const b of blocks) {
+            if (b.type === "tool_call" && b.toolCallIdx !== undefined) {
+              b.toolCallIdx = globalToLocal.get(b.toolCallIdx) ?? b.toolCallIdx;
+            }
+          }
+        }
+
+        this.messages.push({
+          id: `assistant-turn-${this.messages.length}`,
+          role: "assistant",
+          content: finalText,
+          toolCalls: turnToolCalls,
+          blocks: blocks.length > 0 ? blocks : undefined,
+          status: "complete" as const,
+          timestamp: Date.now(),
+          _realContent: true,
+        } as ChatMessage & { _realContent: boolean });
+      }
+    }
+
+    const msgCount = this.messages.length;
+    const costUsd = session.metadata.cost?.session_cost_usd ?? 0;
+    const costStr = costUsd > 0 ? ` | $${costUsd.toFixed(2)}` : "";
+    const modelStr = session.metadata.model ? ` | ${session.metadata.model}` : "";
+
+    this.postMessage({ type: "loadHistory", messages: this.messages, compactMode: true });
+    this.postMessage({
+      type: "status",
+      text: `Viewing: ${title.slice(0, 50)}${msgCount ? ` (${msgCount} msgs${costStr}${modelStr})` : ""}`
+    });
+    this.postMessage({
+      type: "info",
+      message: `Viewing session: ${title.slice(0, 80)}\n${msgCount} messages | ${session.metadata.total_tokens.toLocaleString()} tokens${costStr}${modelStr}\n\nStart typing to resume this session and continue the conversation.`
+    });
+  }
+
   private async loadThread(threadId: string): Promise<void> {
     this.cleanup();
     this.messages = [];
@@ -770,6 +967,24 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       await this.engine.ensureRunning();
       this.api.setBaseUrl(this.engine.baseUrl);
       this.api.setToken(this.engine.token);
+
+      if (this.viewingSessionId) {
+        const sessionId = this.viewingSessionId;
+        const cfg = vscode.workspace.getConfiguration("brotherwhale");
+        const result = await this.api.resumeSessionThread(sessionId, {
+          model: cfg.get<string>("defaultModel", "deepseek-v4-pro"),
+          mode: cfg.get<string>("defaultMode", "agent"),
+        });
+        try {
+          await this.api.updateThread(result.thread_id, {
+            title: `Resumed: ${result.summary.slice(0, 50)}`,
+          });
+        } catch { /* non-critical */ }
+
+        this.viewingSessionId = null;
+        await this.loadThread(result.thread_id);
+        this.refreshThreadList();
+      }
 
       if (!this.currentThread) {
         const cfg = vscode.workspace.getConfiguration("brotherwhale");
@@ -1112,30 +1327,163 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         break;
       }
       case "/tokens": {
-        const cfg2 = vscode.workspace.getConfiguration("brotherwhale");
-        const currency2 = cfg2.get<string>("costCurrency", "usd");
-        const costStr2 = currency2 === "cny"
-          ? formatCostAmount(this.sessionCostCny, "cny")
-          : formatCostAmount(this.sessionCostUsd, "usd");
-        const cacheTotal = this.lastCacheHitTokens + this.lastCacheMissTokens;
-        const cacheRate = cacheTotal > 0 ? (this.lastCacheHitTokens / cacheTotal * 100).toFixed(1) : "N/A";
-        this.postMessage({ type: "info", message: `Token Usage (session):\n  Total input: ${this.totalInputTokens.toLocaleString()}\n  Total output: ${this.totalOutputTokens.toLocaleString()}\n  Last turn input: ${this.lastInputTokens.toLocaleString()}\n  Last turn output: ${this.lastOutputTokens.toLocaleString()}\n  Cache hit rate (last): ${cacheRate}%\n  Cache hit: ${this.lastCacheHitTokens.toLocaleString()} | miss: ${this.lastCacheMissTokens.toLocaleString()}\n  Estimated cost: ${costStr2}` });
+        const tokenArg = args.trim().toLowerCase();
+        
+        if (tokenArg === "history" || tokenArg === "all" || tokenArg === "today" || tokenArg.startsWith("since ")) {
+          try {
+            await this.engine.ensureRunning();
+            this.api.setBaseUrl(this.engine.baseUrl);
+            
+            let since: string | undefined;
+            let until: string | undefined;
+            
+            if (tokenArg === "today") {
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              since = today.toISOString();
+            } else if (tokenArg.startsWith("since ")) {
+              const dateStr = tokenArg.slice(6).trim();
+              try {
+                const date = new Date(dateStr);
+                since = date.toISOString();
+              } catch {
+                this.postMessage({ type: "error", message: `Invalid date format: ${dateStr}\nUsage: /tokens since YYYY-MM-DD` });
+                break;
+              }
+            }
+            
+            const usage = await this.api.getUsage({ since, until, group_by: "day" });
+            const totals = usage.totals;
+            const cacheRate = totals.cached_tokens > 0 
+              ? ((totals.cached_tokens / (totals.input_tokens + totals.cached_tokens)) * 100).toFixed(1) 
+              : "0";
+            
+            const timeRange = usage.since && usage.until 
+              ? `${new Date(usage.since).toLocaleDateString()} - ${new Date(usage.until).toLocaleDateString()}`
+              : "All time";
+            
+            this.postMessage({ 
+              type: "info", 
+              message: `Token Usage (history - ${timeRange}):
+  Total input: ${totals.input_tokens.toLocaleString()}
+  Total output: ${totals.output_tokens.toLocaleString()}
+  Cached tokens: ${totals.cached_tokens.toLocaleString()} (${cacheRate}% cache rate)
+  Reasoning tokens: ${totals.reasoning_tokens.toLocaleString()}
+  Total turns: ${totals.turns.toLocaleString()}
+  Estimated cost: $${totals.cost_usd.toFixed(2)}
+  
+Usage: /tokens [history|today|since <date>]` 
+            });
+          } catch (err) {
+            this.postMessage({ type: "error", message: `Failed to get usage history: ${(err as Error).message}` });
+          }
+        } else {
+          const cfg2 = vscode.workspace.getConfiguration("brotherwhale");
+          const currency2 = cfg2.get<string>("costCurrency", "usd");
+          const costStr2 = currency2 === "cny"
+            ? formatCostAmount(this.sessionCostCny, "cny")
+            : formatCostAmount(this.sessionCostUsd, "usd");
+          const cacheTotal = this.lastCacheHitTokens + this.lastCacheMissTokens;
+          const cacheRate = cacheTotal > 0 ? (this.lastCacheHitTokens / cacheTotal * 100).toFixed(1) : "N/A";
+          this.postMessage({ type: "info", message: `Token Usage (session):\n  Total input: ${this.totalInputTokens.toLocaleString()}\n  Total output: ${this.totalOutputTokens.toLocaleString()}\n  Last turn input: ${this.lastInputTokens.toLocaleString()}\n  Last turn output: ${this.lastOutputTokens.toLocaleString()}\n  Cache hit rate (last): ${cacheRate}%\n  Cache hit: ${this.lastCacheHitTokens.toLocaleString()} | miss: ${this.lastCacheMissTokens.toLocaleString()}\n  Estimated cost: ${costStr2}\n\nUsage: /tokens [history|today|since <date>] for historical data` });
+        }
         break;
       }
       case "/cost": {
-        const cfg3 = vscode.workspace.getConfiguration("brotherwhale");
-        const currency3 = cfg3.get<string>("costCurrency", "usd");
-        const costStr3 = currency3 === "cny"
-          ? formatCostAmount(this.sessionCostCny, "cny")
-          : formatCostAmount(this.sessionCostUsd, "usd");
-        const cacheTotal2 = this.lastCacheHitTokens + this.lastCacheMissTokens;
-        const cacheRate2 = cacheTotal2 > 0 ? (this.lastCacheHitTokens / cacheTotal2 * 100).toFixed(1) : "N/A";
-        this.postMessage({ type: "info", message: `Session Cost (approximate):\n  Total: ${costStr3}\n  Tokens: ↥${this.totalInputTokens.toLocaleString()} ↧${this.totalOutputTokens.toLocaleString()}\n  Cache hit rate: ${cacheRate2}% (hit: ${this.lastCacheHitTokens.toLocaleString()}, miss: ${this.lastCacheMissTokens.toLocaleString()})\n  Model: ${this.getCurrentModel()}` });
+        const costArg = args.trim().toLowerCase();
+        
+        if (costArg === "history" || costArg === "all" || costArg === "today" || costArg.startsWith("since ")) {
+          try {
+            await this.engine.ensureRunning();
+            this.api.setBaseUrl(this.engine.baseUrl);
+            
+            let since: string | undefined;
+            let until: string | undefined;
+            
+            if (costArg === "today") {
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              since = today.toISOString();
+            } else if (costArg.startsWith("since ")) {
+              const dateStr = costArg.slice(6).trim();
+              try {
+                const date = new Date(dateStr);
+                since = date.toISOString();
+              } catch {
+                this.postMessage({ type: "error", message: `Invalid date format: ${dateStr}\nUsage: /cost since YYYY-MM-DD` });
+                break;
+              }
+            }
+            
+            const usage = await this.api.getUsage({ since, until, group_by: "day" });
+            const totals = usage.totals;
+            const cacheRate = totals.cached_tokens > 0 
+              ? ((totals.cached_tokens / (totals.input_tokens + totals.cached_tokens)) * 100).toFixed(1) 
+              : "0";
+            
+            const timeRange = usage.since && usage.until 
+              ? `${new Date(usage.since).toLocaleDateString()} - ${new Date(usage.until).toLocaleDateString()}`
+              : "All time";
+            
+            const cfg3 = vscode.workspace.getConfiguration("brotherwhale");
+            const currency3 = cfg3.get<string>("costCurrency", "usd");
+            const costDisplay = currency3 === "cny" 
+              ? `¥${(totals.cost_usd * 7.2).toFixed(2)} (≈ $${totals.cost_usd.toFixed(2)})`
+              : `$${totals.cost_usd.toFixed(2)}`;
+            
+            this.postMessage({ 
+              type: "info", 
+              message: `Cost Summary (history - ${timeRange}):
+  Total cost: ${costDisplay}
+  Tokens: ↥${totals.input_tokens.toLocaleString()} ↧${totals.output_tokens.toLocaleString()}
+  Cache hit rate: ${cacheRate}% (${totals.cached_tokens.toLocaleString()} cached)
+  Reasoning tokens: ${totals.reasoning_tokens.toLocaleString()}
+  Total turns: ${totals.turns.toLocaleString()}
+  
+Usage: /cost [history|today|since <date>]` 
+            });
+          } catch (err) {
+            this.postMessage({ type: "error", message: `Failed to get cost history: ${(err as Error).message}` });
+          }
+        } else {
+          const cfg3 = vscode.workspace.getConfiguration("brotherwhale");
+          const currency3 = cfg3.get<string>("costCurrency", "usd");
+          const costStr3 = currency3 === "cny"
+            ? formatCostAmount(this.sessionCostCny, "cny")
+            : formatCostAmount(this.sessionCostUsd, "usd");
+          const cacheTotal2 = this.lastCacheHitTokens + this.lastCacheMissTokens;
+          const cacheRate2 = cacheTotal2 > 0 ? (this.lastCacheHitTokens / cacheTotal2 * 100).toFixed(1) : "N/A";
+          this.postMessage({ type: "info", message: `Session Cost (approximate):\n  Total: ${costStr3}\n  Tokens: ↥${this.totalInputTokens.toLocaleString()} ↧${this.totalOutputTokens.toLocaleString()}\n  Cache hit rate: ${cacheRate2}% (hit: ${this.lastCacheHitTokens.toLocaleString()}, miss: ${this.lastCacheMissTokens.toLocaleString()})\n  Model: ${this.getCurrentModel()}\n\nUsage: /cost [history|today|since <date>] for historical data` });
+        }
         break;
       }
       case "/status": {
-        const running = this.engine.isRunning;
-        this.postMessage({ type: "info", message: `Engine: ${running ? "Running" : "Stopped"}\nPort: ${this.engine.port}\nThread: ${this.currentThread ? this.currentThread.id.slice(0, 12) + "..." : "None"}\nMode: ${cfg.get<string>("defaultMode", "agent")}\nModel: ${cfg.get<string>("defaultModel", "deepseek-v4-pro")}` });
+        try {
+          await this.engine.ensureRunning();
+          this.api.setBaseUrl(this.engine.baseUrl);
+          
+          const runtimeInfo = await this.api.getRuntimeInfo();
+          const running = this.engine.isRunning;
+          const authInfo = runtimeInfo.auth_required ? "✓ (token required)" : "✗ (no auth)";
+          
+          this.postMessage({ 
+            type: "info", 
+            message: `Runtime Status:
+  Engine: ${running ? "Running ✓" : "Stopped ✗"}
+  Host: ${runtimeInfo.bind_host}:${runtimeInfo.port}
+  Version: ${runtimeInfo.version}
+  Auth: ${authInfo}
+  Thread: ${this.currentThread ? this.currentThread.id.slice(0, 12) + "..." : "None"}
+  Mode: ${cfg.get<string>("defaultMode", "agent")}
+  Model: ${cfg.get<string>("defaultModel", "deepseek-v4-pro")}` 
+          });
+        } catch (err) {
+          const running = this.engine.isRunning;
+          this.postMessage({ 
+            type: "info", 
+            message: `Engine: ${running ? "Running" : "Stopped"}\nPort: ${this.engine.port}\nThread: ${this.currentThread ? this.currentThread.id.slice(0, 12) + "..." : "None"}\nMode: ${cfg.get<string>("defaultMode", "agent")}\nModel: ${cfg.get<string>("defaultModel", "deepseek-v4-pro")}\n(Runtime info unavailable: ${(err as Error).message})` 
+          });
+        }
         break;
       }
       case "/home": {
@@ -1143,8 +1491,29 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         break;
       }
       case "/workspace": {
-        const ws = args.trim() || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "N/A";
-        this.postMessage({ type: "info", message: `Workspace: ${ws}` });
+        try {
+          await this.engine.ensureRunning();
+          this.api.setBaseUrl(this.engine.baseUrl);
+          
+          const status = await this.api.getWorkspaceStatus();
+          const wsPath = status.workspace;
+          const gitInfo = status.git_repo
+            ? `\n  Git repo: ✓
+  Branch: ${status.branch || "N/A"}
+  Staged: ${status.staged} files
+  Unstaged: ${status.unstaged} files
+  Untracked: ${status.untracked} files
+  Ahead/Behind: ${status.ahead ?? 0}/${status.behind ?? 0}`
+            : "\n  Git repo: ✗ (not a git repository)";
+          
+          this.postMessage({ 
+            type: "info", 
+            message: `Workspace: ${wsPath}${gitInfo}\n\nUsage: /workspace [path] to change workspace (not implemented in GUI)` 
+          });
+        } catch (err) {
+          const ws = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "N/A";
+          this.postMessage({ type: "info", message: `Workspace: ${ws}\n(Git status unavailable: ${(err as Error).message})` });
+        }
         break;
       }
       case "/task": {
@@ -1267,6 +1636,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
 /workspace [path] - Show/set workspace
 /trust [on|off] - Toggle trust mode
 /verbose [on|off] - Toggle verbose mode
+/skills - List all available skills with status
+/skill <name> [on|off] - Enable or disable a skill
 /init - Open settings for initialization
 /mcp - Open MCP settings
 /provider - Show provider info
@@ -1276,11 +1647,11 @@ export class ChatProvider implements vscode.WebviewViewProvider {
 
 Commands with limited support in GUI:
 /task, /jobs, /note, /memory, /undo, /retry, /share,
-/goal, /skills, /skill, /network, /queue, /stash,
-/hooks, /subagents, /agent, /attach, /anchor, /sessions,
-/load, /cycles, /cycle, /recall, /relay, /lsp, /review,
-/restore, /rlm, /change, /cache, /profile, /translate,
-/system, /edit, /diff, /logout, /tokens, /cost, /home
+/goal, /network, /queue, /stash, /hooks, /subagents,
+/agent, /attach, /anchor, /sessions, /load, /cycles,
+/cycle, /recall, /relay, /lsp, /review, /restore, /rlm,
+/change, /cache, /profile, /translate, /system, /edit,
+/diff, /logout, /tokens, /cost, /home
 
 Use the TUI for full command support.` });
         break;
@@ -1350,10 +1721,100 @@ Use the TUI for full command support.` });
         }
         break;
       }
-      case "/skills":
-      case "/skill":
-        notAvailable();
+      case "/skills": {
+        try {
+          await this.engine.ensureRunning();
+          this.api.setBaseUrl(this.engine.baseUrl);
+          const result = await this.api.listSkills();
+          const skills = result.skills;
+          if (skills && skills.length > 0) {
+            const userSkills = skills.filter(s => !s.is_bundled);
+            const bundledSkills = skills.filter(s => s.is_bundled);
+
+            let output = `Available skills (${skills.length}):\n─────────────────────────────\n`;
+
+            if (userSkills.length > 0) {
+              output += `Your skills (${userSkills.length}):\n`;
+              for (const s of userSkills) {
+                const statusIcon = s.enabled ? "✓" : "○";
+                output += `  ${statusIcon} /${s.name} - ${s.description || "(no description)"}\n`;
+              }
+              if (bundledSkills.length > 0) output += "\n";
+            }
+
+            if (bundledSkills.length > 0) {
+              output += `Built-in skills (${bundledSkills.length}):\n`;
+              if (userSkills.length > 0) {
+                const names = bundledSkills.map(s => `/${s.name}`).join(", ");
+                output += `  ${names}\n`;
+                output += `  (run /skills <name> for details on a built-in)\n`;
+              } else {
+                for (const s of bundledSkills) {
+                  const statusIcon = s.enabled ? "✓" : "○";
+                  output += `  ${statusIcon} /${s.name} - ${s.description || "(no description)"}\n`;
+                }
+              }
+            }
+
+            const warnings = result.warnings && result.warnings.length > 0 
+              ? `\nWarnings:\n${result.warnings.map(w => `  - ${w}`).join("\n")}\n` 
+              : "";
+
+            const dirInfo = result.directories && result.directories.length > 1
+              ? `Skills directories:\n${result.directories.map(d => `  - ${d}`).join("\n")}`
+              : `Skills directory: ${result.directory}`;
+
+            this.postMessage({ 
+              type: "info", 
+              message: `${output}\nUse /skill <name> [on|off] to enable/disable\n${dirInfo}${warnings}` 
+            });
+          } else {
+            const dirInfo = result.directories && result.directories.length > 1
+              ? `Skills directories:\n${result.directories.map(d => `  - ${d}`).join("\n")}`
+              : `Skills directory: ${result.directory}`;
+            this.postMessage({ 
+              type: "info", 
+              message: `No skills found.\n${dirInfo}\n\nSkills are auto-triggered when enabled and task matches.\nCreate skills in ~/.codewhale/skills/<name>/SKILL.md` 
+            });
+          }
+        } catch (err) {
+          this.postMessage({ type: "error", message: `Failed to list skills: ${(err as Error).message}` });
+        }
         break;
+      }
+      case "/skill": {
+        const parts = args.trim().split(/\s+/);
+        const skillName = parts[0];
+        const action = parts[1]?.toLowerCase() || "";
+        
+        if (!skillName) {
+          this.postMessage({ type: "error", message: "Usage: /skill <name> [on|off]" });
+          break;
+        }
+        
+        try {
+          await this.engine.ensureRunning();
+          this.api.setBaseUrl(this.engine.baseUrl);
+          
+          if (action === "on" || action === "enable" || action === "") {
+            const result = await this.api.setSkillEnabled(skillName, true);
+            this.postMessage({ type: "info", message: `Skill '${result.name}' enabled. It will auto-trigger when task matches.` });
+          } else if (action === "off" || action === "disable") {
+            const result = await this.api.setSkillEnabled(skillName, false);
+            this.postMessage({ type: "info", message: `Skill '${result.name}' disabled.` });
+          } else {
+            this.postMessage({ type: "error", message: `Unknown action: ${action}\nUsage: /skill <name> [on|off]` });
+          }
+        } catch (err) {
+          const errorMsg = (err as Error).message;
+          if (errorMsg.includes("not found")) {
+            this.postMessage({ type: "error", message: `Skill '${skillName}' not found. Use /skills to list available skills.` });
+          } else {
+            this.postMessage({ type: "error", message: `Failed to toggle skill: ${errorMsg}` });
+          }
+        }
+        break;
+      }
       case "/network":
         notAvailable();
         break;
@@ -1438,12 +1899,99 @@ Use the TUI for full command support.` });
         }
         break;
       }
-      case "/sessions":
-        this.postMessage({ type: "info", message: "Use the sidebar thread list to manage sessions." });
+      case "/sessions": {
+        try {
+          await this.engine.ensureRunning();
+          this.api.setBaseUrl(this.engine.baseUrl);
+          
+          const searchArg = args.trim();
+          const searchMatch = searchArg.match(/^search\s+(.+)$/i);
+          const searchQuery = searchMatch ? searchMatch[1].trim() : undefined;
+          
+          const result = await this.api.listSessions({ limit: 20, search: searchQuery });
+          const sessions = result.sessions;
+          
+          if (sessions && sessions.length > 0) {
+            const lines = sessions.map((s) => {
+              const date = new Date(s.updated_at).toLocaleDateString();
+              const tokens = s.total_tokens > 0 ? ` (${s.total_tokens.toLocaleString()} tokens)` : "";
+              const mode = s.mode || "agent";
+              const costUsd = s.cost?.session_cost_usd ?? 0;
+              const cost = costUsd > 0 ? ` $${costUsd.toFixed(2)}` : "";
+              const shortId = s.id.slice(0, 8);
+              return `${shortId}: "${s.title.slice(0, 40)}" [${mode}] ${date}${tokens}${cost}`;
+            });
+            
+            const searchHint = searchQuery ? ` matching "${searchQuery}"` : "";
+            this.postMessage({ 
+              type: "info", 
+              message: `Saved sessions${searchHint} (${sessions.length}):\n${lines.join("\n")}\n\nUsage: /load <session-id> to resume a session\nYou can use short ID (e.g., /load ${sessions[0]?.id.slice(0, 8)})\n/sessions search <query> to filter` 
+            });
+          } else {
+            const searchHint = searchQuery ? ` matching "${searchQuery}"` : "";
+            this.postMessage({ 
+              type: "info", 
+              message: `No saved sessions found${searchHint}.\n\nSessions are created when you use /save or /export.\nUsage: /sessions [search <query>]` 
+            });
+          }
+        } catch (err) {
+          this.postMessage({ type: "error", message: `Failed to list sessions: ${(err as Error).message}` });
+        }
         break;
-      case "/load":
-        this.postMessage({ type: "info", message: "Use the sidebar thread list to load sessions." });
+      }
+      case "/load": {
+        const sessionIdInput = args.trim();
+
+        if (!sessionIdInput) {
+          this.postMessage({ type: "error", message: "Usage: /load <session-id>\nUse /sessions to find session IDs.\nYou can use short ID (e.g., first 8 characters)." });
+          break;
+        }
+
+        try {
+          await this.engine.ensureRunning();
+          this.api.setBaseUrl(this.engine.baseUrl);
+
+          let sessionId = sessionIdInput;
+
+          if (sessionIdInput.length < 36) {
+            const sessionsResult = await this.api.listSessions({ limit: 100 });
+            const sessions = sessionsResult.sessions || [];
+
+            const matches = sessions.filter(s => s.id.startsWith(sessionIdInput));
+
+            if (matches.length === 0) {
+              this.postMessage({
+                type: "error",
+                message: `No session matches '${sessionIdInput}'.\nUse /sessions to list available sessions.`
+              });
+              break;
+            } else if (matches.length === 1) {
+              sessionId = matches[0].id;
+            } else {
+              const matchLines = matches.map((s, idx) => {
+                const date = new Date(s.updated_at).toLocaleDateString();
+                return `${idx + 1}. ${s.id}: "${s.title.slice(0, 40)}" (${date})`;
+              });
+
+              this.postMessage({
+                type: "info",
+                message: `Multiple sessions match '${sessionIdInput}' (${matches.length}):\n${matchLines.join("\n")}\n\nUse /load <full-id> to select specific session.`
+              });
+              break;
+            }
+          }
+
+          await this.loadSessionMessages(sessionId);
+        } catch (err) {
+          const errorMsg = (err as Error).message;
+          if (errorMsg.includes("not found")) {
+            this.postMessage({ type: "error", message: `Session '${sessionIdInput}' not found. Use /sessions to list available sessions.` });
+          } else {
+            this.postMessage({ type: "error", message: `Failed to load session: ${errorMsg}` });
+          }
+        }
         break;
+      }
       case "/cycles":
       case "/cycle":
       case "/recall":
@@ -1564,9 +2112,119 @@ Use the TUI for full command support.` });
       case "/statusline":
         notAvailable();
         break;
-      case "/jobs":
-        this.postMessage({ type: "info", message: "Background jobs are managed by the TUI runtime. The GUI does not expose a job queue. Use the TUI for /jobs support." });
+      case "/jobs": {
+        const jobsArg = args.trim().toLowerCase();
+        const jobsParts = jobsArg.split(/\s+/);
+        const jobsSub = jobsParts[0] || "list";
+        const jobsId = jobsParts[1] || "";
+        
+        try {
+          await this.engine.ensureRunning();
+          this.api.setBaseUrl(this.engine.baseUrl);
+          
+          if (jobsSub === "list" || jobsSub === "") {
+            const automations = await this.api.listAutomations();
+            
+            if (automations && automations.length > 0) {
+              const lines = automations.map((a) => {
+                const statusIcon = a.status === "active" ? "✓" : "○";
+                const nextRun = a.next_run_at 
+                  ? `Next: ${new Date(a.next_run_at).toLocaleString()}`
+                  : "No scheduled run";
+                const lastRun = a.last_run_at 
+                  ? `Last: ${new Date(a.last_run_at).toLocaleString()}`
+                  : "Never run";
+                return `${statusIcon} ${a.id.slice(0, 8)}: "${a.name}" [${a.status}] ${nextRun} | ${lastRun}`;
+              });
+              
+              this.postMessage({ 
+                type: "info", 
+                message: `Automations (${automations.length}):\n${lines.join("\n")}\n\nUsage: /jobs show <id> | /jobs run <id> | /jobs pause <id> | /jobs resume <id> | /jobs history <id>` 
+              });
+            } else {
+              this.postMessage({ 
+                type: "info", 
+                message: `No automations found.\n\nAutomations are scheduled tasks that run automatically.\nCreate via TUI or use the automations API.\nUsage: /jobs list` 
+              });
+            }
+          } else if (jobsSub === "show" && jobsId) {
+            const automation = await this.api.getAutomation(jobsId);
+            const nextRun = automation.next_run_at 
+              ? new Date(automation.next_run_at).toLocaleString()
+              : "Not scheduled";
+            const lastRun = automation.last_run_at 
+              ? new Date(automation.last_run_at).toLocaleString()
+              : "Never";
+            
+            this.postMessage({ 
+              type: "info", 
+              message: `Automation: ${automation.name}
+  ID: ${automation.id}
+  Status: ${automation.status}
+  Schedule: ${automation.rrule}
+  Next run: ${nextRun}
+  Last run: ${lastRun}
+  Prompt: ${automation.prompt.slice(0, 200)}${automation.prompt.length > 200 ? "..." : ""}
+  Workspaces: ${automation.cwds.length > 0 ? automation.cwds.join(", ") : "N/A"}
+  
+Usage: /jobs run ${automation.id.slice(0, 8)} | /jobs pause ${automation.id.slice(0, 8)} | /jobs history ${automation.id.slice(0, 8)}` 
+            });
+          } else if (jobsSub === "run" && jobsId) {
+            const automation = await this.api.runAutomation(jobsId);
+            this.postMessage({ 
+              type: "info", 
+              message: `Automation triggered: ${automation.name} (${automation.id.slice(0, 8)})\nStatus: ${automation.status}\nThe automation will execute according to its schedule.` 
+            });
+          } else if (jobsSub === "pause" && jobsId) {
+            const automation = await this.api.pauseAutomation(jobsId);
+            this.postMessage({ 
+              type: "info", 
+              message: `Automation paused: ${automation.name} (${automation.id.slice(0, 8)})\nStatus: ${automation.status}\nUse /jobs resume ${automation.id.slice(0, 8)} to resume.` 
+            });
+          } else if (jobsSub === "resume" && jobsId) {
+            const automation = await this.api.resumeAutomation(jobsId);
+            this.postMessage({ 
+              type: "info", 
+              message: `Automation resumed: ${automation.name} (${automation.id.slice(0, 8)})\nStatus: ${automation.status}\nNext run: ${automation.next_run_at ? new Date(automation.next_run_at).toLocaleString() : "Not scheduled"}` 
+            });
+          } else if (jobsSub === "history" && jobsId) {
+            const runs = await this.api.listAutomationRuns(jobsId, { limit: 10 });
+            
+            if (runs && runs.length > 0) {
+              const lines = runs.map((r) => {
+                const statusIcon = r.status === "completed" ? "✓" : 
+                                   r.status === "running" ? "⏳" : 
+                                   r.status === "failed" ? "✗" : "○";
+                const scheduled = new Date(r.scheduled_for).toLocaleString();
+                const started = r.started_at ? new Date(r.started_at).toLocaleString() : "N/A";
+                const ended = r.ended_at ? new Date(r.ended_at).toLocaleString() : "N/A";
+                const error = r.error ? ` Error: ${r.error.slice(0, 50)}` : "";
+                return `${statusIcon} ${r.id.slice(0, 8)}: ${scheduled} → ${started} → ${ended} [${r.status}]${error}`;
+              });
+              
+              this.postMessage({ 
+                type: "info", 
+                message: `Automation runs (${runs.length}):\n${lines.join("\n")}\n\nUsage: /jobs history <id>` 
+              });
+            } else {
+              this.postMessage({ 
+                type: "info", 
+                message: `No run history found for automation ${jobsId}.\n\nThe automation may not have executed yet.` 
+              });
+            }
+          } else {
+            this.postMessage({ type: "error", message: `Usage: /jobs list | /jobs show <id> | /jobs run <id> | /jobs pause <id> | /jobs resume <id> | /jobs history <id>` });
+          }
+        } catch (err) {
+          const errorMsg = (err as Error).message;
+          if (errorMsg.includes("not found")) {
+            this.postMessage({ type: "error", message: `Automation '${jobsId}' not found. Use /jobs list to see available automations.` });
+          } else {
+            this.postMessage({ type: "error", message: `Failed to manage automations: ${errorMsg}` });
+          }
+        }
         break;
+      }
       case "/logout":
         this.postMessage({ type: "info", message: "To change API key, update the DEEPSEEK_API_KEY environment variable and restart VSCode." });
         break;
@@ -2470,6 +3128,7 @@ Use the TUI for full command support.` });
     this.diffContentStore.clear();
     this.diffProviderDisposable?.dispose();
     this.diffProviderDisposable = null;
+    this.viewingSessionId = null;
   }
 
   dispose(): void {
