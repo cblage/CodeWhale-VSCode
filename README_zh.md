@@ -1,12 +1,10 @@
-# CodeWhale — VS Code AI 编程助手
+# CodeWhale for VS Code — CodeWhale AI 代理的图形化前端
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/HengQuWorld/CodeWhale-VSCode)
+[![Version](https://img.shields.io/badge/version-0.1.1-blue)](https://github.com/HengQuWorld/CodeWhale-VSCode)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.85+-informational)](https://code.visualstudio.com/)
 
-> **CodeWhale VSCode** 是 [CodeWhale](https://github.com/Hmbown/CodeWhale.git) 的 VSCode 图形化扩展，为终端 AI 编程助手提供原生侧边栏界面。
-
-CodeWhale VSCode 是 [CodeWhale](https://github.com/Hmbown/CodeWhale.git) 的 **图形化前端**，将终端 AI 编程助手集成到 VS Code 原生侧边栏中。基于 DeepSeek V4 模型系列，它具备完整的编程代理能力 —— 读取工作区、编写文件、运行命令、搜索网络、管理多步骤任务 —— 一切都在编辑器内完成。
+CodeWhale for VS Code 是 [CodeWhale](https://github.com/Hmbown/CodeWhale.git) 的 **图形化前端**，将终端 AI 编程代理封装为 VS Code 原生侧边栏体验。你无需离开编辑器，即可获得 CodeWhale 的全部代理能力 —— 读取工作区、编写文件、运行命令、搜索网络、管理多步骤任务。
 
 ## 🔗 上游项目
 
@@ -34,7 +32,7 @@ CodeWhale VSCode 是 [CodeWhale](https://github.com/Hmbown/CodeWhale.git) 的 **
 
 扩展会自动在标准安装路径中查找 `codewhale` 程序。在 macOS 上，它可能位于 `/opt/homebrew/lib/node_modules/codewhale/bin/downloads/codewhale`。
 
-> ⚠️ **重要**：这是一个 **VSCode 扩展**，是 CodeWhale 的 GUI 层。核心 AI 引擎（`codewhale` CLI）需要从上游项目单独安装：[CodeWhale](https://github.com/Hmbown/CodeWhale.git)。
+> ⚠️ **重要**：本扩展**仅为 GUI 层**，不包含 AI 引擎。核心 CodeWhale 引擎（`codewhale` CLI）需要从上游项目单独安装：[CodeWhale](https://github.com/Hmbown/CodeWhale.git)。
 
 ---
 
@@ -218,7 +216,7 @@ npx @vscode/vsce package --no-dependencies  # 打包 VSIX
 
 ## 相关项目
 
-- [CodeWhale](https://github.com/Hmbown/CodeWhale.git) — 为本扩展提供支持的终端 AI 编程助手引擎。
+- [CodeWhale](https://github.com/Hmbown/CodeWhale.git) — 为本扩展提供支持的上游终端 AI 编程代理引擎。
 
 ---
 

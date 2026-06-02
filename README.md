@@ -1,12 +1,10 @@
-# CodeWhale — AI Coding Agent for VS Code
+# CodeWhale for VS Code — GUI Frontend for the CodeWhale AI Agent
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/HengQuWorld/CodeWhale-VSCode)
+[![Version](https://img.shields.io/badge/version-0.1.1-blue)](https://github.com/HengQuWorld/CodeWhale-VSCode)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.85+-informational)](https://code.visualstudio.com/)
 
-> **CodeWhale VSCode** 是 [CodeWhale](https://github.com/Hmbown/CodeWhale.git) 的 VSCode 图形化扩展，为终端 AI 编程助手提供原生侧边栏界面。
-
-CodeWhale VSCode is the **graphical frontend** for [CodeWhale](https://github.com/Hmbown/CodeWhale.git), bringing the terminal-based AI coding agent into VS Code as a native sidebar chat. Powered by the DeepSeek V4 model family, it functions as a full coding agent — reading your workspace, writing files, running commands, searching the web, and managing multi-step tasks — all from within the editor.
+CodeWhale for VS Code is the **graphical frontend** for [CodeWhale](https://github.com/Hmbown/CodeWhale.git), a terminal-based AI coding agent. This extension wraps CodeWhale into a native VS Code sidebar experience — so you get the same full agent capabilities (reading your workspace, writing files, running commands, searching the web, managing multi-step tasks) without leaving the editor.
 
 ## 🔗 Upstream Project
 
@@ -34,7 +32,7 @@ Before using this extension, you must have the **CodeWhale engine** installed an
 
 The extension will attempt to locate the `codewhale` binary automatically from standard installation paths. On macOS, it may be under `/opt/homebrew/lib/node_modules/codewhale/bin/downloads/codewhale`.
 
-> ⚠️ **Important**: This is a **VSCode extension** — it is the GUI layer for CodeWhale. The core AI engine (`codewhale` CLI) must be installed separately from the upstream project: [CodeWhale](https://github.com/Hmbown/CodeWhale.git).
+> ⚠️ **Important**: This extension is a **GUI layer only** — it does not include the AI engine. The core CodeWhale engine (`codewhale` CLI) must be installed separately from the upstream project: [CodeWhale](https://github.com/Hmbown/CodeWhale.git).
 
 ---
 
@@ -218,7 +216,7 @@ npx @vscode/vsce package --no-dependencies  # build VSIX
 
 ## Related Projects
 
-- [CodeWhale](https://github.com/Hmbown/CodeWhale.git) — The terminal-based AI agent that powers this extension.
+- [CodeWhale](https://github.com/Hmbown/CodeWhale.git) — The upstream terminal-based AI coding agent engine that powers this extension.
 
 ---
 
