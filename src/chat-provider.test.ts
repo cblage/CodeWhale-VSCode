@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { parseDiffToSides } from "./chat-provider";
 
 interface ModelPricing {
   inputCacheHitPerMillion: number;
@@ -674,5 +675,822 @@ describe("Event sequence tracking", () => {
     const params = new URLSearchParams();
     params.set("since_seq", String(sinceSeq ?? 0));
     expect(params.get("since_seq")).toBe("0");
+  });
+});
+
+describe("parseDiffToSides", () => {
+  it("extracts old and new content from a simple diff", () => {
+    const diff = [
+      "@@ -1,3 +1,3 @@",
+      " line1",
+      "-line2_old",
+      "+line2_new",
+      " line3",
+    ].join("\n");
+    const { oldContent, newContent } = parseDiffToSides(diff);
+    expect(oldContent).toBe("line1\nline2_old\nline3");
+    expect(newContent).toBe("line1\nline2_new\nline3");
+  });
+
+  it("handles pure addition (new file)", () => {
+    const diff = [
+      "@@ -0,0 +1,2 @@",
+      "+new line 1",
+      "+new line 2",
+    ].join("\n");
+    const { oldContent, newContent } = parseDiffToSides(diff);
+    expect(oldContent).toBe("");
+    expect(newContent).toBe("new line 1\nnew line 2");
+  });
+
+  it("handles pure deletion", () => {
+    const diff = [
+      "@@ -1,2 +0,0 @@",
+      "-deleted line 1",
+      "-deleted line 2",
+    ].join("\n");
+    const { oldContent, newContent } = parseDiffToSides(diff);
+    expect(oldContent).toBe("deleted line 1\ndeleted line 2");
+    expect(newContent).toBe("");
+  });
+
+  it("handles multiple hunks", () => {
+    const diff = [
+      "@@ -1,3 +1,3 @@",
+      " line1",
+      "-old2",
+      "+new2",
+      " line3",
+      "@@ -10,3 +10,3 @@",
+      " line10",
+      "-old11",
+      "+new11",
+      " line12",
+    ].join("\n");
+    const { oldContent, newContent } = parseDiffToSides(diff);
+    expect(oldContent).toBe("line1\nold2\nline3\nline10\nold11\nline12");
+    expect(newContent).toBe("line1\nnew2\nline3\nline10\nnew11\nline12");
+  });
+
+  it("skips diff header lines", () => {
+    const diff = [
+      "diff --git a/foo.ts b/foo.ts",
+      "index abc123..def456 100644",
+      "--- a/foo.ts",
+      "+++ b/foo.ts",
+      "@@ -1,2 +1,2 @@",
+      " line1",
+      "-old",
+      "+new",
+    ].join("\n");
+    const { oldContent, newContent } = parseDiffToSides(diff);
+    expect(oldContent).toBe("line1\nold");
+    expect(newContent).toBe("line1\nnew");
+  });
+
+  it("handles \\ No newline at end of file", () => {
+    const diff = [
+      "@@ -1,2 +1,2 @@",
+      " line1",
+      "-old",
+      "+new",
+      "\\ No newline at end of file",
+    ].join("\n");
+    const { oldContent, newContent } = parseDiffToSides(diff);
+    expect(oldContent).toBe("line1\nold");
+    expect(newContent).toBe("line1\nnew");
+  });
+
+  it("returns empty strings for diff with no hunks", () => {
+    const diff = "diff --git a/foo.ts b/foo.ts\nindex abc..def 100644\n--- a/foo.ts\n+++ b/foo.ts";
+    const { oldContent, newContent } = parseDiffToSides(diff);
+    expect(oldContent).toBe("");
+    expect(newContent).toBe("");
+  });
+
+  it("returns empty strings for empty diff", () => {
+    const { oldContent, newContent } = parseDiffToSides("");
+    expect(oldContent).toBe("");
+    expect(newContent).toBe("");
+  });
+
+  it("preserves context lines in both sides", () => {
+    const diff = [
+      "@@ -1,5 +1,5 @@",
+      " ctx1",
+      " ctx2",
+      "-removed",
+      "+added",
+      " ctx3",
+      " ctx4",
+    ].join("\n");
+    const { oldContent, newContent } = parseDiffToSides(diff);
+    expect(oldContent).toBe("ctx1\nctx2\nremoved\nctx3\nctx4");
+    expect(newContent).toBe("ctx1\nctx2\nadded\nctx3\nctx4");
+  });
+
+  it("handles consecutive additions and deletions", () => {
+    const diff = [
+      "@@ -1,4 +1,4 @@",
+      "-old1",
+      "-old2",
+      "+new1",
+      "+new2",
+      "+new3",
+      " ctx",
+    ].join("\n");
+    const { oldContent, newContent } = parseDiffToSides(diff);
+    expect(oldContent).toBe("old1\nold2\nctx");
+    expect(newContent).toBe("new1\nnew2\nnew3\nctx");
+  });
+});
+
+describe("parseDiffStats", () => {
+  function parseDiffStats(diff: string): { added: number; removed: number } {
+    let added = 0;
+    let removed = 0;
+    for (const line of diff.split("\n")) {
+      if (line.startsWith("+") && !line.startsWith("+++")) added++;
+      else if (line.startsWith("-") && !line.startsWith("---")) removed++;
+    }
+    return { added, removed };
+  }
+
+  it("counts added and removed lines", () => {
+    const diff = [
+      "@@ -1,3 +1,3 @@",
+      " line1",
+      "-line2_old",
+      "+line2_new",
+      " line3",
+    ].join("\n");
+    const stats = parseDiffStats(diff);
+    expect(stats.added).toBe(1);
+    expect(stats.removed).toBe(1);
+  });
+
+  it("counts multiple additions and deletions", () => {
+    const diff = [
+      "@@ -1,5 +1,6 @@",
+      "-old1",
+      "-old2",
+      "+new1",
+      "+new2",
+      "+new3",
+      " ctx",
+    ].join("\n");
+    const stats = parseDiffStats(diff);
+    expect(stats.added).toBe(3);
+    expect(stats.removed).toBe(2);
+  });
+
+  it("excludes +++ and --- header lines", () => {
+    const diff = [
+      "--- a/foo.ts",
+      "+++ b/foo.ts",
+      "@@ -1,1 +1,1 @@",
+      "-old",
+      "+new",
+    ].join("\n");
+    const stats = parseDiffStats(diff);
+    expect(stats.added).toBe(1);
+    expect(stats.removed).toBe(1);
+  });
+
+  it("returns zeros for empty diff", () => {
+    const stats = parseDiffStats("");
+    expect(stats.added).toBe(0);
+    expect(stats.removed).toBe(0);
+  });
+
+  it("returns zeros for diff with only context lines", () => {
+    const diff = "@@ -1,3 +1,3 @@\n line1\n line2\n line3";
+    const stats = parseDiffStats(diff);
+    expect(stats.added).toBe(0);
+    expect(stats.removed).toBe(0);
+  });
+
+  it("handles pure addition diff", () => {
+    const diff = "@@ -0,0 +1,3 @@\n+line1\n+line2\n+line3";
+    const stats = parseDiffStats(diff);
+    expect(stats.added).toBe(3);
+    expect(stats.removed).toBe(0);
+  });
+
+  it("handles pure deletion diff", () => {
+    const diff = "@@ -1,3 +0,0 @@\n-line1\n-line2\n-line3";
+    const stats = parseDiffStats(diff);
+    expect(stats.added).toBe(0);
+    expect(stats.removed).toBe(3);
+  });
+});
+
+describe("extractDiffFromOutput", () => {
+  function extractDiffFromOutput(output: string): string | undefined {
+    const lines = output.split("\n");
+    let diffStart = -1;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.startsWith("diff --git ")) { diffStart = i; break; }
+      if (line.startsWith("--- ") && i + 2 < lines.length && lines[i + 1].startsWith("+++ ")) { diffStart = i; break; }
+      if (line.startsWith("@@")) { diffStart = i; break; }
+    }
+    if (diffStart < 0) return undefined;
+
+    let diffEnd = lines.length;
+    for (let i = diffStart + 1; i < lines.length; i++) {
+      const line = lines[i];
+      const nextLine = i + 1 < lines.length ? lines[i + 1] : "";
+      if (
+        line.trim() === "" &&
+        nextLine.trim() !== "" &&
+        !nextLine.startsWith("+") &&
+        !nextLine.startsWith("-") &&
+        !nextLine.startsWith("@@") &&
+        !nextLine.startsWith(" ") &&
+        !nextLine.startsWith("diff ") &&
+        !nextLine.startsWith("--- ") &&
+        !nextLine.startsWith("+++ ") &&
+        !nextLine.startsWith("index ") &&
+        !nextLine.startsWith("\\")
+      ) {
+        diffEnd = i + 1;
+        break;
+      }
+    }
+    return lines.slice(diffStart, diffEnd).join("\n");
+  }
+
+  it("extracts diff starting with diff --git header", () => {
+    const output = [
+      "I modified the file:",
+      "",
+      "diff --git a/foo.ts b/foo.ts",
+      "index abc..def 100644",
+      "--- a/foo.ts",
+      "+++ b/foo.ts",
+      "@@ -1,2 +1,2 @@",
+      " line1",
+      "-old",
+      "+new",
+    ].join("\n");
+    const diff = extractDiffFromOutput(output);
+    expect(diff).toBeDefined();
+    expect(diff!).toContain("diff --git a/foo.ts");
+    expect(diff!).toContain("-old");
+    expect(diff!).toContain("+new");
+  });
+
+  it("extracts diff starting with --- header", () => {
+    const output = [
+      "--- a/foo.ts",
+      "+++ b/foo.ts",
+      "@@ -1,1 +1,1 @@",
+      "-old",
+      "+new",
+    ].join("\n");
+    const diff = extractDiffFromOutput(output);
+    expect(diff).toBeDefined();
+    expect(diff!).toContain("--- a/foo.ts");
+  });
+
+  it("extracts diff starting with @@ hunk header", () => {
+    const output = [
+      "@@ -1,1 +1,1 @@",
+      "-old",
+      "+new",
+    ].join("\n");
+    const diff = extractDiffFromOutput(output);
+    expect(diff).toBeDefined();
+    expect(diff!).toContain("@@");
+  });
+
+  it("returns undefined when no diff markers found", () => {
+    const output = "Just some regular text\nNo diff here";
+    expect(extractDiffFromOutput(output)).toBeUndefined();
+  });
+
+  it("truncates diff at prose after blank line", () => {
+    const output = [
+      "diff --git a/foo.ts b/foo.ts",
+      "--- a/foo.ts",
+      "+++ b/foo.ts",
+      "@@ -1,1 +1,1 @@",
+      "-old",
+      "+new",
+      "",
+      "Summary of changes made.",
+    ].join("\n");
+    const diff = extractDiffFromOutput(output);
+    expect(diff).toBeDefined();
+    expect(diff!).not.toContain("Summary of changes");
+  });
+
+  it("includes diff content when followed by another hunk", () => {
+    const output = [
+      "diff --git a/foo.ts b/foo.ts",
+      "@@ -1,2 +1,2 @@",
+      "-old1",
+      "+new1",
+      "",
+      "@@ -5,2 +5,2 @@",
+      "-old2",
+      "+new2",
+    ].join("\n");
+    const diff = extractDiffFromOutput(output);
+    expect(diff).toBeDefined();
+    expect(diff!).toContain("@@ -5,2 +5,2 @@");
+    expect(diff!).toContain("-old2");
+  });
+
+  it("returns undefined for empty output", () => {
+    expect(extractDiffFromOutput("")).toBeUndefined();
+  });
+});
+
+describe("extractFilePathFromDiff", () => {
+  function extractFilePathFromDiff(diff: string): string {
+    for (const line of diff.split("\n")) {
+      const m = line.match(/^\+\+\+ b\/(.+)$/);
+      if (m) return m[1];
+    }
+    for (const line of diff.split("\n")) {
+      const m = line.match(/^--- a\/(.+)$/);
+      if (m) return m[1];
+    }
+    return "";
+  }
+
+  it("extracts file path from +++ b/ line", () => {
+    const diff = "diff --git a/src/foo.ts b/src/foo.ts\n--- a/src/foo.ts\n+++ b/src/foo.ts\n@@ -1 +1 @@";
+    expect(extractFilePathFromDiff(diff)).toBe("src/foo.ts");
+  });
+
+  it("falls back to --- a/ line when +++ b/ is missing", () => {
+    const diff = "--- a/src/bar.ts\n@@ -1 +1 @@\n-old\n+new";
+    expect(extractFilePathFromDiff(diff)).toBe("src/bar.ts");
+  });
+
+  it("returns empty string when no path found", () => {
+    const diff = "@@ -1 +1 @@\n-old\n+new";
+    expect(extractFilePathFromDiff(diff)).toBe("");
+  });
+
+  it("handles paths with spaces", () => {
+    const diff = "+++ b/my project/file.ts\n@@ -1 +1 @@";
+    expect(extractFilePathFromDiff(diff)).toBe("my project/file.ts");
+  });
+
+  it("prefers +++ b/ over --- a/", () => {
+    const diff = "--- a/old_name.ts\n+++ b/new_name.ts\n@@ -1 +1 @@";
+    expect(extractFilePathFromDiff(diff)).toBe("new_name.ts");
+  });
+});
+
+describe("isFileChangeTool", () => {
+  const FILE_CHANGE_TOOLS = new Set([
+    "write_file",
+    "edit_file",
+    "apply_patch",
+    "replace_text",
+    "delete_file",
+    "move_file",
+    "copy_file",
+    "create_directory",
+  ]);
+
+  function isFileChangeTool(toolName: string): boolean {
+    return FILE_CHANGE_TOOLS.has(toolName) || FILE_CHANGE_TOOLS.has(toolName.toLowerCase());
+  }
+
+  it("recognizes write_file as a file change tool", () => {
+    expect(isFileChangeTool("write_file")).toBe(true);
+  });
+
+  it("recognizes edit_file as a file change tool", () => {
+    expect(isFileChangeTool("edit_file")).toBe(true);
+  });
+
+  it("recognizes delete_file as a file change tool", () => {
+    expect(isFileChangeTool("delete_file")).toBe(true);
+  });
+
+  it("recognizes apply_patch as a file change tool", () => {
+    expect(isFileChangeTool("apply_patch")).toBe(true);
+  });
+
+  it("recognizes replace_text as a file change tool", () => {
+    expect(isFileChangeTool("replace_text")).toBe(true);
+  });
+
+  it("recognizes move_file as a file change tool", () => {
+    expect(isFileChangeTool("move_file")).toBe(true);
+  });
+
+  it("recognizes copy_file as a file change tool", () => {
+    expect(isFileChangeTool("copy_file")).toBe(true);
+  });
+
+  it("recognizes create_directory as a file change tool", () => {
+    expect(isFileChangeTool("create_directory")).toBe(true);
+  });
+
+  it("does not recognize read_file as a file change tool", () => {
+    expect(isFileChangeTool("read_file")).toBe(false);
+  });
+
+  it("does not recognize grep_files as a file change tool", () => {
+    expect(isFileChangeTool("grep_files")).toBe(false);
+  });
+
+  it("does not recognize exec_shell as a file change tool", () => {
+    expect(isFileChangeTool("exec_shell")).toBe(false);
+  });
+
+  it("is case-insensitive", () => {
+    expect(isFileChangeTool("Write_File")).toBe(true);
+    expect(isFileChangeTool("EDIT_FILE")).toBe(true);
+    expect(isFileChangeTool("DELETE_FILE")).toBe(true);
+  });
+});
+
+describe("extractFilePath", () => {
+  function extractFilePath(_toolName: string, input: Record<string, unknown>): string {
+    return (input.file_path || input.path || input.destination || input.source || "") as string;
+  }
+
+  it("extracts file_path first", () => {
+    expect(extractFilePath("write_file", { file_path: "/src/foo.ts", path: "/src/bar.ts" })).toBe("/src/foo.ts");
+  });
+
+  it("falls back to path when file_path is missing", () => {
+    expect(extractFilePath("edit_file", { path: "/src/bar.ts" })).toBe("/src/bar.ts");
+  });
+
+  it("falls back to destination for move_file", () => {
+    expect(extractFilePath("move_file", { source: "/src/old.ts", destination: "/src/new.ts" })).toBe("/src/new.ts");
+  });
+
+  it("falls back to source when others are missing", () => {
+    expect(extractFilePath("move_file", { source: "/src/old.ts" })).toBe("/src/old.ts");
+  });
+
+  it("returns empty string when no path fields exist", () => {
+    expect(extractFilePath("read_file", { content: "hello" })).toBe("");
+  });
+
+  it("returns empty string for empty input", () => {
+    expect(extractFilePath("write_file", {})).toBe("");
+  });
+});
+
+describe("extractToolNameFromSummary", () => {
+  function extractToolNameFromSummary(summary: string): string {
+    const idx = summary.indexOf(":");
+    if (idx > 0) return summary.slice(0, idx).trim();
+    const spaceIdx = summary.indexOf(" ");
+    if (spaceIdx > 0) return summary.slice(0, spaceIdx).trim();
+    return summary.trim();
+  }
+
+  it("extracts tool name before colon", () => {
+    expect(extractToolNameFromSummary("write_file: Created /src/foo.ts")).toBe("write_file");
+  });
+
+  it("extracts tool name before colon with spaces", () => {
+    expect(extractToolNameFromSummary("edit_file : Modified /src/bar.ts")).toBe("edit_file");
+  });
+
+  it("extracts tool name before space when no colon", () => {
+    expect(extractToolNameFromSummary("read_file /src/baz.ts")).toBe("read_file");
+  });
+
+  it("returns entire string when no colon or space", () => {
+    expect(extractToolNameFromSummary("exec_shell")).toBe("exec_shell");
+  });
+
+  it("handles empty string", () => {
+    expect(extractToolNameFromSummary("")).toBe("");
+  });
+});
+
+describe("friendlyToolName", () => {
+  const FRIENDLY_TOOL_NAMES: Record<string, string> = {
+    write_file: "Write File",
+    edit_file: "Edit File",
+    read_file: "Read File",
+    delete_file: "Delete File",
+    exec_shell: "Execute Shell",
+    apply_patch: "Apply Patch",
+    replace_text: "Replace Text",
+    move_file: "Move File",
+    copy_file: "Copy File",
+    create_directory: "Create Directory",
+    grep_files: "Search Files",
+    project_map: "Project Map",
+  };
+
+  function friendlyToolName(raw: string): string {
+    if (FRIENDLY_TOOL_NAMES[raw]) return FRIENDLY_TOOL_NAMES[raw];
+    if (raw.startsWith("mcp__")) return raw.slice(5).replace(/__/g, " / ");
+    return raw.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  it("returns friendly name for known tools", () => {
+    expect(friendlyToolName("write_file")).toBe("Write File");
+    expect(friendlyToolName("read_file")).toBe("Read File");
+    expect(friendlyToolName("exec_shell")).toBe("Execute Shell");
+  });
+
+  it("handles MCP tool names", () => {
+    expect(friendlyToolName("mcp__github__create_issue")).toBe("github / create_issue");
+  });
+
+  it("converts unknown snake_case names to Title Case", () => {
+    expect(friendlyToolName("some_custom_tool")).toBe("Some Custom Tool");
+  });
+
+  it("handles single word tool names", () => {
+    expect(friendlyToolName("search")).toBe("Search");
+  });
+});
+
+describe("shortPath", () => {
+  function shortPath(p: string): string {
+    const parts = p.replace(/\\/g, "/").split("/");
+    return parts.length > 3 ? "…/" + parts.slice(-3).join("/") : p;
+  }
+
+  it("returns path as-is for 3 or fewer segments", () => {
+    expect(shortPath("src/foo.ts")).toBe("src/foo.ts");
+    expect(shortPath("a/b/c")).toBe("a/b/c");
+    expect(shortPath("foo.ts")).toBe("foo.ts");
+  });
+
+  it("truncates paths with more than 3 segments", () => {
+    expect(shortPath("a/b/c/d/foo.ts")).toBe("…/c/d/foo.ts");
+  });
+
+  it("handles Windows-style backslashes", () => {
+    expect(shortPath("a\\b\\c\\d\\foo.ts")).toBe("…/c/d/foo.ts");
+  });
+
+  it("handles absolute paths", () => {
+    expect(shortPath("/Users/gaord/project/src/foo.ts")).toBe("…/project/src/foo.ts");
+  });
+});
+
+describe("truncate", () => {
+  function truncate(s: string, max: number): string {
+    return s.length > max ? s.slice(0, max - 1) + "…" : s;
+  }
+
+  it("returns string as-is when within limit", () => {
+    expect(truncate("hello", 10)).toBe("hello");
+  });
+
+  it("truncates and adds ellipsis when exceeding limit", () => {
+    expect(truncate("hello world", 8)).toBe("hello w…");
+  });
+
+  it("handles exact length", () => {
+    expect(truncate("hello", 5)).toBe("hello");
+  });
+
+  it("handles empty string", () => {
+    expect(truncate("", 5)).toBe("");
+  });
+});
+
+describe("FileChangeInfo changeType derivation", () => {
+  function deriveChangeType(toolName: string, diff: string | undefined): "created" | "modified" | "deleted" {
+    if (toolName === "delete_file") return "deleted";
+    if (toolName === "write_file" && !diff) return "created";
+    return "modified";
+  }
+
+  it("delete_file always results in deleted", () => {
+    expect(deriveChangeType("delete_file", undefined)).toBe("deleted");
+    expect(deriveChangeType("delete_file", "some diff")).toBe("deleted");
+  });
+
+  it("write_file without diff results in created", () => {
+    expect(deriveChangeType("write_file", undefined)).toBe("created");
+    expect(deriveChangeType("write_file", "")).toBe("created");
+  });
+
+  it("write_file with diff results in modified", () => {
+    expect(deriveChangeType("write_file", "@@ -1 +1 @@\n-old\n+new")).toBe("modified");
+  });
+
+  it("edit_file always results in modified", () => {
+    expect(deriveChangeType("edit_file", undefined)).toBe("modified");
+    expect(deriveChangeType("edit_file", "@@ -1 +1 @@")).toBe("modified");
+  });
+
+  it("apply_patch always results in modified", () => {
+    expect(deriveChangeType("apply_patch", undefined)).toBe("modified");
+  });
+
+  it("replace_text always results in modified", () => {
+    expect(deriveChangeType("replace_text", "some diff")).toBe("modified");
+  });
+
+  it("move_file always results in modified", () => {
+    expect(deriveChangeType("move_file", undefined)).toBe("modified");
+  });
+});
+
+describe("Diff URI uniqueness for multiple cards", () => {
+  it("generates different diffIds for concurrent diff views", () => {
+    const ids = new Set<string>();
+    for (let i = 0; i < 10; i++) {
+      const diffId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      ids.add(diffId);
+    }
+    expect(ids.size).toBe(10);
+  });
+
+  it("constructs unique oldUri and newUri with diffId", () => {
+    const diffId = "abc123";
+    const absPath = "/project/src/foo.ts";
+    const oldUri = `brotherwhale-diff:${absPath}?old&id=${diffId}`;
+    const newUri = `brotherwhale-diff:${absPath}?new&id=${diffId}`;
+    expect(oldUri).not.toBe(newUri);
+    expect(oldUri).toContain("id=abc123");
+    expect(newUri).toContain("id=abc123");
+  });
+
+  it("same file with different diffIds produces different URIs", () => {
+    const absPath = "/project/src/foo.ts";
+    const uri1 = `brotherwhale-diff:${absPath}?old&id=id1`;
+    const uri2 = `brotherwhale-diff:${absPath}?old&id=id2`;
+    expect(uri1).not.toBe(uri2);
+  });
+});
+
+describe("DiffContentStore lifecycle", () => {
+  it("stores and retrieves content by URI string", () => {
+    const store = new Map<string, string>();
+    const uri = "brotherwhale-diff:/foo.ts?old&id=abc";
+    store.set(uri, "old content");
+    expect(store.get(uri)).toBe("old content");
+  });
+
+  it("stores old and new content separately", () => {
+    const store = new Map<string, string>();
+    const oldUri = "brotherwhale-diff:/foo.ts?old&id=abc";
+    const newUri = "brotherwhale-diff:/foo.ts?new&id=abc";
+    store.set(oldUri, "old content");
+    store.set(newUri, "new content");
+    expect(store.get(oldUri)).toBe("old content");
+    expect(store.get(newUri)).toBe("new content");
+  });
+
+  it("supports multiple diffs for the same file", () => {
+    const store = new Map<string, string>();
+    const oldUri1 = "brotherwhale-diff:/foo.ts?old&id=id1";
+    const newUri1 = "brotherwhale-diff:/foo.ts?new&id=id1";
+    const oldUri2 = "brotherwhale-diff:/foo.ts?old&id=id2";
+    const newUri2 = "brotherwhale-diff:/foo.ts?new&id=id2";
+    store.set(oldUri1, "old v1");
+    store.set(newUri1, "new v1");
+    store.set(oldUri2, "old v2");
+    store.set(newUri2, "new v2");
+    expect(store.size).toBe(4);
+    expect(store.get(oldUri1)).toBe("old v1");
+    expect(store.get(oldUri2)).toBe("old v2");
+  });
+
+  it("clear removes all entries", () => {
+    const store = new Map<string, string>();
+    store.set("uri1", "content1");
+    store.set("uri2", "content2");
+    store.clear();
+    expect(store.size).toBe(0);
+  });
+});
+
+describe("FileChangeInfo with toolName", () => {
+  interface FileChangeInfo {
+    filePath: string;
+    changeType: "created" | "modified" | "deleted";
+    addedLines: number;
+    removedLines: number;
+    diff?: string;
+    toolName?: string;
+  }
+
+  it("includes toolName in FileChangeInfo", () => {
+    const fc: FileChangeInfo = {
+      filePath: "/src/foo.ts",
+      changeType: "modified",
+      addedLines: 5,
+      removedLines: 3,
+      diff: "@@ -1 +1 @@",
+      toolName: "write_file",
+    };
+    expect(fc.toolName).toBe("write_file");
+  });
+
+  it("toolName is optional", () => {
+    const fc: FileChangeInfo = {
+      filePath: "/src/foo.ts",
+      changeType: "created",
+      addedLines: 10,
+      removedLines: 0,
+    };
+    expect(fc.toolName).toBeUndefined();
+  });
+
+  it("toolName is preserved through serialization", () => {
+    const fc: FileChangeInfo = {
+      filePath: "/src/foo.ts",
+      changeType: "modified",
+      addedLines: 2,
+      removedLines: 1,
+      diff: "@@ -1 +1 @@",
+      toolName: "edit_file",
+    };
+    const serialized = JSON.stringify(fc);
+    const deserialized: FileChangeInfo = JSON.parse(serialized);
+    expect(deserialized.toolName).toBe("edit_file");
+  });
+});
+
+describe("Cost calculation edge cases", () => {
+  function getModelPricing(model: string) {
+    const lower = model.toLowerCase();
+    if (!lower.includes("deepseek")) return null;
+    return {
+      inputCacheHitPerMillion: 0.0028,
+      inputCacheMissPerMillion: 0.14,
+      outputPerMillion: 0.28,
+      inputCacheHitPerMillionCny: 0.02,
+      inputCacheMissPerMillionCny: 1.0,
+      outputPerMillionCny: 2.0,
+    };
+  }
+
+  function calculateTurnCost(
+    model: string,
+    inputTokens: number,
+    outputTokens: number,
+    cacheHitTokens?: number,
+    cacheMissTokens?: number,
+    reasoningTokens?: number,
+  ) {
+    const pricing = getModelPricing(model);
+    if (!pricing) return null;
+    const hit = cacheHitTokens ?? 0;
+    const miss = cacheMissTokens ?? Math.max(0, inputTokens - hit);
+    const uncategorized = Math.max(0, inputTokens - hit - miss);
+    const effectiveMiss = miss + uncategorized;
+    const effectiveOutput = outputTokens + (reasoningTokens ?? 0);
+    const hitCost = (hit / 1_000_000) * pricing.inputCacheHitPerMillion;
+    const missCost = (effectiveMiss / 1_000_000) * pricing.inputCacheMissPerMillion;
+    const outputCost = (effectiveOutput / 1_000_000) * pricing.outputPerMillion;
+    const hitCostCny = (hit / 1_000_000) * pricing.inputCacheHitPerMillionCny;
+    const missCostCny = (effectiveMiss / 1_000_000) * pricing.inputCacheMissPerMillionCny;
+    const outputCostCny = (effectiveOutput / 1_000_000) * pricing.outputPerMillionCny;
+    return {
+      usd: hitCost + missCost + outputCost,
+      cny: hitCostCny + missCostCny + outputCostCny,
+    };
+  }
+
+  it("handles very large token counts", () => {
+    const cost = calculateTurnCost("deepseek-v4-flash", 1_000_000, 500_000, 800_000, 200_000);
+    expect(cost).not.toBeNull();
+    expect(cost!.usd).toBeGreaterThan(0);
+    expect(isFinite(cost!.usd)).toBe(true);
+  });
+
+  it("handles all cache hit (cheapest scenario)", () => {
+    const cost = calculateTurnCost("deepseek-v4-flash", 10000, 1000, 10000, 0);
+    expect(cost).not.toBeNull();
+    expect(cost!.usd).toBeGreaterThan(0);
+  });
+
+  it("handles all cache miss (most expensive scenario)", () => {
+    const cost = calculateTurnCost("deepseek-v4-flash", 10000, 1000, 0, 10000);
+    expect(cost).not.toBeNull();
+    const allHitCost = calculateTurnCost("deepseek-v4-flash", 10000, 1000, 10000, 0);
+    expect(cost!.usd).toBeGreaterThan(allHitCost!.usd);
+  });
+
+  it("cost increases with reasoning tokens", () => {
+    const noReasoning = calculateTurnCost("deepseek-v4-flash", 1000, 500, 0, 1000);
+    const withReasoning = calculateTurnCost("deepseek-v4-flash", 1000, 500, 0, 1000, 5000);
+    expect(withReasoning!.usd).toBeGreaterThan(noReasoning!.usd);
+    const diff = withReasoning!.usd - noReasoning!.usd;
+    const expectedDiff = (5000 / 1_000_000) * 0.28;
+    expect(diff).toBeCloseTo(expectedDiff, 8);
+  });
+
+  it("handles single token", () => {
+    const cost = calculateTurnCost("deepseek-v4-flash", 1, 1, 0, 1);
+    expect(cost).not.toBeNull();
+    expect(cost!.usd).toBeGreaterThan(0);
   });
 });

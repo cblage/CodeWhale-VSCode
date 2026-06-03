@@ -6,6 +6,7 @@ interface Translations {
   locale: string; // "en" or "zh-cn"
   history: string;
   threads: string;
+  sessions: string;
   tasks: string;
   work: string;
   newThread: string;
@@ -77,6 +78,10 @@ interface Translations {
   threadsCountPattern: string;
   /** "Loaded: {0}" / "已加载: {0}" */
   loadedThreadPattern: string;
+  /** "Show all workspaces" / "显示所有工作区" */
+  showAllWorkspaces: string;
+  /** "Current workspace only" / "仅当前工作区" */
+  filterCurrentWorkspace: string;
   // Slash commands
   commandMode: string;
   commandModel: string;
@@ -144,6 +149,10 @@ interface Translations {
   commandStatusline: string;
   commandLogout: string;
   commandNotAvailableInGui: string;
+  attachFiles: string;
+  removeAttachment: string;
+  attachedFileCount: string;
+  fileNotSupported: string;
   fileChanges: string;
   viewDiff: string;
   viewDiffTooltip: string;
@@ -160,7 +169,7 @@ interface Translations {
 
 const en: Translations = {
   locale: "en",
-  history: "History", threads: "Threads", tasks: "Tasks", work: "Work",
+  history: "History", threads: "Threads", sessions: "Sessions", tasks: "Tasks", work: "Work",
   newThread: "+ New", compact: "⬒ Compact", interrupt: "■ Stop",
   toggleHistory: "Click to toggle history", send: "Send",
   inputPlaceholder: "Ask CodeWhale...",
@@ -212,6 +221,8 @@ const en: Translations = {
   thinkingToggle: "▶ Thinking", thinkingOpen: "▼ Thinking", thinkingClose: "▶ Thinking",
   threadsCountPattern: "{n} threads",
   loadedThreadPattern: "Loaded: {0}",
+  showAllWorkspaces: "Show all workspaces",
+  filterCurrentWorkspace: "Current workspace only",
   commandMode: "/mode - Switch mode (agent/plan/yolo)",
   commandModel: "/model - Switch model",
   commandModels: "/models - List available models",
@@ -278,6 +289,10 @@ const en: Translations = {
   commandStatusline: "/statusline - Status line info",
   commandLogout: "/logout - Logout",
   commandNotAvailableInGui: "This command is not available in the VSCode extension. Use the TUI terminal instead.",
+  attachFiles: "Attach Files",
+  removeAttachment: "Remove",
+  attachedFileCount: "{n} file(s) attached",
+  fileNotSupported: "File type not supported",
   fileChanges: "Changes",
   viewDiff: "View Diff",
   viewDiffTooltip: "Open diff view for this file",
@@ -294,7 +309,7 @@ const en: Translations = {
 
 const zhCn: Translations = {
   locale: "zh-cn",
-  history: "历史", threads: "会话", tasks: "任务", work: "工作",
+  history: "历史", threads: "线程", sessions: "会话", tasks: "任务", work: "工作",
   newThread: "+ 新建", compact: "⬒ 压缩", interrupt: "■ 停止",
   toggleHistory: "点击切换历史", send: "发送",
   inputPlaceholder: "向 CodeWhale 提问...",
@@ -346,6 +361,8 @@ const zhCn: Translations = {
   thinkingToggle: "▶ 思考过程", thinkingOpen: "▼ 思考过程", thinkingClose: "▶ 思考过程",
   threadsCountPattern: "{n} 个会话",
   loadedThreadPattern: "已加载: {0}",
+  showAllWorkspaces: "显示所有工作区",
+  filterCurrentWorkspace: "仅当前工作区",
   commandMode: "/mode - 切换模式 (agent/plan/yolo)",
   commandModel: "/model - 切换模型",
   commandModels: "/models - 列出可用模型",
@@ -412,6 +429,10 @@ const zhCn: Translations = {
   commandStatusline: "/statusline - 状态栏信息",
   commandLogout: "/logout - 登出",
   commandNotAvailableInGui: "此命令在 VSCode 扩展中不可用，请使用 TUI 终端。",
+  attachFiles: "附加文件",
+  removeAttachment: "移除",
+  attachedFileCount: "已附加 {n} 个文件",
+  fileNotSupported: "不支持的文件类型",
   fileChanges: "文件变更",
   viewDiff: "查看差异",
   viewDiffTooltip: "在差异视图中对比文件变更",
@@ -455,6 +476,7 @@ export function webviewTranslations(tr: Translations) {
     locale: tr.locale || "en",
     history: tr.history,
     threads: tr.threads,
+    sessions: tr.sessions,
     tasks: tr.tasks,
     work: tr.work,
     newThread: tr.newThread,
@@ -478,6 +500,8 @@ export function webviewTranslations(tr: Translations) {
     modelLabel: tr.modelLabel,
     workspaceLabel: tr.workspaceLabel,
     loadedThreadPattern: tr.loadedThreadPattern,
+    showAllWorkspaces: tr.showAllWorkspaces,
+    filterCurrentWorkspace: tr.filterCurrentWorkspace,
     approvalRequired: tr.approvalRequired,
     allow: tr.allow,
     deny: tr.deny,
@@ -588,6 +612,10 @@ export function webviewTranslations(tr: Translations) {
     commandStatusline: tr.commandStatusline,
     commandLogout: tr.commandLogout,
     commandNotAvailableInGui: tr.commandNotAvailableInGui,
+    attachFiles: tr.attachFiles,
+    removeAttachment: tr.removeAttachment,
+    attachedFileCount: tr.attachedFileCount,
+    fileNotSupported: tr.fileNotSupported,
     fileChanges: tr.fileChanges,
     viewDiff: tr.viewDiff,
     viewDiffTooltip: tr.viewDiffTooltip,

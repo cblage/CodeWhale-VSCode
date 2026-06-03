@@ -213,7 +213,7 @@ function extractFilePathFromDiff(diff: string): string {
   return "";
 }
 
-function parseDiffToSides(diff: string): { oldContent: string; newContent: string } {
+export function parseDiffToSides(diff: string): { oldContent: string; newContent: string } {
   const oldLines: string[] = [];
   const newLines: string[] = [];
   const hunkRegex = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
@@ -347,6 +347,10 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   private totalInputTokens: number = 0;
   private totalOutputTokens: number = 0;
   private turnFileChanges: FileChangeInfo[] = [];
+  private currentAttachments: Array<{ kind: string; path: string; name: string }> = [];
+  private showAllWorkspaces: boolean = false;
+  /** Track thread IDs that have already been saved as sessions to prevent duplicates */
+  private savedThreadIds = new Set<string>();
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -446,8 +450,16 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       case "userInputCancel":
         await this.handleUserInputCancel(msg.inputId as string);
         break;
+      case "loadSession":
+        await this.loadSessionMessages(msg.sessionId as string);
+        break;
       case "loadThread":
         await this.loadThread(msg.threadId as string);
+        break;
+      case "toggleAllWorkspaces":
+        this.showAllWorkspaces = !this.showAllWorkspaces;
+        await this.refreshSessionList();
+        await this.refreshThreadList();
         break;
       case "webviewReady":
         try {
@@ -465,6 +477,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       case "refreshSidebar":
         if (this.engine.isRunning) {
           this.api.setBaseUrl(this.engine.baseUrl);
+          this.refreshSessionList();
           this.refreshThreadList();
           this.refreshTaskList();
           this.refreshWorkPanel();
@@ -476,10 +489,17 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       case "openFile":
         this.handleOpenFile(msg.filePath as string);
         break;
+      case "attachFile":
+        await this.handleAttachFile();
+        break;
+      case "removeAttachment":
+        this.handleRemoveAttachment(msg.index as number);
+        break;
     }
   }
 
   private async syncWebviewState(): Promise<void> {
+    this.refreshSessionList();
     this.refreshThreadList();
     this.refreshTaskList();
     this.refreshWorkPanel();
@@ -515,8 +535,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       this.debugLog("calling listThreads...");
       const threads = await this.api.listThreads({ limit: 20 });
       this.debugLog(`listThreads returned ${threads.length} threads`);
-      const threadSummaries = await this.api.listThreadsSummary({ limit: 50 });
-      this.postMessage({ type: "threadList", threads: threadSummaries });
+      await this.refreshSessionList();
 
       const threadWithContent = threads.find(t => t.latest_turn_id !== null);
       
@@ -740,8 +759,9 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   }
 
   private async loadSessionMessages(sessionId: string): Promise<void> {
-    const session = await this.api.getSession(sessionId);
-    const title = session.metadata.title || "Session";
+    try {
+      const session = await this.api.getSession(sessionId);
+      const title = session.metadata.title || "Session";
 
     this.cleanup();
     this.currentThread = null;
@@ -919,6 +939,35 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       type: "info",
       message: `Viewing session: ${title.slice(0, 80)}\n${msgCount} messages | ${session.metadata.total_tokens.toLocaleString()} tokens${costStr}${modelStr}\n\nStart typing to resume this session and continue the conversation.`
     });
+    this.postMessage({ type: "sessionLoaded", sessionId: session.metadata.id });
+    } catch (err) {
+      const errorMsg = (err as Error).message;
+      this.debugLog(`loadSessionMessages error: ${errorMsg}`);
+
+      // Provide user-friendly error messages for common errors
+      if (errorMsg.includes("404") || errorMsg.includes("not found")) {
+        this.postMessage({
+          type: "error",
+          message: `Session not found. This session may have been deleted or is from a different workspace.\n\nSession ID: ${sessionId.slice(0, 8)}...`,
+        });
+        // Refresh session list to show current state
+        this.refreshSessionList();
+      } else if (errorMsg.includes("500") || errorMsg.includes("internal")) {
+        this.postMessage({
+          type: "error",
+          message: `Server error while loading session. Please try again later.`,
+        });
+      } else {
+        this.postMessage({
+          type: "error",
+          message: `Failed to load session: ${errorMsg}`,
+        });
+      }
+
+      // Reset state on error
+      this.cleanup();
+      this.postMessage({ type: "clearChat" });
+    }
   }
 
   private async loadThread(threadId: string): Promise<void> {
@@ -939,6 +988,30 @@ export class ChatProvider implements vscode.WebviewViewProvider {
 
     try {
       this.currentThread = await this.api.getThread(threadId);
+
+      // If the thread's workspace doesn't match the current workspace,
+      // update it so the engine operates on the current workspace's files
+      // and events flow correctly through the current engine.
+      const currentWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (currentWorkspace && this.currentThread.workspace !== currentWorkspace) {
+        const oldWorkspace = this.currentThread.workspace;
+        try {
+          this.currentThread = await this.api.updateThread(threadId, {
+            workspace: currentWorkspace,
+          });
+          this.postMessage({
+            type: "info",
+            message: `Thread workspace updated: ${oldWorkspace} → ${currentWorkspace}`,
+          });
+        } catch {
+          // Non-critical: the turn may still work with the old workspace
+          this.postMessage({
+            type: "info",
+            message: `Thread workspace (${oldWorkspace}) differs from current (${currentWorkspace}). Continuing may redirect output to the original workspace.`,
+          });
+        }
+      }
+
       this.subscribeToEvents();
       await this.loadHistory(threadId);
       this.postMessage({
@@ -960,8 +1033,86 @@ export class ChatProvider implements vscode.WebviewViewProvider {
 
   // ── User actions ──
 
+  private static readonly MEDIA_EXTENSIONS: Record<string, string> = {
+    ".png": "image", ".jpg": "image", ".jpeg": "image",
+    ".gif": "image", ".webp": "image", ".bmp": "image",
+    ".tif": "image", ".tiff": "image", ".ppm": "image",
+    ".mp4": "video", ".mov": "video", ".m4v": "video",
+    ".webm": "video", ".avi": "video", ".mkv": "video",
+  };
+
+  private async handleAttachFile(): Promise<void> {
+    try {
+      const uris = await vscode.window.showOpenDialog({
+        canSelectMany: true,
+        canSelectFiles: true,
+        canSelectFolders: false,
+        openLabel: t().attachFiles,
+        title: t().attachFiles,
+      });
+      if (!uris || uris.length === 0) return;
+
+      for (const uri of uris) {
+        const ext = path.extname(uri.fsPath).toLowerCase();
+        const kind = ChatProvider.MEDIA_EXTENSIONS[ext];
+        if (kind) {
+          this.currentAttachments.push({
+            kind,
+            path: uri.fsPath,
+            name: path.basename(uri.fsPath),
+          });
+        } else {
+          this.currentAttachments.push({
+            kind: "file",
+            path: uri.fsPath,
+            name: path.basename(uri.fsPath),
+          });
+        }
+      }
+
+      this.postMessage({
+        type: "attachmentsChanged",
+        attachments: this.currentAttachments,
+      });
+    } catch (err) {
+      this.postMessage({
+        type: "error",
+        message: `Failed to attach file: ${(err as Error).message}`,
+      });
+    }
+  }
+
+  private handleRemoveAttachment(index: number): void {
+    if (index >= 0 && index < this.currentAttachments.length) {
+      this.currentAttachments.splice(index, 1);
+      this.postMessage({
+        type: "attachmentsChanged",
+        attachments: this.currentAttachments,
+      });
+    }
+  }
+
   private async handleSendMessage(text: string): Promise<void> {
-    if (!text.trim()) return;
+    if (!text.trim() && this.currentAttachments.length === 0) return;
+
+    const attachments = [...this.currentAttachments];
+    this.currentAttachments = [];
+    this.postMessage({ type: "attachmentsChanged", attachments: [] });
+
+    let fullText = text;
+    if (attachments.length > 0) {
+      const attachmentLines = attachments.map((a) => {
+        if (a.kind === "file") {
+          return `@${a.path}`;
+        }
+        return `[Attached ${a.kind}: ${a.path}]`;
+      });
+      if (fullText.trim()) {
+        fullText = fullText.trimEnd() + "\n" + attachmentLines.join("\n");
+      } else {
+        fullText = attachmentLines.join("\n");
+      }
+    }
 
     try {
       await this.engine.ensureRunning();
@@ -983,7 +1134,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
 
         this.viewingSessionId = null;
         await this.loadThread(result.thread_id);
-        this.refreshThreadList();
+        this.refreshSessionList();
       }
 
       if (!this.currentThread) {
@@ -991,16 +1142,17 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         const model = cfg.get<string>("defaultModel", "deepseek-v4-pro");
         const mode = cfg.get<string>("defaultMode", "agent");
         const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        const autoApprove = cfg.get<boolean>("autoApprove", false);
+        const isYolo = mode === "yolo";
+        const autoApprove = isYolo || cfg.get<boolean>("autoApprove", false);
         this.currentThread = await this.api.createThread({
           model,
           mode,
           workspace,
           auto_approve: autoApprove,
-          trust_mode: mode === "yolo",
+          trust_mode: isYolo,
         });
         this.subscribeToEvents();
-        this.refreshThreadList();
+        this.refreshSessionList();
       }
 
       this.activeItems.clear();
@@ -1011,7 +1163,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       const userMsg: ChatMessage = {
         id: `user-${Date.now()}`,
         role: "user",
-        content: text,
+        content: fullText,
         status: "complete",
         timestamp: Date.now(),
       };
@@ -1045,20 +1197,31 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           trust_mode: mode === "yolo",
         });
         this.subscribeToEvents();
-        this.refreshThreadList();
+        this.refreshSessionList();
+      }
+
+      // Ensure thread workspace matches current workspace before starting turn
+      const currentWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (currentWorkspace && this.currentThread.workspace !== currentWorkspace) {
+        try {
+          this.currentThread = await this.api.updateThread(this.currentThread.id, {
+            workspace: currentWorkspace,
+          });
+        } catch { /* non-critical */ }
       }
 
       const cfg = vscode.workspace.getConfiguration("brotherwhale");
       const reasoningEffort = cfg.get<string>("reasoningEffort", "auto");
       const mode = cfg.get<string>("defaultMode", "agent");
       const model = this.getCurrentModel();
-      const autoApprove = cfg.get<boolean>("autoApprove", false);
-      const result = await this.api.startTurn(this.currentThread.id, text, {
+      const isYolo = mode === "yolo";
+      const autoApprove = isYolo || cfg.get<boolean>("autoApprove", false);
+      const result = await this.api.startTurn(this.currentThread.id, fullText, {
         mode,
         model,
         reasoning_effort: reasoningEffort,
         auto_approve: autoApprove,
-        trust_mode: mode === "yolo",
+        trust_mode: isYolo,
       });
       this.currentTurnId = result.turn.id;
       this.postMessage({ type: "turnStarted", turnId: result.turn.id });
@@ -1089,18 +1252,38 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     this.postMessage({ type: "clearChat" });
   }
 
-  /** Refresh the thread list shown in the sidebar */
-  private async refreshThreadList(): Promise<void> {
+  /** Refresh the session list shown in the sidebar */
+  private async refreshSessionList(): Promise<void> {
     try {
-      const threads = await this.api.listThreadsSummary({ limit: 50 });
-      this.postMessage({ type: "threadList", threads });
+      const result = await this.api.listSessions({ limit: 100 });
+      let sessions = result.sessions || [];
+      const currentWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!this.showAllWorkspaces && currentWorkspace) {
+        sessions = sessions.filter(s => s.workspace === currentWorkspace);
+      }
+      this.postMessage({ type: "sessionList", sessions, showAllWorkspaces: this.showAllWorkspaces });
     } catch (err) {
       setTimeout(async () => {
         try {
-          const threads = await this.api.listThreadsSummary({ limit: 50 });
-          this.postMessage({ type: "threadList", threads });
+          const result = await this.api.listSessions({ limit: 100 });
+          let sessions = result.sessions || [];
+          const currentWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+          if (!this.showAllWorkspaces && currentWorkspace) {
+            sessions = sessions.filter(s => s.workspace === currentWorkspace);
+          }
+          this.postMessage({ type: "sessionList", sessions, showAllWorkspaces: this.showAllWorkspaces });
         } catch { /* silent */ }
       }, 2000);
+    }
+  }
+
+  /** Refresh the thread list shown in the sidebar (legacy threads) */
+  private async refreshThreadList(): Promise<void> {
+    try {
+      const threads = await this.api.listThreadsSummary({ limit: 100 });
+      this.postMessage({ type: "threadList", threads, showAllWorkspaces: this.showAllWorkspaces });
+    } catch {
+      // best-effort, silent fail
     }
   }
 
@@ -1202,12 +1385,14 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         if (["agent", "plan", "yolo", "1", "2", "3"].includes(mode)) {
           const modeMap: Record<string, string> = { "1": "agent", "2": "plan", "3": "yolo" };
           const actualMode = modeMap[mode] || mode;
+          const isYolo = actualMode === "yolo";
           await cfg.update("defaultMode", actualMode, vscode.ConfigurationTarget.Global);
           if (this.currentThread) {
             try {
               await this.api.updateThread(this.currentThread.id, {
                 mode: actualMode,
-                trust_mode: actualMode === "yolo",
+                trust_mode: isYolo,
+                auto_approve: isYolo || cfg.get<boolean>("autoApprove", false),
               });
             } catch { /* non-critical */ }
           }
@@ -1275,7 +1460,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           try {
             await this.api.updateThread(this.currentThread.id, { title });
             this.postMessage({ type: "info", message: `Thread renamed to: ${title}` });
-            this.refreshThreadList();
+            this.refreshSessionList();
           } catch (err) {
             this.postMessage({ type: "error", message: `Failed to rename: ${(err as Error).message}` });
           }
@@ -1564,15 +1749,16 @@ Usage: /cost [history|today|since <date>]`
           await cfg.update("autoApprove", true, vscode.ConfigurationTarget.Global);
           if (this.currentThread) {
             try {
-              await this.api.updateThread(this.currentThread.id, { auto_approve: true });
+              await this.api.updateThread(this.currentThread.id, { auto_approve: true, trust_mode: true });
             } catch { /* non-critical */ }
           }
           this.postMessage({ type: "info", message: "Trust mode enabled (auto-approve)" });
         } else if (sub === "off") {
+          const isYolo = cfg.get<string>("defaultMode", "agent") === "yolo";
           await cfg.update("autoApprove", false, vscode.ConfigurationTarget.Global);
           if (this.currentThread) {
             try {
-              await this.api.updateThread(this.currentThread.id, { auto_approve: false });
+              await this.api.updateThread(this.currentThread.id, { auto_approve: isYolo, trust_mode: isYolo });
             } catch { /* non-critical */ }
           }
           this.postMessage({ type: "info", message: "Trust mode disabled" });
@@ -1830,7 +2016,7 @@ Use the TUI for full command support.` });
         notAvailable();
         break;
       case "/attach":
-        this.postMessage({ type: "info", message: "File attachments are not yet supported in GUI. Use the TUI for /attach support." });
+        await this.handleAttachFile();
         break;
       case "/anchor": {
         const ws = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -2606,7 +2792,16 @@ Usage: /jobs run ${automation.id.slice(0, 8)} | /jobs pause ${automation.id.slic
             blockHtmls,
           });
         }
-        this.refreshThreadList();
+        this.refreshSessionList();
+        // Auto-save thread as session for cross-workspace resumption (fire-and-forget)
+        // Only save once per thread to prevent duplicate sessions
+        if (this.currentThread && !this.savedThreadIds.has(this.currentThread.id)) {
+          this.savedThreadIds.add(this.currentThread.id);
+          this.api.saveThreadAsSession(this.currentThread.id).catch(() => {
+            // If save fails, remove from set so we can retry next time
+            this.savedThreadIds.delete(this.currentThread?.id || "");
+          });
+        }
         this.stopPeriodicTaskRefresh();
         this.refreshTaskList();
         this.refreshWorkPanel();

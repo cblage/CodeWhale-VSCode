@@ -220,6 +220,18 @@ export interface ResumeSessionResponse {
   summary: string;
 }
 
+export interface SaveThreadAsSessionRequest {
+  thread_id: string;
+  title?: string;
+}
+
+export interface SaveThreadAsSessionResponse {
+  session_id: string;
+  thread_id: string;
+  message_count: number;
+  title: string;
+}
+
 export interface WorkspaceStatusResponse {
   workspace: string;
   git_repo: boolean;
@@ -394,6 +406,7 @@ export class CodeWhaleApiClient {
     mode?: string;
     model?: string;
     title?: string;
+    workspace?: string;
   }): Promise<ThreadRecord> {
     return (await this.patch(`/v1/threads/${threadId}`, updates)) as ThreadRecord;
   }
@@ -521,6 +534,12 @@ export class CodeWhaleApiClient {
     if (opts?.model) body.model = opts.model;
     if (opts?.mode) body.mode = opts.mode;
     return (await this.post(`/v1/sessions/${sessionId}/resume-thread`, body)) as ResumeSessionResponse;
+  }
+
+  async saveThreadAsSession(threadId: string, title?: string): Promise<SaveThreadAsSessionResponse> {
+    const body: SaveThreadAsSessionRequest = { thread_id: threadId };
+    if (title) body.title = title;
+    return (await this.post(`/v1/sessions`, body)) as SaveThreadAsSessionResponse;
   }
 
   // ── Workspace ──

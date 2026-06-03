@@ -189,7 +189,7 @@ describe("isCommandAvailableInGui", () => {
   it("marks partially supported commands", () => {
     expect(isCommandAvailableInGui("/undo")).toBe("partial");
     expect(isCommandAvailableInGui("/retry")).toBe("partial");
-    expect(isCommandAvailableInGui("/attach")).toBe("partial");
+    expect(isCommandAvailableInGui("/attach")).toBe("full");
     expect(isCommandAvailableInGui("/sessions")).toBe("partial");
     expect(isCommandAvailableInGui("/load")).toBe("partial");
     expect(isCommandAvailableInGui("/task")).toBe("full");
@@ -404,9 +404,9 @@ describe("Partial support command explanations", () => {
     expect(help).toContain("not directly supported");
   });
 
-  it("attach: explains file attachment limitation", () => {
+  it("attach: now supports file picker", () => {
     const help = getCommandHelpText("/attach");
-    expect(help).toContain("not yet supported");
+    expect(help).toContain("image, video, PDF, or any file");
   });
 
   it("sessions: explains sidebar alternative", () => {

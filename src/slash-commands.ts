@@ -49,7 +49,7 @@ const COMMANDS: SlashCommand[] = [
   { name: "/agent", desc: "Spawn a sub-agent", category: "core", availability: "unavailable", helpText: "Not available: Sub-agent spawning requires TUI's runtime environment." },
   { name: "/links", desc: "Show CodeWhale links", category: "core", availability: "full", helpText: "/links - Show CodeWhale links" },
   { name: "/feedback", desc: "Send feedback", category: "core", availability: "full", helpText: "/feedback - Send feedback" },
-  { name: "/attach", desc: "Attach a file", category: "core", availability: "partial", helpText: "File attachments are not yet supported in GUI. Use the TUI for /attach support." },
+  { name: "/attach", desc: "Attach a file", category: "core", availability: "full", helpText: "/attach - Open file picker to attach an image, video, PDF, or any file" },
   { name: "/anchor", desc: "Set anchor points", category: "core", availability: "full", helpText: "/anchor <text> | /anchor list | /anchor remove <n> - Anchors are auto-injected after compaction" },
   { name: "/sessions", desc: "Manage sessions", category: "session", availability: "full", helpText: "/sessions [search <query>] - List saved sessions with metadata. Use /load <id> to resume a session." },
   { name: "/load", desc: "Load a session", category: "session", availability: "full", helpText: "/load <session-id> - Resume a saved session into a new thread. Use /sessions to find session IDs." },

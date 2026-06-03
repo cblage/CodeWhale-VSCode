@@ -4,6 +4,7 @@ export interface WebviewTranslations {
   locale: string; // "en" or "zh-cn"
   history: string;
   threads: string;
+  sessions: string;
   tasks: string;
   work: string;
   newThread: string;
@@ -25,6 +26,8 @@ export interface WebviewTranslations {
   modelLabel: string;
   workspaceLabel: string;
   loadedThreadPattern: string; // "Loaded: {0}" / "已加载: {0}"
+  showAllWorkspaces: string;
+  filterCurrentWorkspace: string;
   approvalRequired: string;
   allow: string;
   deny: string;
@@ -127,6 +130,10 @@ export interface WebviewTranslations {
   commandStatusline: string;
   commandLogout: string;
   commandNotAvailableInGui: string;
+  attachFiles: string;
+  removeAttachment: string;
+  attachedFileCount: string;
+  fileNotSupported: string;
 }
 
 export function getWebviewHtml(
@@ -231,6 +238,15 @@ export function getWebviewHtml(
       letter-spacing: 0.5px;
       flex: 1;
     }
+    .sidebar-section-action {
+      font-size: 0.85em;
+      cursor: pointer;
+      padding: 0 4px;
+      transition: opacity 0.2s;
+    }
+    .sidebar-section-action:hover {
+      opacity: 1 !important;
+    }
     .sidebar-section-arrow {
       font-size: 0.7em;
       color: var(--muted);
@@ -251,6 +267,33 @@ export function getWebviewHtml(
     #sidebar-threads .sidebar-section-body {
       max-height: 600px;
       flex: 1;
+    }
+
+    .sidebar-tabs {
+      display: flex;
+      align-items: center;
+      padding: 5px 10px;
+      border-bottom: 1px solid var(--border);
+      gap: 4px;
+    }
+    .sidebar-tab {
+      padding: 4px 12px;
+      font-size: 0.78em;
+      font-weight: 600;
+      color: var(--muted);
+      background: transparent;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .sidebar-tab:hover {
+      background: var(--card-bg);
+      color: var(--fg);
+    }
+    .sidebar-tab.active {
+      background: var(--brand-primary);
+      color: white;
     }
 
     .thread-item {
@@ -296,6 +339,11 @@ export function getWebviewHtml(
     .thread-item .turn-status.completed { color: #4caf50; }
     .thread-item .turn-status.failed { color: #f44336; }
     .thread-item .turn-status.in_progress { color: #ff9800; }
+    .session-workspace {
+      color: var(--accent);
+      font-size: 0.9em;
+      opacity: 0.7;
+    }
 
     #chat-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 
@@ -760,10 +808,58 @@ export function getWebviewHtml(
       padding: 8px;
       border-top: 1px solid var(--border);
       display: flex;
+      flex-direction: column;
       gap: 6px;
       position: relative;
       overflow: visible;
     }
+    #attachments-area {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .attachment-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 0.85em;
+      color: var(--fg);
+      max-width: 200px;
+      overflow: hidden;
+    }
+    .attachment-chip .attachment-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .attachment-chip .attachment-remove {
+      cursor: pointer;
+      opacity: 0.6;
+      font-size: 0.9em;
+      flex-shrink: 0;
+    }
+    .attachment-chip .attachment-remove:hover { opacity: 1; }
+    #input-row {
+      display: flex;
+      gap: 6px;
+      align-items: flex-end;
+    }
+    #btn-attach {
+      background: transparent !important;
+      color: var(--fg) !important;
+      border: none;
+      border-radius: 4px;
+      padding: 6px 8px;
+      cursor: pointer;
+      font-size: 1.1em;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    #btn-attach:hover { opacity: 0.8; }
     #input-area textarea {
       flex: 1;
       background: var(--input-bg);
@@ -1131,11 +1227,13 @@ export function getWebviewHtml(
   <div id="layout">
     <div id="threads-panel">
       <div class="sidebar-section" id="sidebar-threads">
-        <div class="sidebar-section-header" id="threads-section-toggle">
-          <span class="sidebar-section-title">🕮 ${tr.threads}</span>
-          <span class="sidebar-section-arrow">▼</span>
+        <div class="sidebar-tabs">
+          <button class="sidebar-tab active" id="tab-sessions-btn" data-tab="sessions">${tr.sessions}</button>
+          <button class="sidebar-tab" id="tab-threads-btn" data-tab="threads">${tr.threads}</button>
+          <span class="sidebar-section-action" id="workspace-filter-toggle" title="${tr.showAllWorkspaces}">🌐</span>
         </div>
-        <div class="sidebar-section-body" id="tab-threads"></div>
+        <div class="sidebar-section-body" id="tab-sessions"></div>
+        <div class="sidebar-section-body" id="tab-threads-list" style="display:none;"></div>
       </div>
       <div class="sidebar-section" id="sidebar-work">
         <div class="sidebar-section-header" id="work-section-toggle">
@@ -1173,12 +1271,16 @@ export function getWebviewHtml(
         <button id="btn-threads" title="${tr.toggleHistory}">📋</button>
         <button id="btn-compact">${tr.compact}</button>
         <button id="btn-interrupt">${tr.interrupt}</button>
-        <span class="thread-count" id="thread-count" title="${tr.toggleHistory}">0 threads</span>
+        <span class="thread-count" id="thread-count" title="${tr.toggleHistory}">0 sessions</span>
       </div>
       <div id="input-area">
         <div id="slash-menu"></div>
-        <textarea id="input" placeholder="${tr.inputPlaceholder}" rows="1"></textarea>
-        <button id="btn-send">${tr.send}</button>
+        <div id="attachments-area"></div>
+        <div id="input-row">
+          <button id="btn-attach" title="${tr.attachFiles}">📎</button>
+          <textarea id="input" placeholder="${tr.inputPlaceholder}" rows="1"></textarea>
+          <button id="btn-send">${tr.send}</button>
+        </div>
       </div>
       <div class="status-bar" id="status">
         <span class="status-left" id="status-text">${tr.initializing}</span>
@@ -1255,8 +1357,11 @@ export function getWebviewHtml(
       daysAgoPattern: '${tr.daysAgoPattern}',
     };
 
-    function formatThreadsCount(n) {
-      return __locale === 'zh-cn' ? n + ' 个会话' : n + ' thread' + (n !== 1 ? 's' : '');
+    function formatThreadsCount(n, type = 'sessions') {
+      if (type === 'threads') {
+        return __locale === 'zh-cn' ? n + ' 个线程' : n + ' thread' + (n !== 1 ? 's' : '');
+      }
+      return __locale === 'zh-cn' ? n + ' 个会话' : n + ' session' + (n !== 1 ? 's' : '');
     }
     function formatLoadedThread(title) {
       return __locale === 'zh-cn' ? '已加载: ' + title : 'Loaded: ' + title;
@@ -1283,6 +1388,9 @@ export function getWebviewHtml(
     const threadsPanel = document.getElementById('threads-panel');
     const inputEl = document.getElementById('input');
     const sendBtn = document.getElementById('btn-send');
+    const attachBtn = document.getElementById('btn-attach');
+    const attachmentsArea = document.getElementById('attachments-area');
+    let currentAttachments = [];
     const newThreadBtn = document.getElementById('btn-new-thread');
     const threadsBtn = document.getElementById('btn-threads');
     const threadCountEl = document.getElementById('thread-count');
@@ -1483,8 +1591,12 @@ export function getWebviewHtml(
         userScrolledUp = true;
       }
     });
+    let sessions = [];
+    let activeSessionId = null;
     let threads = [];
     let activeThreadId = null;
+    let showAllWorkspaces = false;
+    let sidebarTab = 'sessions'; // 'sessions' or 'threads'
     let slashMenuOpen = false;
     let slashMenuSelected = 0;
     let slashMenuCommands = [];
@@ -1619,6 +1731,7 @@ export function getWebviewHtml(
     });
 
     sendBtn.addEventListener('click', () => { _dbg('sendBtn clicked'); sendMessage(); });
+    attachBtn.addEventListener('click', () => { vscode.postMessage({ type: 'attachFile' }); });
     let isComposing = false;
     inputEl.addEventListener('compositionstart', () => { isComposing = true; });
     inputEl.addEventListener('compositionend', () => { isComposing = false; });
@@ -1705,11 +1818,42 @@ export function getWebviewHtml(
     threadsBtn.addEventListener('click', toggleThreadsPanel);
     threadCountEl.addEventListener('click', toggleThreadsPanel);
 
+    // Workspace filter toggle
+    document.getElementById('workspace-filter-toggle')?.addEventListener('click', function(e) {
+      e.stopPropagation();
+      vscode.postMessage({ type: 'toggleAllWorkspaces' });
+    });
+
+    document.getElementById('tab-sessions-btn')?.addEventListener('click', function() {
+      switchSidebarTab('sessions');
+    });
+
+    document.getElementById('tab-threads-btn')?.addEventListener('click', function() {
+      switchSidebarTab('threads');
+    });
+
     renderWelcome();
+
+    function renderAttachments() {
+      attachmentsArea.innerHTML = '';
+      currentAttachments.forEach(function(att, idx) {
+        const chip = document.createElement('span');
+        chip.className = 'attachment-chip';
+        const icon = att.kind === 'video' ? '🎬' : att.kind === 'file' ? '📄' : '🖼';
+        chip.innerHTML = '<span>' + icon + '</span><span class="attachment-name" title="' + escapeHtml(att.path) + '">' + escapeHtml(att.name) + '</span><span class="attachment-remove" data-idx="' + idx + '">✕</span>';
+        attachmentsArea.appendChild(chip);
+      });
+      attachmentsArea.querySelectorAll('.attachment-remove').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          const idx = parseInt(btn.getAttribute('data-idx'), 10);
+          vscode.postMessage({ type: 'removeAttachment', index: idx });
+        });
+      });
+    }
 
     function sendMessage() {
       const text = inputEl.value.trim();
-      if (!text) return;
+      if (!text && currentAttachments.length === 0) return;
       if (isStreaming && !text.startsWith('/interrupt') && !text.startsWith('/clear')) return;
       inputEl.value = '';
       inputEl.style.height = 'auto';
@@ -2052,11 +2196,87 @@ export function getWebviewHtml(
       } catch { return ''; }
     }
 
+    function renderSessions() {
+      const container = document.getElementById('tab-sessions');
+      if (!container) return;
+      const count = sessions.length;
+      threadCountEl.textContent = formatThreadsCount(count, 'sessions');
+
+      // Update workspace filter toggle indicator
+      const filterToggle = document.getElementById('workspace-filter-toggle');
+      if (filterToggle) {
+        filterToggle.textContent = showAllWorkspaces ? '🌍' : '🌐';
+        filterToggle.title = showAllWorkspaces ? __i18n.filterCurrentWorkspace : __i18n.showAllWorkspaces;
+        filterToggle.style.opacity = showAllWorkspaces ? '1' : '0.5';
+      }
+
+      container.innerHTML = '';
+
+      if (count === 0) {
+        const el = document.createElement('div');
+        el.className = 'thread-item';
+        el.textContent = __i18n.noConversations;
+        el.style.color = 'var(--muted)';
+        el.style.fontStyle = 'italic';
+        el.style.textAlign = 'center';
+        el.style.padding = '20px 10px';
+        container.appendChild(el);
+        return;
+      }
+
+      for (const s of sessions) {
+        const el = document.createElement('div');
+        el.className = 'thread-item' + (s.id === activeSessionId ? ' active' : '');
+
+        const titleEl = document.createElement('div');
+        titleEl.className = 'thread-title';
+        titleEl.textContent = s.title || s.id.slice(0, 8);
+        el.appendChild(titleEl);
+
+        const metaEl = document.createElement('div');
+        metaEl.className = 'thread-meta';
+
+        const modeEl = document.createElement('span');
+        modeEl.textContent = s.mode || '';
+        metaEl.appendChild(modeEl);
+
+        if (showAllWorkspaces && s.workspace) {
+          const wsEl = document.createElement('span');
+          wsEl.className = 'session-workspace';
+          const wsName = s.workspace.split('/').pop() || s.workspace;
+          wsEl.textContent = wsName;
+          wsEl.title = s.workspace;
+          metaEl.appendChild(wsEl);
+        }
+
+        if (s.message_count) {
+          const msgEl = document.createElement('span');
+          msgEl.textContent = s.message_count + ' msgs';
+          metaEl.appendChild(msgEl);
+        }
+
+        if (s.updated_at) {
+          const timeEl = document.createElement('span');
+          timeEl.textContent = formatRelativeTime(s.updated_at);
+          metaEl.appendChild(timeEl);
+        }
+
+        el.appendChild(metaEl);
+
+        el.addEventListener('click', () => {
+          vscode.postMessage({ type: 'loadSession', sessionId: s.id });
+        });
+        container.appendChild(el);
+      }
+    }
+
     function renderThreads() {
-      const container = document.getElementById('tab-threads');
+      const container = document.getElementById('tab-threads-list');
       if (!container) return;
       const count = threads.length;
-      threadCountEl.textContent = formatThreadsCount(count);
+      if (sidebarTab === 'threads') {
+        threadCountEl.textContent = formatThreadsCount(count, 'threads');
+      }
 
       container.innerHTML = '';
 
@@ -2114,6 +2334,28 @@ export function getWebviewHtml(
           vscode.postMessage({ type: 'loadThread', threadId: t.id });
         });
         container.appendChild(el);
+      }
+    }
+
+    function switchSidebarTab(tab) {
+      sidebarTab = tab;
+      const sessionsBtn = document.getElementById('tab-sessions-btn');
+      const threadsBtn = document.getElementById('tab-threads-btn');
+      const sessionsContainer = document.getElementById('tab-sessions');
+      const threadsContainer = document.getElementById('tab-threads-list');
+
+      if (tab === 'sessions') {
+        sessionsBtn.classList.add('active');
+        threadsBtn.classList.remove('active');
+        sessionsContainer.style.display = '';
+        threadsContainer.style.display = 'none';
+        threadCountEl.textContent = formatThreadsCount(sessions.length, 'sessions');
+      } else {
+        sessionsBtn.classList.remove('active');
+        threadsBtn.classList.add('active');
+        sessionsContainer.style.display = 'none';
+        threadsContainer.style.display = '';
+        threadCountEl.textContent = formatThreadsCount(threads.length, 'threads');
       }
     }
 
@@ -2398,8 +2640,25 @@ export function getWebviewHtml(
           if (msg.reasoningEffort) currentReasoningEl.textContent = msg.reasoningEffort;
           break;
 
+        case 'sessionList':
+          sessions = msg.sessions || [];
+          showAllWorkspaces = !!msg.showAllWorkspaces;
+          renderSessions();
+          break;
+
         case 'threadList':
           threads = msg.threads || [];
+          showAllWorkspaces = !!msg.showAllWorkspaces;
+          renderThreads();
+          break;
+
+        case 'sessionLoaded':
+          activeSessionId = msg.sessionId || null;
+          renderSessions();
+          break;
+
+        case 'threadLoaded':
+          activeThreadId = msg.threadId || msg.thread?.id || null;
           renderThreads();
           break;
 
@@ -2437,10 +2696,12 @@ export function getWebviewHtml(
         case 'threadLoaded':
           closeTaskDetail();
           activeThreadId = msg.thread?.id || null;
+          activeSessionId = null;
           messagesEl.innerHTML = '';
           for (const m of msg.messages) addMessage(m);
           statusTextEl.textContent = formatLoadedThread(msg.thread?.title || msg.thread?.id?.slice(0, 12) || '');
           renderThreads();
+          renderSessions();
           break;
 
         case 'addMessage':
@@ -2839,6 +3100,11 @@ export function getWebviewHtml(
 
         case 'status':
           statusTextEl.textContent = msg.text;
+          break;
+
+        case 'attachmentsChanged':
+          currentAttachments = msg.attachments || [];
+          renderAttachments();
           break;
 
         case 'clearChat':
