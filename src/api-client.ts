@@ -85,11 +85,40 @@ export interface StartTurnResponse {
   turn: TurnRecord;
 }
 
+export interface UndoTurnResponse {
+  thread: ThreadRecord;
+  original_user_text: string | null;
+}
+
+export interface PatchUndoResult {
+  files_restored: boolean;
+  summary: string | null;
+  snapshot_label: string | null;
+}
+
+export interface PatchUndoResponse {
+  patch_result: PatchUndoResult;
+  thread: ThreadRecord;
+  original_user_text: string | null;
+}
+
+export interface RetryTurnResponse {
+  thread: ThreadRecord;
+  turn: TurnRecord;
+}
+
+export interface SnapshotEntry {
+  id: string;
+  label: string;
+  timestamp: number;
+}
+
 export interface ThreadDetailResponse {
   thread: ThreadRecord;
   turns: TurnRecord[];
   /** Always present since v0.6.something; Array.isArray guard is cheap */
   items: TurnItemRecord[];
+  latest_seq?: number;
 }
 
 export interface ApprovalRequest {
@@ -440,6 +469,64 @@ export class CodeWhaleApiClient {
     await this.post(`/v1/threads/${threadId}/compact`, body);
   }
 
+  // ── Undo / Retry ──
+
+  async undoThreadTurn(
+    threadId: string,
+    opts?: { depth?: number }
+  ): Promise<UndoTurnResponse> {
+    const body: Record<string, unknown> = {};
+    if (opts?.depth !== undefined) body.depth = opts.depth;
+    return (await this.post(
+      `/v1/threads/${threadId}/undo`,
+      body
+    )) as UndoTurnResponse;
+  }
+
+  /** Full undo that mirrors TUI's `/undo`: tries snapshot-based file
+   *  rollback first, then removes the last conversation turn. */
+  async patchUndoThreadTurn(
+    threadId: string,
+    opts?: { depth?: number }
+  ): Promise<PatchUndoResponse> {
+    const body: Record<string, unknown> = {};
+    if (opts?.depth !== undefined) body.depth = opts.depth;
+    return (await this.post(
+      `/v1/threads/${threadId}/patch-undo`,
+      body
+    )) as PatchUndoResponse;
+  }
+
+  async retryThreadTurn(
+    threadId: string,
+    opts?: { depth?: number; prompt?: string }
+  ): Promise<RetryTurnResponse> {
+    const body: Record<string, unknown> = {};
+    if (opts?.depth !== undefined) body.depth = opts.depth;
+    if (opts?.prompt) body.prompt = opts.prompt;
+    return (await this.post(
+      `/v1/threads/${threadId}/retry`,
+      body
+    )) as RetryTurnResponse;
+  }
+
+  // ── Snapshots ──
+
+  async listSnapshots(opts?: { limit?: number }): Promise<SnapshotEntry[]> {
+    const params = new URLSearchParams();
+    if (opts?.limit !== undefined) params.set("limit", String(opts.limit));
+    const qs = params.toString();
+    const path = `/v1/snapshots${qs ? "?" + qs : ""}`;
+    return (await this.get(path)) as SnapshotEntry[];
+  }
+
+  async restoreSnapshot(snapshotId: string): Promise<{ restored: string }> {
+    return (await this.post(
+      `/v1/snapshots/${snapshotId}/restore`,
+      {}
+    )) as { restored: string };
+  }
+
   // ── Approvals ──
 
   async decideApproval(
@@ -536,9 +623,9 @@ export class CodeWhaleApiClient {
     return (await this.post(`/v1/sessions/${sessionId}/resume-thread`, body)) as ResumeSessionResponse;
   }
 
-  async saveThreadAsSession(threadId: string, title?: string): Promise<SaveThreadAsSessionResponse> {
-    const body: SaveThreadAsSessionRequest = { thread_id: threadId };
-    if (title) body.title = title;
+  async saveThreadAsSession(threadId: string, sessionId?: string): Promise<SaveThreadAsSessionResponse> {
+    const body: Record<string, unknown> = { thread_id: threadId };
+    if (sessionId) body.session_id = sessionId;
     return (await this.post(`/v1/sessions`, body)) as SaveThreadAsSessionResponse;
   }
 

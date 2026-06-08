@@ -252,9 +252,12 @@ describe("getCommandHelpText", () => {
     expect(help).toContain("Not available");
   });
 
-  it("returns partial support message for partially supported commands", () => {
+  it("returns full support message for fully supported commands", () => {
     const help = getCommandHelpText("/undo");
-    expect(help).toContain("not supported");
+    // /undo is now fully supported in GUI: the help text describes the
+    // local undo behaviour rather than admitting API limitations.
+    expect(help).not.toContain("not supported");
+    expect(help).toContain("/undo");
   });
 
   it("returns unknown command message for unrecognized commands", () => {
@@ -393,15 +396,32 @@ describe("Now-available commands (previously unavailable)", () => {
 });
 
 describe("Partial support command explanations", () => {
-  it("undo: explains API limitation", () => {
+  it("undo: now fully supported, no API limitation text", () => {
     const help = getCommandHelpText("/undo");
-    expect(help).toContain("not supported");
-    expect(help).toContain("/clear");
+    expect(help).toContain("/undo");
+    // The old placeholder complained about API limitations; the new
+    // implementation actually performs a local undo, so that warning
+    // must be gone.
+    expect(help).not.toContain("not supported");
+    expect(help).not.toContain("/clear");
   });
 
-  it("retry: explains alternative approach", () => {
+  it("retry: now fully supported, re-sends last user message", () => {
     const help = getCommandHelpText("/retry");
-    expect(help).toContain("not directly supported");
+    expect(help).toContain("/retry");
+    // The old placeholder said "not directly supported"; the new
+    // implementation actually re-sends the last user message.
+    expect(help).not.toContain("not directly supported");
+  });
+
+  it("undo availability is now full", () => {
+    const cmd = new SlashCommandRegistry().getCommand("/undo")!;
+    expect(cmd.availability).toBe("full");
+  });
+
+  it("retry availability is now full", () => {
+    const cmd = new SlashCommandRegistry().getCommand("/retry")!;
+    expect(cmd.availability).toBe("full");
   });
 
   it("attach: now supports file picker", () => {

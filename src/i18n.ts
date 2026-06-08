@@ -165,6 +165,36 @@ interface Translations {
   fileDeleted: string;
   addedLines: string;
   removedLines: string;
+  // Undo / Retry / Revert
+  undoLastTurn: string;
+  retryLastTurn: string;
+  revertFile: string;
+  revertFileTooltip: string;
+  revertThisFile: string;
+  revertConfirmTitle: string;
+  revertConfirmMessage: string;
+  revertConfirmButton: string;
+  revertCancelButton: string;
+  revertSuccess: (filePath: string) => string;
+  revertFailure: (filePath: string, reason: string) => string;
+  revertFileCreated: string;
+  revertNotAvailable: string;
+  undoConfirmTitle: string;
+  undoConfirmMessage: string;
+  undoConfirmButton: string;
+  retryConfirmTitle: string;
+  retryConfirmMessage: string;
+  retryConfirmButton: string;
+  undoNoTurns: string;
+  undoSuccess: (turnId: string) => string;
+  retryNoTurns: string;
+  retrySuccess: (turnId: string) => string;
+  retryInterrupted: string;
+  // Last-turn summary
+  lastTurnLabel: string;
+  lastTurnNoPrevious: string;
+  // Revert for newly created files
+  revertWillDelete: string;
 }
 
 const en: Translations = {
@@ -305,6 +335,36 @@ const en: Translations = {
   fileDeleted: "deleted",
   addedLines: "+{n}",
   removedLines: "-{n}",
+  // Undo / Retry / Revert
+  undoLastTurn: "Undo last turn",
+  retryLastTurn: "Retry last turn",
+  revertFile: "Revert",
+  revertFileTooltip: "Revert this file to the state before this turn",
+  revertThisFile: "Revert this file",
+  revertConfirmTitle: "Revert file changes?",
+  revertConfirmMessage: 'This will restore "{filePath}" to its pre-turn state. This cannot be undone. Continue?',
+  revertConfirmButton: "Revert",
+  revertCancelButton: "Cancel",
+  revertSuccess: (filePath) => `Reverted ${filePath} to its pre-turn state.`,
+  revertFailure: (filePath, reason) => `Failed to revert ${filePath}: ${reason}`,
+  revertFileCreated: "This file was created in this turn. Reverting will delete it.",
+  revertNotAvailable: "Revert is only available for changes made during this session. Reload the file to discard local edits.",
+  undoConfirmTitle: "Undo last turn?",
+  undoConfirmMessage: "This will remove the last user/assistant exchange from the view. The server-side turn history is preserved, so the AI will still see your previous message in future turns.",
+  undoConfirmButton: "Undo",
+  retryConfirmTitle: "Retry last turn?",
+  retryConfirmMessage: "This will remove the last exchange and re-send your last message. The original assistant response will be replaced.",
+  retryConfirmButton: "Retry",
+  undoNoTurns: "No turns to undo. The conversation is empty.",
+  undoSuccess: (turnId) => `Undone turn ${turnId}. The exchange is hidden from the view; use /load-session to recover if needed.`,
+  retryNoTurns: "No previous user message to retry.",
+  retrySuccess: (turnId) => `Retrying with turn ${turnId}…`,
+  retryInterrupted: "Retry was interrupted. A turn is already running — use /interrupt first.",
+  // Last-turn summary
+  lastTurnLabel: "Last turn",
+  lastTurnNoPrevious: "No previous turn found.",
+  // Revert for newly created files
+  revertWillDelete: "(will be deleted)",
 };
 
 const zhCn: Translations = {
@@ -445,6 +505,36 @@ const zhCn: Translations = {
   fileDeleted: "删除",
   addedLines: "+{n}",
   removedLines: "-{n}",
+  // 撤销 / 重试 / 回滚
+  undoLastTurn: "撤销上一轮",
+  retryLastTurn: "重试上一轮",
+  revertFile: "回滚",
+  revertFileTooltip: "将此文件回滚到本轮开始之前的状态",
+  revertThisFile: "回滚此文件",
+  revertConfirmTitle: "确认回滚文件?",
+  revertConfirmMessage: '这将把「{filePath}」恢复到本轮开始之前的状态。该操作不可撤销,是否继续?',
+  revertConfirmButton: "回滚",
+  revertCancelButton: "取消",
+  revertSuccess: (filePath) => `已回滚 ${filePath} 至本轮开始之前的状态。`,
+  revertFailure: (filePath, reason) => `回滚 ${filePath} 失败:${reason}`,
+  revertFileCreated: "此文件是在本轮中新建的,回滚会删除它。",
+  revertNotAvailable: "回滚仅对本会话中产生的更改有效。如需放弃本地编辑,请直接重新加载文件。",
+  undoConfirmTitle: "确认撤销上一轮?",
+  undoConfirmMessage: "这会从视图中移除最后一组用户/助手消息。服务器端的轮次历史仍然保留,AI 在后续轮次中仍会看到你之前的内容。",
+  undoConfirmButton: "撤销",
+  retryConfirmTitle: "确认重试上一轮?",
+  retryConfirmMessage: "这会移除最后一组消息,并重新发送你最后一条消息。原助手回复将被覆盖。",
+  retryConfirmButton: "重试",
+  undoNoTurns: "没有可撤销的轮次,对话为空。",
+  undoSuccess: (turnId) => `已撤销轮次 ${turnId}。该组消息已在视图中隐藏;如需恢复,可使用 /load-session。`,
+  retryNoTurns: "没有可重试的用户消息。",
+  retrySuccess: (turnId) => `正在重试轮次 ${turnId}…`,
+  retryInterrupted: "重试被中断:当前已有一个轮次正在运行,请先使用 /interrupt。",
+  // 上一轮信息
+  lastTurnLabel: "上一轮",
+  lastTurnNoPrevious: "没有可用的上一轮。",
+  // 针对新建文件的回滚
+  revertWillDelete: "(将删除该文件)",
 };
 
 const translations: Record<string, Translations> = {
@@ -628,5 +718,33 @@ export function webviewTranslations(tr: Translations) {
     fileDeleted: tr.fileDeleted,
     addedLines: tr.addedLines,
     removedLines: tr.removedLines,
+    // Undo / Retry / Revert
+    undoLastTurn: tr.undoLastTurn,
+    retryLastTurn: tr.retryLastTurn,
+    revertFile: tr.revertFile,
+    revertFileTooltip: tr.revertFileTooltip,
+    revertThisFile: tr.revertThisFile,
+    revertConfirmTitle: tr.revertConfirmTitle,
+    revertConfirmMessage: tr.revertConfirmMessage,
+    revertConfirmButton: tr.revertConfirmButton,
+    revertCancelButton: tr.revertCancelButton,
+    revertSuccess: tr.revertSuccess,
+    revertFailure: tr.revertFailure,
+    revertFileCreated: tr.revertFileCreated,
+    revertNotAvailable: tr.revertNotAvailable,
+    undoConfirmTitle: tr.undoConfirmTitle,
+    undoConfirmMessage: tr.undoConfirmMessage,
+    undoConfirmButton: tr.undoConfirmButton,
+    retryConfirmTitle: tr.retryConfirmTitle,
+    retryConfirmMessage: tr.retryConfirmMessage,
+    retryConfirmButton: tr.retryConfirmButton,
+    undoNoTurns: tr.undoNoTurns,
+    undoSuccess: tr.undoSuccess,
+    retryNoTurns: tr.retryNoTurns,
+    retrySuccess: tr.retrySuccess,
+    retryInterrupted: tr.retryInterrupted,
+    lastTurnLabel: tr.lastTurnLabel,
+    lastTurnNoPrevious: tr.lastTurnNoPrevious,
+    revertWillDelete: tr.revertWillDelete,
   };
 }

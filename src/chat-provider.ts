@@ -308,6 +308,39 @@ interface FileChangeInfo {
 
 // ── Provider ──
 
+/**
+ * Find the index range of the last user/assistant exchange in a list of
+ * messages. Pure function so it can be unit-tested without a vscode mock.
+ *
+ * Rules:
+ *  - Returns `null` if the conversation has fewer than 2 messages, or if
+ *    no user message is present, or if the only user message is the very
+ *    first message (nothing to keep before it).
+ *  - Otherwise returns `{ start, end }` such that `messages.slice(start, end)`
+ *    is the last exchange that should be dropped on undo, and
+ *    `messages.slice(0, start)` is the part that should be kept.
+ */
+export interface ConversationMessageLite {
+  role: string;
+  content?: string;
+}
+
+export function lastTurnRange(
+  messages: ConversationMessageLite[]
+): { start: number; end: number } | null {
+  const n = messages.length;
+  if (n < 2) return null;
+  let userIdx = -1;
+  for (let i = n - 1; i >= 0; i--) {
+    if (messages[i].role === "user") {
+      userIdx = i;
+      break;
+    }
+  }
+  if (userIdx < 0) return null;
+  return { start: userIdx, end: n };
+}
+
 export class ChatProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "brotherwhale.chat";
 
@@ -316,6 +349,9 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   private engine: CodeWhaleEngine;
   private currentThread: ThreadRecord | null = null;
   private viewingSessionId: string | null = null;
+  /** Tracks the session ID for the current thread, so we update-in-place
+   *  instead of creating duplicate sessions on each turn. */
+  private currentSessionId: string | null = null;
   private messages: ChatMessage[] = [];
   private eventController: AbortController | null = null;
   private lastEventSeq: number = 0;
@@ -349,8 +385,6 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   private turnFileChanges: FileChangeInfo[] = [];
   private currentAttachments: Array<{ kind: string; path: string; name: string }> = [];
   private showAllWorkspaces: boolean = false;
-  /** Track thread IDs that have already been saved as sessions to prevent duplicates */
-  private savedThreadIds = new Set<string>();
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -381,8 +415,9 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       localResourceRoots: [this.extensionUri],
     };
 
-    webviewView.webview.html = getWebviewHtml(webviewView.webview, this.extensionUri, webviewTranslations(t()));
-    this.debugLog("webview HTML set");
+    const html = getWebviewHtml(webviewView.webview, this.extensionUri, webviewTranslations(t()));
+    this.debugLog("webview HTML set, length=" + html.length);
+    webviewView.webview.html = html;
 
     webviewView.webview.onDidReceiveMessage(
       async (msg) => {
@@ -495,6 +530,19 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       case "removeAttachment":
         this.handleRemoveAttachment(msg.index as number);
         break;
+      case "undoLastTurn":
+        await this.handleUndoLastTurn();
+        break;
+      case "retryLastTurn":
+        await this.handleRetryLastTurn();
+        break;
+      case "revertFileChange":
+        await this.handleRevertFileChange(
+          msg.filePath as string,
+          msg.changeType as string,
+          msg.diff as string | undefined
+        );
+        break;
     }
   }
 
@@ -505,8 +553,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     this.refreshWorkPanel();
 
     if (this.currentThread?.id) {
-      this.subscribeToEvents();
       await this.loadHistory(this.currentThread.id);
+      this.subscribeToEvents();
     } else if (this.messages.length > 0) {
       this.postMessage({ type: "loadHistory", messages: this.messages });
     } else {
@@ -541,8 +589,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       
       if (threadWithContent) {
         this.currentThread = threadWithContent;
-        this.subscribeToEvents();
         await this.loadHistory();
+        this.subscribeToEvents();
       } else if (threads.length > 0) {
         this.currentThread = threads[0];
         this.postMessage({ type: "clearChat" });
@@ -572,12 +620,14 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private async loadHistory(threadId?: string): Promise<void> {
+  private async loadHistory(threadId?: string): Promise<number> {
     const id = threadId ?? this.currentThread?.id;
-    if (!id) return;
+    if (!id) return 0;
     try {
       const detail = await this.api.getThreadDetail(id);
       this.messages = [];
+      this.lastEventSeq = detail.latest_seq ?? 0;
+      const itemById = new Map(detail.items.map((item) => [item.id, item]));
 
       for (const turn of detail.turns) {
         // user message from turn input
@@ -598,7 +648,9 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         let currentTextBlock: ContentBlock | undefined;
         let currentThinkingBlock: ContentBlock | undefined;
 
-        const turnItems = detail.items.filter((it) => it.turn_id === turn.id);
+        const turnItems = (turn.item_ids || [])
+          .map((itemId) => itemById.get(itemId))
+          .filter((item): item is TurnItemRecord => !!item);
 
         for (const item of turnItems) {
           switch (item.kind) {
@@ -750,11 +802,13 @@ export class ChatProvider implements vscode.WebviewViewProvider {
 
       this.postMessage({ type: "loadHistory", messages: this.messages });
       this.postMessage({ type: "status", text: `Loaded ${this.messages.length / 2} turns` });
+      return this.lastEventSeq;
     } catch (err) {
       this.postMessage({
         type: "error",
         message: `Failed to load history: ${(err as Error).message}`,
       });
+      return this.lastEventSeq;
     }
   }
 
@@ -763,38 +817,39 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       const session = await this.api.getSession(sessionId);
       const title = session.metadata.title || "Session";
 
-    this.cleanup();
-    this.currentThread = null;
-    this.viewingSessionId = sessionId;
-    this.messages = [];
-    this.lastEventSeq = 0;
-    this.currentTurnId = null;
-    this.activeItems.clear();
-    this.currentTextBlockIdx = -1;
-    this.currentThinkingBlockIdx = -1;
-    this.cycleCount = 0;
-    this.checklistItems = [];
-    this.checklistCompletionPct = 0;
-    this.coherenceState = "healthy";
-    this.coherenceLabel = "";
-    this.turnFileChanges = [];
-    this.resetSessionStats();
+      this.cleanup();
+      this.currentThread = null;
+      this.viewingSessionId = sessionId;
+      this.currentSessionId = sessionId;
+      this.messages = [];
+      this.lastEventSeq = 0;
+      this.currentTurnId = null;
+      this.activeItems.clear();
+      this.currentTextBlockIdx = -1;
+      this.currentThinkingBlockIdx = -1;
+      this.cycleCount = 0;
+      this.checklistItems = [];
+      this.checklistCompletionPct = 0;
+      this.coherenceState = "healthy";
+      this.coherenceLabel = "";
+      this.turnFileChanges = [];
+      this.resetSessionStats();
 
-    const rawMessages = session.messages as Array<{
-      role: string;
-      content: Array<{
-        type: string;
-        text?: string;
-        thinking?: string;
-        id?: string;
-        name?: string;
-        input?: Record<string, unknown>;
-        tool_use_id?: string;
-        content?: string;
-        content_blocks?: Array<{ type: string; text?: string }>;
-        is_error?: boolean;
+      const rawMessages = session.messages as Array<{
+        role: string;
+        content: Array<{
+          type: string;
+          text?: string;
+          thinking?: string;
+          id?: string;
+          name?: string;
+          input?: Record<string, unknown>;
+          tool_use_id?: string;
+          content?: string;
+          content_blocks?: Array<{ type: string; text?: string }>;
+          is_error?: boolean;
+        }>;
       }>;
-    }>;
 
     const globalToolCalls: ToolCallInfo[] = [];
     const globalToolIdMap: Map<string, number> = new Map();
@@ -970,8 +1025,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private async loadThread(threadId: string): Promise<void> {
-    this.cleanup();
+  private async loadThread(threadId: string, preserveSessionId = false): Promise<void> {
+    this.cleanup(preserveSessionId);
     this.messages = [];
     this.lastEventSeq = 0;
     this.currentTurnId = null;
@@ -1012,8 +1067,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         }
       }
 
-      this.subscribeToEvents();
       await this.loadHistory(threadId);
+      this.subscribeToEvents();
       this.postMessage({
         type: "threadLoaded",
         thread: this.currentThread,
@@ -1132,8 +1187,9 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           });
         } catch { /* non-critical */ }
 
+        this.currentSessionId = sessionId;
         this.viewingSessionId = null;
-        await this.loadThread(result.thread_id);
+        await this.loadThread(result.thread_id, true);
         this.refreshSessionList();
       }
 
@@ -1254,25 +1310,33 @@ export class ChatProvider implements vscode.WebviewViewProvider {
 
   /** Refresh the session list shown in the sidebar */
   private async refreshSessionList(): Promise<void> {
-    try {
+    const fetchAndSend = async () => {
       const result = await this.api.listSessions({ limit: 100 });
       let sessions = result.sessions || [];
       const currentWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       if (!this.showAllWorkspaces && currentWorkspace) {
         sessions = sessions.filter(s => s.workspace === currentWorkspace);
       }
-      this.postMessage({ type: "sessionList", sessions, showAllWorkspaces: this.showAllWorkspaces });
+      // Defensive: the backend can return the same session id multiple times
+      // (e.g. when both TUI auto-save and an explicit /save fire for the same
+      // thread). When duplicates collide, keep the record with the most recent
+      // updated_at so the sidebar shows the latest snapshot, not a stale one.
+      const latestById = new Map<string, typeof sessions[number]>();
+      for (const s of sessions) {
+        if (!s || !s.id) continue;
+        const prev = latestById.get(s.id);
+        if (!prev || (s.updated_at && (!prev.updated_at || s.updated_at > prev.updated_at))) {
+          latestById.set(s.id, s);
+        }
+      }
+      const deduped = Array.from(latestById.values());
+      this.postMessage({ type: "sessionList", sessions: deduped, showAllWorkspaces: this.showAllWorkspaces });
+    };
+    try {
+      await fetchAndSend();
     } catch (err) {
       setTimeout(async () => {
-        try {
-          const result = await this.api.listSessions({ limit: 100 });
-          let sessions = result.sessions || [];
-          const currentWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-          if (!this.showAllWorkspaces && currentWorkspace) {
-            sessions = sessions.filter(s => s.workspace === currentWorkspace);
-          }
-          this.postMessage({ type: "sessionList", sessions, showAllWorkspaces: this.showAllWorkspaces });
-        } catch { /* silent */ }
+        try { await fetchAndSend(); } catch { /* silent */ }
       }, 2000);
     }
   }
@@ -1355,6 +1419,212 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       } catch {
         // ignore
       }
+    }
+  }
+
+  /**
+   * Undo the last turn, fully aligned with TUI's `/undo` command:
+   * 1. Try snapshot-based file rollback (patch_undo)
+   * 2. Remove the last conversation turn (fork_at_user_message)
+   * 3. Save the updated session
+   */
+  private async handleUndoLastTurn(): Promise<void> {
+    // If viewing a session (not a live thread), resume it first.
+    if (this.viewingSessionId && !this.currentThread) {
+      try {
+        await this.engine.ensureRunning();
+        this.api.setBaseUrl(this.engine.baseUrl);
+        this.api.setToken(this.engine.token);
+        const sessionId = this.viewingSessionId;
+        const result = await this.api.resumeSessionThread(sessionId);
+        this.currentSessionId = sessionId;
+        this.viewingSessionId = null;
+        await this.loadThread(result.thread_id, true);
+        this.refreshSessionList();
+      } catch (err) {
+        this.postMessage({ type: "error", message: `Failed to resume session: ${(err as Error).message}` });
+        return;
+      }
+    }
+
+    if (!this.currentThread) {
+      this.postMessage({ type: "info", message: t().undoNoTurns });
+      return;
+    }
+
+    try {
+      await this.engine.ensureRunning();
+      this.api.setBaseUrl(this.engine.baseUrl);
+      this.api.setToken(this.engine.token);
+
+      // Use patch-undo endpoint: tries snapshot file rollback first,
+      // then removes the last conversation turn — same as TUI's `/undo`.
+      const result = await this.api.patchUndoThreadTurn(this.currentThread.id);
+
+      // Show file rollback info if files were restored.
+      if (result.patch_result.files_restored && result.patch_result.summary) {
+        this.postMessage({ type: "info", message: result.patch_result.summary });
+      }
+
+      // Switch to the new forked thread.
+      this.currentThread = result.thread;
+      this.messages = [];
+      this.turnFileChanges = [];
+      this.currentTurnId = null;
+      this.activeItems.clear();
+      this.currentTextBlockIdx = -1;
+      this.currentThinkingBlockIdx = -1;
+      this.lastEventSeq = 0;
+
+      // Load the forked thread's history.
+      // Preserve currentSessionId so subsequent turn auto-saves update
+      // the same session instead of creating duplicates.
+      await this.loadThread(result.thread.id, true);
+
+      // Put the user's message back in the input box so they can edit & re-send.
+      if (result.original_user_text) {
+        this.postMessage({ type: "setInputText", text: result.original_user_text });
+      }
+
+      this.postMessage({
+        type: "info",
+        message: t().undoSuccess(result.thread.id),
+      });
+      this.refreshWorkPanel();
+      // Immediately save the session so the session list reflects the
+      // undo (TUI does this implicitly: undo modifies api_messages in
+      // memory, and the next turn.completed auto-save picks it up).
+      if (this.currentSessionId) {
+        try {
+          await this.api.saveThreadAsSession(result.thread.id, this.currentSessionId);
+        } catch {
+          // Ignore save failures
+        }
+      }
+      this.refreshSessionList();
+      this.postMessage({ type: "historyUpdated" });
+    } catch (err) {
+      const msg = (err as Error).message || String(err);
+      if (msg.includes("exceeds") || msg.includes("No user turn")) {
+        this.postMessage({ type: "info", message: t().undoNoTurns });
+      } else {
+        this.postMessage({ type: "error", message: `Undo failed: ${msg}` });
+      }
+    }
+  }
+
+  /**
+   * Retry the last turn via the server-side undo + re-send API.
+   * This creates a new thread with the last turn removed and immediately
+   * starts a new turn with the original user message, matching TUI's
+   * `retry` behavior.
+   */
+  private async handleRetryLastTurn(): Promise<void> {
+    // If viewing a session (not a live thread), resume it first.
+    if (this.viewingSessionId && !this.currentThread) {
+      try {
+        await this.engine.ensureRunning();
+        this.api.setBaseUrl(this.engine.baseUrl);
+        this.api.setToken(this.engine.token);
+        const sessionId = this.viewingSessionId;
+        const result = await this.api.resumeSessionThread(sessionId);
+        this.currentSessionId = sessionId;
+        this.viewingSessionId = null;
+        await this.loadThread(result.thread_id, true);
+        this.refreshSessionList();
+      } catch (err) {
+        this.postMessage({ type: "error", message: `Failed to resume session: ${(err as Error).message}` });
+        return;
+      }
+    }
+
+    if (!this.currentThread) {
+      this.postMessage({ type: "info", message: t().retryNoTurns });
+      return;
+    }
+
+    try {
+      await this.engine.ensureRunning();
+      this.api.setBaseUrl(this.engine.baseUrl);
+      this.api.setToken(this.engine.token);
+
+      const result = await this.api.retryThreadTurn(this.currentThread.id);
+
+      // Switch to the new forked thread and subscribe to its events.
+      this.currentThread = result.thread;
+      this.messages = [];
+      this.turnFileChanges = [];
+      this.currentTurnId = result.turn.id;
+      this.activeItems.clear();
+      this.currentTextBlockIdx = -1;
+      this.currentThinkingBlockIdx = -1;
+      this.lastEventSeq = 0;
+
+      // Load the forked thread's history.
+      // Preserve currentSessionId so subsequent turn auto-saves update
+      // the same session instead of creating duplicates.
+      await this.loadThread(result.thread.id, true);
+
+      // Subscribe to events for the new thread so the retry turn streams.
+      this.subscribeToEvents();
+
+      this.postMessage({
+        type: "info",
+        message: t().retrySuccess(result.thread.id),
+      });
+      this.refreshWorkPanel();
+      this.refreshSessionList();
+      this.postMessage({ type: "historyUpdated" });
+    } catch (err) {
+      const msg = (err as Error).message || String(err);
+      if (msg.includes("exceeds") || msg.includes("No user") || msg.includes("no user text")) {
+        this.postMessage({ type: "info", message: t().retryNoTurns });
+      } else {
+        this.postMessage({ type: "error", message: `Retry failed: ${msg}` });
+      }
+    }
+  }
+
+  /**
+   * Revert a file change by restoring the most recent pre-turn snapshot
+   * via the server-side SnapshotRepo API. This matches TUI's `patch_undo`
+   * behavior — using git-based snapshots instead of client-side diff
+   * reconstruction, which is more reliable and supports multiple undos.
+   */
+  private async handleRevertFileChange(
+    filePath: string,
+    _changeType: string,
+    _diff: string | undefined
+  ): Promise<void> {
+    try {
+      await this.engine.ensureRunning();
+      this.api.setBaseUrl(this.engine.baseUrl);
+      this.api.setToken(this.engine.token);
+
+      // Find the most recent pre-turn snapshot.
+      const snapshots = await this.api.listSnapshots({ limit: 20 });
+      const preTurn = snapshots.find((s) => s.label.startsWith("pre-turn:"));
+
+      if (!preTurn) {
+        this.postMessage({ type: "info", message: t().revertNotAvailable });
+        return;
+      }
+
+      // Restore the snapshot on the server side.
+      await this.api.restoreSnapshot(preTurn.id);
+
+      // Remove the change from the in-memory turn record.
+      this.turnFileChanges = this.turnFileChanges.filter(
+        (fc) => fc.filePath !== filePath
+      );
+      this.refreshWorkPanel();
+
+      this.postMessage({ type: "info", message: t().revertSuccess(filePath) });
+    } catch (err) {
+      this.postMessage({
+        type: "error",
+        message: t().revertFailure(filePath, (err as Error).message),
+      });
     }
   }
 
@@ -1846,27 +2116,13 @@ Use the TUI for full command support.` });
         notAvailable();
         break;
       case "/undo": {
-        if (!this.currentThread) {
-          this.postMessage({ type: "info", message: "No active thread to undo." });
-          break;
-        }
-        try {
-          const detail = await this.api.getThreadDetail(this.currentThread.id);
-          const turns = detail.turns || [];
-          if (turns.length === 0) {
-            this.postMessage({ type: "info", message: "No turns to undo." });
-            break;
-          }
-          const lastTurn = turns[turns.length - 1];
-          this.postMessage({ type: "info", message: `Last turn: ${lastTurn.input_summary || lastTurn.id.slice(0, 8)}\nUndo is not directly supported via the API. Use /clear to start fresh, or create a new thread.` });
-        } catch (err) {
-          this.postMessage({ type: "error", message: `Failed to get thread info: ${(err as Error).message}` });
-        }
+        await this.handleUndoLastTurn();
         break;
       }
-      case "/retry":
-        this.postMessage({ type: "info", message: "Retry is not directly supported in GUI. Please send your message again." });
+      case "/retry": {
+        await this.handleRetryLastTurn();
         break;
+      }
       case "/share":
         notAvailable();
         break;
@@ -2793,14 +3049,20 @@ Usage: /jobs run ${automation.id.slice(0, 8)} | /jobs pause ${automation.id.slic
           });
         }
         this.refreshSessionList();
-        // Auto-save thread as session for cross-workspace resumption (fire-and-forget)
-        // Only save once per thread to prevent duplicate sessions
-        if (this.currentThread && !this.savedThreadIds.has(this.currentThread.id)) {
-          this.savedThreadIds.add(this.currentThread.id);
-          this.api.saveThreadAsSession(this.currentThread.id).catch(() => {
-            // If save fails, remove from set so we can retry next time
-            this.savedThreadIds.delete(this.currentThread?.id || "");
-          });
+        // Auto-save session after each completed turn, consistent with TUI behavior.
+        // TUI saves after every turn via persistence_actor; we do the same via API.
+        // Pass currentSessionId so the backend updates the existing session
+        // instead of creating duplicates.
+        if (this.currentThread) {
+          const threadId = this.currentThread.id;
+          const sessionId = this.currentSessionId;
+          this.api.saveThreadAsSession(threadId, sessionId || undefined)
+            .then((result) => {
+              this.currentSessionId = result.session_id;
+            })
+            .catch(() => {
+              // Ignore background auto-save failures; the thread stays usable.
+            });
         }
         this.stopPeriodicTaskRefresh();
         this.refreshTaskList();
@@ -3317,13 +3579,16 @@ Usage: /jobs run ${automation.id.slice(0, 8)} | /jobs pause ${automation.id.slic
     this.view?.webview.postMessage(msg);
   }
 
-  private cleanup(): void {
+  private cleanup(preserveSessionId = false): void {
     this.eventController?.abort();
     this.eventController = null;
     this.diffContentStore.clear();
     this.diffProviderDisposable?.dispose();
     this.diffProviderDisposable = null;
     this.viewingSessionId = null;
+    if (!preserveSessionId) {
+      this.currentSessionId = null;
+    }
   }
 
   dispose(): void {

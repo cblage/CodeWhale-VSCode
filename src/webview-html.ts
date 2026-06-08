@@ -199,6 +199,13 @@ export function getWebviewHtml(
       height: 100vh;
       display: flex;
       flex-direction: column;
+      /* Belt-and-suspenders: prevent the document body itself from
+         ever showing a scrollbar. The #layout child has overflow:hidden
+         and is flex:1 of body, so it should already clip everything, but
+         some WebView builds can briefly show a body-level scrollbar on
+         the first paint of the sidebar if a nested flex chain is not yet
+         resolved. */
+      overflow: hidden;
     }
 
     #layout { display: flex; flex: 1; overflow: hidden; }
@@ -207,7 +214,11 @@ export function getWebviewHtml(
       width: 220px;
       min-width: 160px;
       border-right: 1px solid var(--border);
-      overflow-y: auto;
+      /* Panel itself does NOT scroll — each section body handles its own scroll.
+         Two scrollbars (outer + inner) appear when total content exceeds panel
+         height AND an inner body also overflows. Clipping here keeps a single
+         scrollbar at the section level. */
+      overflow: hidden;
       padding: 0;
       display: none;
       flex-direction: column;
@@ -218,6 +229,15 @@ export function getWebviewHtml(
       display: flex;
       flex-direction: column;
       border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    /* Sessions section grows to fill the remaining vertical space in the panel.
+       min-height: 0 is required so the inner body can shrink below its content
+       size and become scrollable. */
+    #sidebar-threads {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
     }
     .sidebar-section-header {
       display: flex;
@@ -264,9 +284,26 @@ export function getWebviewHtml(
       max-height: 0 !important;
       overflow: hidden;
     }
+    /* Sessions body fills the available space inside the sessions section.
+       No max-height cap — the section itself is bounded by flex: 1 on the
+       panel, so the body only ever grows as much as there is room. */
     #sidebar-threads .sidebar-section-body {
-      max-height: 600px;
+      max-height: none;
       flex: 1;
+      min-height: 0;
+    }
+    /* Tab visibility is controlled declaratively by the data-active-tab
+       attribute on #sidebar-threads, NOT by inline style.display on the
+       individual bodies. This avoids a WebView quirk where, on the first
+       transition of the panel from display:none to display:flex, the
+       inline display:none on the inactive body was sometimes applied
+       late, causing the body to be allocated a flex slot and visually
+       appear as a blank strip that split the active list into two
+       regions. Driving visibility from the parent attribute is
+       deterministic and side-effect free. */
+    #sidebar-threads[data-active-tab="sessions"] #tab-threads-list,
+    #sidebar-threads[data-active-tab="threads"] #tab-sessions {
+      display: none;
     }
 
     .sidebar-tabs {
@@ -542,6 +579,13 @@ export function getWebviewHtml(
       text-decoration: underline;
     }
     .message .content a:hover { opacity: 0.8; }
+    .message.user .content a {
+      color: var(--brand-primary-foreground);
+      text-decoration: underline;
+      text-decoration-color: rgba(255, 255, 255, 0.85);
+      text-underline-offset: 2px;
+      text-decoration-thickness: 1.5px;
+    }
 
     .message .content table {
       border-collapse: collapse;
@@ -1226,14 +1270,14 @@ export function getWebviewHtml(
   <div id="task-detail-overlay" class="task-detail-overlay" style="display:none"></div>
   <div id="layout">
     <div id="threads-panel">
-      <div class="sidebar-section" id="sidebar-threads">
+      <div class="sidebar-section" id="sidebar-threads" data-active-tab="sessions">
         <div class="sidebar-tabs">
           <button class="sidebar-tab active" id="tab-sessions-btn" data-tab="sessions">${tr.sessions}</button>
           <button class="sidebar-tab" id="tab-threads-btn" data-tab="threads">${tr.threads}</button>
           <span class="sidebar-section-action" id="workspace-filter-toggle" title="${tr.showAllWorkspaces}">🌐</span>
         </div>
         <div class="sidebar-section-body" id="tab-sessions"></div>
-        <div class="sidebar-section-body" id="tab-threads-list" style="display:none;"></div>
+        <div class="sidebar-section-body" id="tab-threads-list"></div>
       </div>
       <div class="sidebar-section" id="sidebar-work">
         <div class="sidebar-section-header" id="work-section-toggle">
@@ -1270,6 +1314,8 @@ export function getWebviewHtml(
         <button id="btn-new-thread">${tr.newThread}</button>
         <button id="btn-threads" title="${tr.toggleHistory}">📋</button>
         <button id="btn-compact">${tr.compact}</button>
+        <button id="btn-undo" title="Undo last turn">↩ Undo</button>
+        <button id="btn-retry" title="Retry last turn">🔁 Retry</button>
         <button id="btn-interrupt">${tr.interrupt}</button>
         <span class="thread-count" id="thread-count" title="${tr.toggleHistory}">0 sessions</span>
       </div>
@@ -1396,6 +1442,8 @@ export function getWebviewHtml(
     const threadCountEl = document.getElementById('thread-count');
     const compactBtn = document.getElementById('btn-compact');
     const interruptBtn = document.getElementById('btn-interrupt');
+    const undoBtn = document.getElementById('btn-undo');
+    const retryBtn = document.getElementById('btn-retry');
     const statusEl = document.getElementById('status');
     const statusTextEl = document.getElementById('status-text');
     const statusStatsEl = document.getElementById('status-stats');
@@ -1807,10 +1855,23 @@ export function getWebviewHtml(
     newThreadBtn.addEventListener('click', () => vscode.postMessage({ type: 'newThread' }));
     compactBtn.addEventListener('click', () => vscode.postMessage({ type: 'compact' }));
     interruptBtn.addEventListener('click', () => vscode.postMessage({ type: 'interrupt' }));
+    undoBtn.addEventListener('click', () => vscode.postMessage({ type: 'undoLastTurn' }));
+    retryBtn.addEventListener('click', () => vscode.postMessage({ type: 'retryLastTurn' }));
     function toggleThreadsPanel() {
       const opening = !threadsPanel.classList.contains('open');
       threadsPanel.classList.toggle('open');
       if (opening) {
+        // Force a synchronous layout pass before the sidebar's first paint.
+        // The panel is display:none until the .open class is added; on the
+        // first transition into display:flex the nested flex chain
+        // (#threads-panel -> #sidebar-threads -> .sidebar-section-body) is
+        // not always resolved correctly by the WebView, so the inner body
+        // ends up as tall as its content and the outer panel also reports a
+        // scrollbar. Reading a layout property here forces a reflow, which
+        // makes the inner body honour its flex:1 / min-height:0 and produce
+        // a single scrollbar. Without this, the first sessions view shows
+        // two scrollbars until the user toggles tabs at least once.
+        void threadsPanel.offsetHeight;
         // Request fresh data from extension when opening sidebar
         vscode.postMessage({ type: 'refreshSidebar' });
       }
@@ -2068,6 +2129,7 @@ export function getWebviewHtml(
       if (fc.changeType !== 'deleted') {
         html += '<button class="fc-open-file" data-file-path="' + escapeHtml(fc.filePath) + '" title="' + escapeHtml(__i18n.openFileTooltip) + '">📄 ' + escapeHtml(__i18n.openFile) + '</button>';
       }
+      html += '<button class="fc-revert" data-file-path="' + escapeHtml(fc.filePath) + '" data-change-type="' + escapeHtml(fc.changeType) + '" data-diff-key="' + (fc.diff ? diffKey : '') + '" title="Revert this file change">↩ Revert</button>';
       html += '</div>';
       html += '</div>';
       return html;
@@ -2112,6 +2174,16 @@ export function getWebviewHtml(
         const filePath = target.getAttribute('data-file-path');
         if (filePath) {
           vscode.postMessage({ type: 'openFile', filePath });
+        }
+        return;
+      }
+
+      if (target.classList.contains('fc-revert')) {
+        const filePath = target.getAttribute('data-file-path');
+        const changeType = target.getAttribute('data-change-type') || 'modified';
+        const diffKey = target.getAttribute('data-diff-key');
+        if (filePath) {
+          vscode.postMessage({ type: 'revertFileChange', filePath, changeType, diff: (diffKey ? _diffStore.get(diffKey) : undefined) || undefined });
         }
         return;
       }
@@ -2343,17 +2415,27 @@ export function getWebviewHtml(
       const threadsBtn = document.getElementById('tab-threads-btn');
       const sessionsContainer = document.getElementById('tab-sessions');
       const threadsContainer = document.getElementById('tab-threads-list');
+      const section = document.getElementById('sidebar-threads');
 
       if (tab === 'sessions') {
         sessionsBtn.classList.add('active');
         threadsBtn.classList.remove('active');
+        // Drive visibility from the parent's data attribute so that the
+        // inactive body is removed from the flex layout deterministically,
+        // independent of any per-element inline style. This prevents the
+        // "blank strip between two list regions" bug on the first paint
+        // of the sidebar.
+        if (section) section.setAttribute('data-active-tab', 'sessions');
+        // Clear any leftover inline style from a previous toggle so the
+        // CSS rule above is the single source of truth.
         sessionsContainer.style.display = '';
-        threadsContainer.style.display = 'none';
+        threadsContainer.style.display = '';
         threadCountEl.textContent = formatThreadsCount(sessions.length, 'sessions');
       } else {
         sessionsBtn.classList.remove('active');
         threadsBtn.classList.add('active');
-        sessionsContainer.style.display = 'none';
+        if (section) section.setAttribute('data-active-tab', 'threads');
+        sessionsContainer.style.display = '';
         threadsContainer.style.display = '';
         threadCountEl.textContent = formatThreadsCount(threads.length, 'threads');
       }
@@ -2407,7 +2489,7 @@ export function getWebviewHtml(
       const container = document.getElementById('tab-work');
       if (!container) return;
       container.innerHTML = '';
-      const hasContent = workState.goal || workState.checklist.length > 0 || workState.strategy.length > 0 || workState.cycleCount > 0 || (workState.coherenceState && workState.coherenceState !== 'healthy');
+      const hasContent = workState.goal || workState.checklist.length > 0 || workState.strategy.length > 0 || workState.cycleCount > 0 || (workState.coherenceState && workState.coherenceState !== 'healthy') || (workState.fileChanges && workState.fileChanges.length > 0);
       if (!hasContent) {
         const el = document.createElement('div');
         el.className = 'work-empty';
@@ -3100,6 +3182,14 @@ export function getWebviewHtml(
 
         case 'status':
           statusTextEl.textContent = msg.text;
+          break;
+
+        case 'setInputText':
+          if (msg.text && inputEl) {
+            inputEl.value = msg.text;
+            inputEl.focus();
+            inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+          }
           break;
 
         case 'attachmentsChanged':
