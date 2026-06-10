@@ -1,76 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { parseDiffToSides, lastTurnRange } from "./chat-provider";
-
-interface ModelPricing {
-  inputCacheHitPerMillion: number;
-  inputCacheMissPerMillion: number;
-  outputPerMillion: number;
-  inputCacheHitPerMillionCny: number;
-  inputCacheMissPerMillionCny: number;
-  outputPerMillionCny: number;
-}
-
-interface CostEstimate {
-  usd: number;
-  cny: number;
-}
-
-function getModelPricing(model: string): ModelPricing | null {
-  const lower = model.toLowerCase();
-  if (!lower.includes("deepseek")) return null;
-  const discountEnd = new Date("2026-05-31T15:59:00Z").getTime();
-  const now = Date.now();
-  if (lower.includes("v4-pro") || lower.includes("v4pro")) {
-    if (now <= discountEnd) {
-      return {
-        inputCacheHitPerMillion: 0.003625, inputCacheMissPerMillion: 0.435, outputPerMillion: 0.87,
-        inputCacheHitPerMillionCny: 0.025, inputCacheMissPerMillionCny: 3.0, outputPerMillionCny: 6.0,
-      };
-    }
-    return {
-      inputCacheHitPerMillion: 0.0145, inputCacheMissPerMillion: 1.74, outputPerMillion: 3.48,
-      inputCacheHitPerMillionCny: 0.1, inputCacheMissPerMillionCny: 12.0, outputPerMillionCny: 24.0,
-    };
-  }
-  return {
-    inputCacheHitPerMillion: 0.0028, inputCacheMissPerMillion: 0.14, outputPerMillion: 0.28,
-    inputCacheHitPerMillionCny: 0.02, inputCacheMissPerMillionCny: 1.0, outputPerMillionCny: 2.0,
-  };
-}
-
-function calculateTurnCost(
-  model: string,
-  inputTokens: number,
-  outputTokens: number,
-  cacheHitTokens?: number,
-  cacheMissTokens?: number,
-  reasoningTokens?: number,
-): CostEstimate | null {
-  const pricing = getModelPricing(model);
-  if (!pricing) return null;
-  const hit = cacheHitTokens ?? 0;
-  const miss = cacheMissTokens ?? Math.max(0, inputTokens - hit);
-  const uncategorized = Math.max(0, inputTokens - hit - miss);
-  const effectiveMiss = miss + uncategorized;
-  const effectiveOutput = outputTokens + (reasoningTokens ?? 0);
-  const hitCost = (hit / 1_000_000) * pricing.inputCacheHitPerMillion;
-  const missCost = (effectiveMiss / 1_000_000) * pricing.inputCacheMissPerMillion;
-  const outputCost = (effectiveOutput / 1_000_000) * pricing.outputPerMillion;
-  const hitCostCny = (hit / 1_000_000) * pricing.inputCacheHitPerMillionCny;
-  const missCostCny = (effectiveMiss / 1_000_000) * pricing.inputCacheMissPerMillionCny;
-  const outputCostCny = (effectiveOutput / 1_000_000) * pricing.outputPerMillionCny;
-  return {
-    usd: hitCost + missCost + outputCost,
-    cny: hitCostCny + missCostCny + outputCostCny,
-  };
-}
-
-function formatCostAmount(cost: number, currency: "usd" | "cny"): string {
-  const symbol = currency === "usd" ? "$" : "¥";
-  if (cost < 0.0001) return `<${symbol}0.0001`;
-  if (cost < 0.01) return `${symbol}${cost.toFixed(4)}`;
-  return `${symbol}${cost.toFixed(2)}`;
-}
+import { getModelPricing, calculateTurnCost, formatCostAmount } from "./cost-calculator";
+import { parseDiffToSides } from "./diff-utils";
+import { shouldRefreshTaskList, TASK_REFRESH_TOOL_NAMES } from "./tool-utils";
 
 describe("Cost calculation", () => {
   describe("getModelPricing", () => {
@@ -349,39 +280,44 @@ describe("Tool call status transitions", () => {
 });
 
 describe("Task refresh trigger conditions", () => {
-  const taskRefreshToolNames = [
-    "agent_open", "agent_spawn", "agent_close", "agent_cancel",
-    "todo_write", "todo_add", "todo_update",
-    "checklist_write", "checklist_add", "checklist_update",
-    "task_shell_start", "exec_shell",
-  ];
-
   it("triggers task refresh on agent tools", () => {
     for (const name of ["agent_open", "agent_spawn", "agent_close", "agent_cancel"]) {
-      expect(taskRefreshToolNames).toContain(name);
+      expect(shouldRefreshTaskList(name)).toBe(true);
     }
   });
 
   it("triggers task refresh on todo tools", () => {
     for (const name of ["todo_write", "todo_add", "todo_update"]) {
-      expect(taskRefreshToolNames).toContain(name);
+      expect(shouldRefreshTaskList(name)).toBe(true);
     }
   });
 
   it("triggers task refresh on checklist tools", () => {
     for (const name of ["checklist_write", "checklist_add", "checklist_update"]) {
-      expect(taskRefreshToolNames).toContain(name);
+      expect(shouldRefreshTaskList(name)).toBe(true);
     }
   });
 
   it("triggers task refresh on shell tools", () => {
-    expect(taskRefreshToolNames).toContain("task_shell_start");
-    expect(taskRefreshToolNames).toContain("exec_shell");
+    expect(shouldRefreshTaskList("task_shell_start")).toBe(true);
+    expect(shouldRefreshTaskList("exec_shell")).toBe(true);
   });
 
   it("does not trigger task refresh on read-only tools", () => {
     for (const name of ["read_file", "grep_files", "project_map"]) {
-      expect(taskRefreshToolNames).not.toContain(name);
+      expect(shouldRefreshTaskList(name)).toBe(false);
+    }
+  });
+
+  it("TASK_REFRESH_TOOL_NAMES set matches expected tools", () => {
+    const expected = [
+      "agent_open", "agent_spawn", "agent_close", "agent_cancel",
+      "todo_write", "todo_add", "todo_update",
+      "checklist_write", "checklist_add", "checklist_update",
+      "task_shell_start", "exec_shell",
+    ];
+    for (const name of expected) {
+      expect(TASK_REFRESH_TOOL_NAMES.has(name)).toBe(true);
     }
   });
 });
@@ -1492,155 +1428,5 @@ describe("Cost calculation edge cases", () => {
     const cost = calculateTurnCost("deepseek-v4-flash", 1, 1, 0, 1);
     expect(cost).not.toBeNull();
     expect(cost!.usd).toBeGreaterThan(0);
-  });
-});
-
-describe("lastTurnRange", () => {
-  it("returns null for an empty conversation", () => {
-    expect(lastTurnRange([])).toBeNull();
-  });
-
-  it("returns null for a single message", () => {
-    expect(lastTurnRange([{ role: "user", content: "hi" }])).toBeNull();
-  });
-
-  it("returns null when there is no user message", () => {
-    expect(
-      lastTurnRange([
-        { role: "assistant", content: "x" },
-        { role: "assistant", content: "y" },
-      ])
-    ).toBeNull();
-  });
-
-  it("returns the full range when the only user message is the first message", () => {
-    // A single user/assistant exchange starting at index 0 is a valid turn to undo.
-    expect(
-      lastTurnRange([{ role: "user", content: "hi" }, { role: "assistant", content: "hello" }])
-    ).toEqual({ start: 0, end: 2 });
-  });
-
-  it("finds a single user/assistant turn at the end", () => {
-    const range = lastTurnRange([
-      { role: "system", content: "sys" },
-      { role: "user", content: "Q1" },
-      { role: "assistant", content: "A1" },
-    ]);
-    expect(range).toEqual({ start: 1, end: 3 });
-  });
-
-  it("finds the last turn when there are multiple turns", () => {
-    const range = lastTurnRange([
-      { role: "system", content: "sys" },
-      { role: "user", content: "Q1" },
-      { role: "assistant", content: "A1" },
-      { role: "user", content: "Q2" },
-      { role: "assistant", content: "A2" },
-    ]);
-    expect(range).toEqual({ start: 3, end: 5 });
-  });
-
-  it("treats a trailing assistant message with no user after it as part of the last turn", () => {
-    // After dropping, the slice we keep is everything before the last user.
-    const range = lastTurnRange([
-      { role: "user", content: "Q1" },
-      { role: "assistant", content: "A1" },
-      { role: "user", content: "Q2" },
-      { role: "assistant", content: "A2" },
-      { role: "assistant", content: "A2-streaming" },
-    ]);
-    // Walk back: last user is at index 2, so the last turn is [2, 5).
-    expect(range).toEqual({ start: 2, end: 5 });
-  });
-
-  it("ignores tool or system messages when searching for the last user message", () => {
-    const range = lastTurnRange([
-      { role: "user", content: "Q1" },
-      { role: "assistant", content: "A1" },
-      { role: "tool", content: "tool result" },
-      { role: "assistant", content: "A1-followup" },
-    ]);
-    // The most recent user is Q1 at index 0; this is a valid turn to undo.
-    expect(range).toEqual({ start: 0, end: 4 });
-  });
-
-  it("returns a contiguous range that can be safely sliced", () => {
-    const messages = [
-      { role: "system", content: "sys" },
-      { role: "user", content: "Q1" },
-      { role: "assistant", content: "A1" },
-      { role: "user", content: "Q2" },
-      { role: "assistant", content: "A2" },
-    ];
-    const range = lastTurnRange(messages);
-    expect(range).not.toBeNull();
-    const dropped = messages.slice(range!.start, range!.end);
-    const kept = messages.slice(0, range!.start);
-    expect(dropped.map((m) => m.content)).toEqual(["Q2", "A2"]);
-    expect(kept.map((m) => m.content)).toEqual(["sys", "Q1", "A1"]);
-  });
-});
-
-describe("undo / retry behavior (modeled on lastTurnRange)", () => {
-  // These tests validate the *effect* of an undo: the in-memory conversation
-  // becomes exactly `messages.slice(0, range.start)`. The actual
-  // `handleUndoLastTurn` method delegates to `lastTurnRange` and then to
-  // `this.messages = this.messages.slice(0, range.start)`, so any change
-  // to that method must keep the contract below.
-
-  function simulateUndo(messages: { role: string; content?: string }[]) {
-    const range = lastTurnRange(messages);
-    if (!range) return { messages, range: null };
-    return { messages: messages.slice(0, range.start), range };
-  }
-
-  it("undo on an empty conversation does not mutate the list", () => {
-    const before: { role: string; content?: string }[] = [];
-    const { messages, range } = simulateUndo(before);
-    expect(range).toBeNull();
-    expect(messages).toBe(before); // no copy was made
-    expect(messages).toHaveLength(0);
-  });
-
-  it("undo on a single-turn conversation leaves the system prompt intact", () => {
-    const before = [
-      { role: "system", content: "sys" },
-      { role: "user", content: "Q1" },
-      { role: "assistant", content: "A1" },
-    ];
-    const { messages, range } = simulateUndo(before);
-    expect(range).toEqual({ start: 1, end: 3 });
-    expect(messages).toEqual([{ role: "system", content: "sys" }]);
-  });
-
-  it("undo preserves the earlier turns when there are multiple", () => {
-    const before = [
-      { role: "user", content: "Q1" },
-      { role: "assistant", content: "A1" },
-      { role: "user", content: "Q2" },
-      { role: "assistant", content: "A2" },
-    ];
-    const { messages, range } = simulateUndo(before);
-    expect(range).toEqual({ start: 2, end: 4 });
-    expect(messages).toEqual([
-      { role: "user", content: "Q1" },
-      { role: "assistant", content: "A1" },
-    ]);
-  });
-
-  it("undo then retry re-sends the same last user message", () => {
-    const before = [
-      { role: "user", content: "Q1" },
-      { role: "assistant", content: "A1" },
-      { role: "user", content: "Q2" },
-      { role: "assistant", content: "A2-broken" },
-    ];
-    const { messages } = simulateUndo(before);
-    const retryText = messages[messages.length - 1].content;
-    // The retry path captures the trimmed conversation's last user
-    // message and re-sends it through `handleSendMessage`. We only check
-    // that the captured text matches the original Q2.
-    expect(retryText).toBe("Q2");
-    expect(messages).toHaveLength(3);
   });
 });

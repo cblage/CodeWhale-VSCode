@@ -8,8 +8,6 @@
 
 import type { ThreadRecord } from "./api-client";
 
-// ── Re-exported from chat-provider for type safety ──
-
 export interface ContentBlock {
   type: "text" | "thinking" | "tool_call";
   content?: string;

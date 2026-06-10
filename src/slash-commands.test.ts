@@ -187,11 +187,11 @@ describe("isCommandAvailableInGui", () => {
   });
 
   it("marks partially supported commands", () => {
-    expect(isCommandAvailableInGui("/undo")).toBe("partial");
-    expect(isCommandAvailableInGui("/retry")).toBe("partial");
+    expect(isCommandAvailableInGui("/undo")).toBe("full");
+    expect(isCommandAvailableInGui("/retry")).toBe("full");
     expect(isCommandAvailableInGui("/attach")).toBe("full");
-    expect(isCommandAvailableInGui("/sessions")).toBe("partial");
-    expect(isCommandAvailableInGui("/load")).toBe("partial");
+    expect(isCommandAvailableInGui("/sessions")).toBe("full");
+    expect(isCommandAvailableInGui("/load")).toBe("full");
     expect(isCommandAvailableInGui("/task")).toBe("full");
     expect(isCommandAvailableInGui("/trust")).toBe("full");
     expect(isCommandAvailableInGui("/verbose")).toBe("full");
@@ -202,8 +202,8 @@ describe("isCommandAvailableInGui", () => {
   it("marks unavailable commands", () => {
     expect(isCommandAvailableInGui("/theme")).toBe("unavailable");
     expect(isCommandAvailableInGui("/share")).toBe("unavailable");
-    expect(isCommandAvailableInGui("/skills")).toBe("unavailable");
-    expect(isCommandAvailableInGui("/skill")).toBe("unavailable");
+    expect(isCommandAvailableInGui("/skills")).toBe("full");
+    expect(isCommandAvailableInGui("/skill")).toBe("full");
     expect(isCommandAvailableInGui("/network")).toBe("unavailable");
     expect(isCommandAvailableInGui("/queue")).toBe("unavailable");
     expect(isCommandAvailableInGui("/stash")).toBe("unavailable");
@@ -234,7 +234,7 @@ describe("isCommandAvailableInGui", () => {
   });
 
   it("marks partial commands", () => {
-    expect(isCommandAvailableInGui("/jobs")).toBe("partial");
+    expect(isCommandAvailableInGui("/jobs")).toBe("full");
   });
 });
 
@@ -277,11 +277,11 @@ describe("Unavailable command reasons", () => {
     expect(help).toContain("Not available");
   });
 
-  it("skills/skill: skill management requires TUI terminal", () => {
+  it("skills/skill: now available in GUI", () => {
     const help1 = getCommandHelpText("/skills");
-    expect(help1).toContain("Not available");
+    expect(help1).toContain("/skills");
     const help2 = getCommandHelpText("/skill");
-    expect(help2).toContain("Not available");
+    expect(help2).toContain("/skill");
   });
 
   it("network: network rules managed by VSCode proxy settings", () => {
@@ -429,14 +429,16 @@ describe("Partial support command explanations", () => {
     expect(help).toContain("image, video, PDF, or any file");
   });
 
-  it("sessions: explains sidebar alternative", () => {
+  it("sessions: fully available with search", () => {
     const help = getCommandHelpText("/sessions");
-    expect(help).toContain("sidebar");
+    expect(help).toContain("/sessions");
+    expect(help).toContain("search");
   });
 
-  it("load: explains sidebar alternative", () => {
+  it("load: fully available for resuming sessions", () => {
     const help = getCommandHelpText("/load");
-    expect(help).toContain("sidebar");
+    expect(help).toContain("/load");
+    expect(help).toContain("session");
   });
 
   it("task: fully available with subcommands", () => {
@@ -446,9 +448,10 @@ describe("Partial support command explanations", () => {
     expect(help).toContain("/task cancel");
   });
 
-  it("jobs: explains TUI runtime dependency", () => {
+  it("jobs: fully available with subcommands", () => {
     const help = getCommandHelpText("/jobs");
-    expect(help).toContain("TUI runtime");
+    expect(help).toContain("/jobs");
+    expect(help).toContain("list");
   });
 
   it("logout: explains API key change process", () => {
