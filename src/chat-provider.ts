@@ -350,9 +350,6 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   private engine: CodeWhaleEngine;
   private currentThread: ThreadRecord | null = null;
   private viewingSessionId: string | null = null;
-  /** Tracks the session ID for the current thread, so we update-in-place
-   *  instead of creating duplicate sessions on each turn. */
-  private currentSessionId: string | null = null;
   private messages: ChatMessage[] = [];
   private eventController: AbortController | null = null;
   private lastEventSeq: number = 0;
@@ -842,7 +839,6 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       this.cleanup();
       this.currentThread = null;
       this.viewingSessionId = sessionId;
-      this.currentSessionId = sessionId;
       this.messages = [];
       this.lastEventSeq = 0;
       this.currentTurnId = null;
@@ -1047,8 +1043,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private async loadThread(threadId: string, preserveSessionId = false): Promise<void> {
-    this.cleanup(preserveSessionId);
+  private async loadThread(threadId: string): Promise<void> {
+    this.cleanup();
     this.messages = [];
     this.lastEventSeq = 0;
     this.currentTurnId = null;
@@ -1209,9 +1205,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           });
         } catch { /* non-critical */ }
 
-        this.currentSessionId = sessionId;
         this.viewingSessionId = null;
-        await this.loadThread(result.thread_id, true);
+        await this.loadThread(result.thread_id);
         this.refreshSessionList();
       }
 
@@ -1512,9 +1507,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         this.api.setToken(this.engine.token);
         const sessionId = this.viewingSessionId;
         const result = await this.api.resumeSessionThread(sessionId);
-        this.currentSessionId = sessionId;
         this.viewingSessionId = null;
-        await this.loadThread(result.thread_id, true);
+        await this.loadThread(result.thread_id);
         this.refreshSessionList();
       } catch (err) {
         this.postMessage({ type: "error", message: `Failed to resume session: ${(err as Error).message}` });
@@ -1552,9 +1546,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       this.lastEventSeq = 0;
 
       // Load the forked thread's history.
-      // Preserve currentSessionId so subsequent turn auto-saves update
-      // the same session instead of creating duplicates.
-      await this.loadThread(result.thread.id, true);
+      await this.loadThread(result.thread.id);
 
       // Put the user's message back in the input box so they can edit & re-send.
       if (result.original_user_text) {
@@ -1566,16 +1558,6 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         message: t().undoSuccess(result.thread.id),
       });
       this.refreshWorkPanel();
-      // Immediately save the session so the session list reflects the
-      // undo. On older runtimes we emulate "update current session" by
-      // replacing the previous saved snapshot with a newly created one.
-      if (this.currentSessionId) {
-        try {
-          await this.api.saveThreadAsSession(result.thread.id, this.currentSessionId);
-        } catch {
-          // Ignore save failures
-        }
-      }
       this.refreshSessionList();
       this.postMessage({ type: "historyUpdated" });
     } catch (err) {
@@ -1608,9 +1590,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         this.api.setToken(this.engine.token);
         const sessionId = this.viewingSessionId;
         const result = await this.api.resumeSessionThread(sessionId);
-        this.currentSessionId = sessionId;
         this.viewingSessionId = null;
-        await this.loadThread(result.thread_id, true);
+        await this.loadThread(result.thread_id);
         this.refreshSessionList();
       } catch (err) {
         this.postMessage({ type: "error", message: `Failed to resume session: ${(err as Error).message}` });
@@ -1641,9 +1622,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       this.lastEventSeq = 0;
 
       // Load the forked thread's history.
-      // Preserve currentSessionId so subsequent turn auto-saves update
-      // the same session instead of creating duplicates.
-      await this.loadThread(result.thread.id, true);
+      await this.loadThread(result.thread.id);
 
       this.postMessage({
         type: "info",
@@ -2458,7 +2437,7 @@ Use the TUI for full command support.` });
             const searchHint = searchQuery ? ` matching "${searchQuery}"` : "";
             this.postMessage({ 
               type: "info", 
-              message: `No saved sessions found${searchHint}.\n\nSessions are created when you use /save or /export.\nUsage: /sessions [search <query>]` 
+              message: `No saved sessions found${searchHint}.\n\nGUI no longer auto-creates session records.\nUsage: /sessions [search <query>]` 
             });
           }
         } catch (err) {
@@ -3134,20 +3113,6 @@ Usage: /jobs run ${automation.id.slice(0, 8)} | /jobs pause ${automation.id.slic
           });
         }
         this.refreshSessionList();
-        // Auto-save session after each completed turn. Newer runtimes can
-        // update an existing session in place; on older runtimes the API
-        // client replaces the previous saved snapshot best-effort.
-        if (this.currentThread) {
-          const threadId = this.currentThread.id;
-          const sessionId = this.currentSessionId;
-          this.api.saveThreadAsSession(threadId, sessionId || undefined)
-            .then((result) => {
-              this.currentSessionId = result.session_id;
-            })
-            .catch(() => {
-              // Ignore background auto-save failures; the thread stays usable.
-            });
-        }
         this.stopPeriodicTaskRefresh();
         this.refreshTaskList();
         this.refreshWorkPanel();
@@ -3663,16 +3628,13 @@ Usage: /jobs run ${automation.id.slice(0, 8)} | /jobs pause ${automation.id.slic
     this.view?.webview.postMessage(msg);
   }
 
-  private cleanup(preserveSessionId = false): void {
+  private cleanup(): void {
     this.eventController?.abort();
     this.eventController = null;
     this.diffContentStore.clear();
     this.diffProviderDisposable?.dispose();
     this.diffProviderDisposable = null;
     this.viewingSessionId = null;
-    if (!preserveSessionId) {
-      this.currentSessionId = null;
-    }
   }
 
   dispose(): void {
