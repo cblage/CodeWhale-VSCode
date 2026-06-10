@@ -16,11 +16,19 @@
 
 - **Skills Slash Command** — Added `/skills` command to list and manage available skills.
 
+- **Runtime API Capability Detection** — GUI now probes the running TUI backend at startup to discover available API endpoints (undo, retry, snapshot restore). Features depending on unmerged upstream PRs are automatically disabled rather than failing at runtime.
+
+- **TUI Version Display** — The status bar now shows the connected TUI backend version, helping users and maintainers understand the runtime environment at a glance.
+
+- **Improved Unavailable-Feature UX** — Undo, Retry, and Revert buttons now show a distinct "unavailable" visual style (dashed border, muted colors) with a reliable custom tooltip explaining why the feature is not available, replacing unreliable native `title` behavior.
+
 ### Improvements
 
 - **Trust Mode Consistency** — Yolo mode now correctly sets both `trust_mode` and `auto_approve` flags. `/trust off` preserves these flags only when in yolo mode.
 
-- **i18n** — Added Chinese and English translations for sessions, workspace filter, and file attachment labels.
+- **Session Save Compatibility** — `saveThreadAsSession()` now falls back to the mainline `POST /v1/sessions` endpoint when the `/v1/sessions/save-current` route is unavailable, preventing save failures on stock TUI builds.
+
+- **i18n** — Added Chinese and English translations for sessions, workspace filter, file attachment labels, and unavailable-feature tooltips.
 
 ## 0.1.1
 
