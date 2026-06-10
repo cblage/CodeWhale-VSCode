@@ -179,9 +179,13 @@ interface Translations {
   revertFailure: (filePath: string, reason: string) => string;
   revertFileCreated: string;
   revertNotAvailable: string;
+  revertNotSupported: string;
+  revertUnsupportedTooltip: string;
   undoConfirmTitle: string;
   undoConfirmMessage: string;
   undoConfirmButton: string;
+  undoNotSupported: string;
+  undoUnsupportedTooltip: string;
   retryConfirmTitle: string;
   retryConfirmMessage: string;
   retryConfirmButton: string;
@@ -190,6 +194,8 @@ interface Translations {
   retryNoTurns: string;
   retrySuccess: (turnId: string) => string;
   retryInterrupted: string;
+  retryNotSupported: string;
+  retryUnsupportedTooltip: string;
   // Last-turn summary
   lastTurnLabel: string;
   lastTurnNoPrevious: string;
@@ -349,9 +355,13 @@ const en: Translations = {
   revertFailure: (filePath, reason) => `Failed to revert ${filePath}: ${reason}`,
   revertFileCreated: "This file was created in this turn. Reverting will delete it.",
   revertNotAvailable: "Revert is only available for changes made during this session. Reload the file to discard local edits.",
+  revertNotSupported: "Revert is unavailable because the connected TUI runtime does not support snapshot restore yet.",
+  revertUnsupportedTooltip: "Revert is unavailable in the connected TUI runtime",
   undoConfirmTitle: "Undo last turn?",
   undoConfirmMessage: "This will remove the last user/assistant exchange from the view. The server-side turn history is preserved, so the AI will still see your previous message in future turns.",
   undoConfirmButton: "Undo",
+  undoNotSupported: "Undo is unavailable because the connected TUI runtime does not support patch-undo yet.",
+  undoUnsupportedTooltip: "Undo is unavailable in the connected TUI runtime",
   retryConfirmTitle: "Retry last turn?",
   retryConfirmMessage: "This will remove the last exchange and re-send your last message. The original assistant response will be replaced.",
   retryConfirmButton: "Retry",
@@ -360,6 +370,8 @@ const en: Translations = {
   retryNoTurns: "No previous user message to retry.",
   retrySuccess: (turnId) => `Retrying with turn ${turnId}…`,
   retryInterrupted: "Retry was interrupted. A turn is already running — use /interrupt first.",
+  retryNotSupported: "Retry is unavailable because the connected TUI runtime does not support server-side retry yet.",
+  retryUnsupportedTooltip: "Retry is unavailable in the connected TUI runtime",
   // Last-turn summary
   lastTurnLabel: "Last turn",
   lastTurnNoPrevious: "No previous turn found.",
@@ -519,9 +531,13 @@ const zhCn: Translations = {
   revertFailure: (filePath, reason) => `回滚 ${filePath} 失败:${reason}`,
   revertFileCreated: "此文件是在本轮中新建的,回滚会删除它。",
   revertNotAvailable: "回滚仅对本会话中产生的更改有效。如需放弃本地编辑,请直接重新加载文件。",
+  revertNotSupported: "当前连接的 TUI 运行时尚未提供快照恢复接口,无法执行回滚。",
+  revertUnsupportedTooltip: "当前 TUI 运行时不支持回滚",
   undoConfirmTitle: "确认撤销上一轮?",
   undoConfirmMessage: "这会从视图中移除最后一组用户/助手消息。服务器端的轮次历史仍然保留,AI 在后续轮次中仍会看到你之前的内容。",
   undoConfirmButton: "撤销",
+  undoNotSupported: "当前连接的 TUI 运行时尚未提供 patch-undo 接口,无法执行撤销。",
+  undoUnsupportedTooltip: "当前 TUI 运行时不支持撤销",
   retryConfirmTitle: "确认重试上一轮?",
   retryConfirmMessage: "这会移除最后一组消息,并重新发送你最后一条消息。原助手回复将被覆盖。",
   retryConfirmButton: "重试",
@@ -530,6 +546,8 @@ const zhCn: Translations = {
   retryNoTurns: "没有可重试的用户消息。",
   retrySuccess: (turnId) => `正在重试轮次 ${turnId}…`,
   retryInterrupted: "重试被中断:当前已有一个轮次正在运行,请先使用 /interrupt。",
+  retryNotSupported: "当前连接的 TUI 运行时尚未提供 retry 接口,无法执行重试。",
+  retryUnsupportedTooltip: "当前 TUI 运行时不支持重试",
   // 上一轮信息
   lastTurnLabel: "上一轮",
   lastTurnNoPrevious: "没有可用的上一轮。",
@@ -732,9 +750,13 @@ export function webviewTranslations(tr: Translations) {
     revertFailure: tr.revertFailure,
     revertFileCreated: tr.revertFileCreated,
     revertNotAvailable: tr.revertNotAvailable,
+    revertNotSupported: tr.revertNotSupported,
+    revertUnsupportedTooltip: tr.revertUnsupportedTooltip,
     undoConfirmTitle: tr.undoConfirmTitle,
     undoConfirmMessage: tr.undoConfirmMessage,
     undoConfirmButton: tr.undoConfirmButton,
+    undoNotSupported: tr.undoNotSupported,
+    undoUnsupportedTooltip: tr.undoUnsupportedTooltip,
     retryConfirmTitle: tr.retryConfirmTitle,
     retryConfirmMessage: tr.retryConfirmMessage,
     retryConfirmButton: tr.retryConfirmButton,
@@ -743,6 +765,8 @@ export function webviewTranslations(tr: Translations) {
     retryNoTurns: tr.retryNoTurns,
     retrySuccess: tr.retrySuccess,
     retryInterrupted: tr.retryInterrupted,
+    retryNotSupported: tr.retryNotSupported,
+    retryUnsupportedTooltip: tr.retryUnsupportedTooltip,
     lastTurnLabel: tr.lastTurnLabel,
     lastTurnNoPrevious: tr.lastTurnNoPrevious,
     revertWillDelete: tr.revertWillDelete,

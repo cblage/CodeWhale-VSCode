@@ -134,6 +134,9 @@ export interface WebviewTranslations {
   removeAttachment: string;
   attachedFileCount: string;
   fileNotSupported: string;
+  undoUnsupportedTooltip: string;
+  retryUnsupportedTooltip: string;
+  revertUnsupportedTooltip: string;
 }
 
 export function getWebviewHtml(
@@ -764,6 +767,29 @@ export function getWebviewHtml(
       color: white;
       border-color: var(--brand-primary);
     }
+    .file-change-card .fc-actions button.is-unavailable,
+    .file-change-card .fc-actions button[aria-disabled="true"] {
+      background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--input-bg) 88%, transparent) 0%,
+        color-mix(in srgb, var(--border) 25%, var(--input-bg)) 100%
+      );
+      color: var(--muted);
+      border-style: dashed;
+      border-color: var(--muted);
+      opacity: 0.82;
+      cursor: not-allowed;
+    }
+    .file-change-card .fc-actions button.is-unavailable:hover,
+    .file-change-card .fc-actions button[aria-disabled="true"]:hover {
+      background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--input-bg) 88%, transparent) 0%,
+        color-mix(in srgb, var(--border) 25%, var(--input-bg)) 100%
+      );
+      color: var(--muted);
+      border-color: var(--muted);
+    }
     
     @keyframes spin {
       from { transform: rotate(0deg); }
@@ -949,6 +975,34 @@ export function getWebviewHtml(
       font-size: 0.8em;
     }
     #toolbar button:hover { color: var(--fg); border-color: var(--fg); }
+    #toolbar button.is-unavailable,
+    #toolbar button[aria-disabled="true"] {
+      background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--card-bg) 92%, transparent) 0%,
+        color-mix(in srgb, var(--border) 28%, var(--card-bg)) 100%
+      );
+      color: var(--muted);
+      border-style: dashed;
+      border-color: var(--muted);
+      opacity: 0.82;
+      cursor: not-allowed;
+      position: relative;
+    }
+    #toolbar button.is-unavailable:hover,
+    #toolbar button[aria-disabled="true"]:hover {
+      color: var(--muted);
+      border-color: var(--muted);
+    }
+    #toolbar button.is-unavailable::after,
+    #toolbar button[aria-disabled="true"]::after {
+      content: "";
+      position: absolute;
+      inset: 3px;
+      border-radius: 2px;
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 65%, transparent);
+      pointer-events: none;
+    }
 
     #toolbar .thread-count {
       margin-left: auto;
@@ -1112,6 +1166,29 @@ export function getWebviewHtml(
     }
     .status-bar .stat-chip.tokens {
       color: var(--muted);
+    }
+    #ui-tooltip {
+      position: fixed;
+      left: 0;
+      top: 0;
+      max-width: min(320px, calc(100vw - 16px));
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: color-mix(in srgb, var(--vscode-editorHoverWidget-background, var(--card-bg)) 96%, black);
+      color: var(--fg);
+      font-size: 0.75em;
+      line-height: 1.35;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.22);
+      z-index: 100000;
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(4px);
+      transition: opacity 90ms ease, transform 90ms ease;
+    }
+    #ui-tooltip.visible {
+      opacity: 1;
+      transform: translateY(0);
     }
     .task-card {
       padding: 6px 10px;
@@ -1332,6 +1409,7 @@ export function getWebviewHtml(
         <span class="status-left" id="status-text">${tr.initializing}</span>
         <span class="status-right" id="status-stats"></span>
       </div>
+      <div id="ui-tooltip" role="tooltip" aria-hidden="true"></div>
       <div id="debug-panel" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#1a1a2e;color:#0f0;font-size:11px;padding:4px 8px;z-index:99999;max-height:80px;overflow-y:auto;font-family:monospace;pointer-events:none;"></div>
     </div>
   </div>
@@ -1401,6 +1479,9 @@ export function getWebviewHtml(
       minutesAgoPattern: '${tr.minutesAgoPattern}',
       hoursAgoPattern: '${tr.hoursAgoPattern}',
       daysAgoPattern: '${tr.daysAgoPattern}',
+      undoUnsupportedTooltip: '${tr.undoUnsupportedTooltip}',
+      retryUnsupportedTooltip: '${tr.retryUnsupportedTooltip}',
+      revertUnsupportedTooltip: '${tr.revertUnsupportedTooltip}',
     };
 
     function formatThreadsCount(n, type = 'sessions') {
@@ -1444,13 +1525,163 @@ export function getWebviewHtml(
     const interruptBtn = document.getElementById('btn-interrupt');
     const undoBtn = document.getElementById('btn-undo');
     const retryBtn = document.getElementById('btn-retry');
+    const undoDefaultTitle = undoBtn ? (undoBtn.getAttribute('title') || '') : '';
+    const retryDefaultTitle = retryBtn ? (retryBtn.getAttribute('title') || '') : '';
     const statusEl = document.getElementById('status');
     const statusTextEl = document.getElementById('status-text');
     const statusStatsEl = document.getElementById('status-stats');
+    const tooltipEl = document.getElementById('ui-tooltip');
     const slashMenuEl = document.getElementById('slash-menu');
     const currentModeEl = document.getElementById('current-mode');
     const currentModelEl = document.getElementById('current-model');
     const currentReasoningEl = document.getElementById('current-reasoning');
+    let apiCapabilities = { saveSession: false, undoLastTurn: false, retryLastTurn: false, revertFileChange: false };
+    let runtimeVersion = '';
+    let sessionStats = null;
+    let activeTooltipTarget = null;
+
+    function setButtonCapabilityState(btn, enabled, enabledTitle, disabledTitle) {
+      if (!btn) return;
+      btn.disabled = false;
+      btn.classList.toggle('is-unavailable', !enabled);
+      btn.setAttribute('data-tooltip', enabled ? enabledTitle : disabledTitle);
+      btn.setAttribute('data-disabled', enabled ? 'false' : 'true');
+      btn.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+    }
+
+    function getTooltipText(el) {
+      if (!el) return '';
+      return el.getAttribute('data-tooltip') || el.getAttribute('title') || '';
+    }
+
+    function getTooltipTarget(el) {
+      return el && el.closest ? el.closest('[data-tooltip], [title]') : null;
+    }
+
+    function suppressNativeTitle(el) {
+      if (!el) return;
+      const currentTitle = el.getAttribute('title');
+      if (currentTitle !== null && !el.hasAttribute('data-title-backup')) {
+        el.setAttribute('data-title-backup', currentTitle);
+        el.removeAttribute('title');
+      }
+    }
+
+    function restoreNativeTitle(el) {
+      if (!el) return;
+      const backupTitle = el.getAttribute('data-title-backup');
+      if (backupTitle !== null) {
+        el.setAttribute('title', backupTitle);
+        el.removeAttribute('data-title-backup');
+      }
+    }
+
+    function positionTooltip(x, y) {
+      if (!tooltipEl) return;
+      const margin = 10;
+      const rect = tooltipEl.getBoundingClientRect();
+      let nextX = x + 14;
+      let nextY = y + 18;
+      if (nextX + rect.width > window.innerWidth - margin) {
+        nextX = Math.max(margin, window.innerWidth - rect.width - margin);
+      }
+      if (nextY + rect.height > window.innerHeight - margin) {
+        nextY = Math.max(margin, y - rect.height - 14);
+      }
+      tooltipEl.style.left = nextX + 'px';
+      tooltipEl.style.top = nextY + 'px';
+    }
+
+    function showTooltipForTarget(target, pos) {
+      const text = getTooltipText(target);
+      if (!tooltipEl || !text) return;
+      if (activeTooltipTarget && activeTooltipTarget !== target) {
+        restoreNativeTitle(activeTooltipTarget);
+      }
+      activeTooltipTarget = target;
+      suppressNativeTitle(target);
+      tooltipEl.textContent = text;
+      tooltipEl.classList.add('visible');
+      tooltipEl.setAttribute('aria-hidden', 'false');
+      positionTooltip(pos.x, pos.y);
+    }
+
+    function hideTooltip() {
+      if (activeTooltipTarget) {
+        restoreNativeTitle(activeTooltipTarget);
+      }
+      activeTooltipTarget = null;
+      if (!tooltipEl) return;
+      tooltipEl.classList.remove('visible');
+      tooltipEl.setAttribute('aria-hidden', 'true');
+    }
+
+    function applyApiCapabilities() {
+      setButtonCapabilityState(undoBtn, !!apiCapabilities.undoLastTurn, undoDefaultTitle, __i18n.undoUnsupportedTooltip);
+      setButtonCapabilityState(retryBtn, !!apiCapabilities.retryLastTurn, retryDefaultTitle, __i18n.retryUnsupportedTooltip);
+    }
+
+    function renderStatusStats() {
+      if (!statusStatsEl) return;
+      let statsHtml = '';
+      if (runtimeVersion) {
+        statsHtml += '<span class="stat-chip">TUI ' + escapeHtml(runtimeVersion) + '</span>';
+      }
+      if (sessionStats && sessionStats.cost) {
+        statsHtml += '<span class="stat-chip cost">' + escapeHtml(sessionStats.cost) + '</span>';
+      }
+      if (sessionStats && sessionStats.cacheHitRate !== undefined) {
+        const rate = parseFloat(sessionStats.cacheHitRate);
+        let cacheClass = 'cache-neutral';
+        if (rate > 80) cacheClass = 'cache-good';
+        else if (rate >= 40) cacheClass = 'cache-warn';
+        else if (rate > 0) cacheClass = 'cache-bad';
+        statsHtml += '<span class="stat-chip ' + cacheClass + '">Cache: ' + sessionStats.cacheHitRate + '%</span>';
+      }
+      if (sessionStats && (sessionStats.totalInputTokens || sessionStats.totalOutputTokens)) {
+        statsHtml += '<span class="stat-chip tokens">↥' + Number(sessionStats.totalInputTokens || 0).toLocaleString() + ' ↧' + Number(sessionStats.totalOutputTokens || 0).toLocaleString() + '</span>';
+      }
+      statusStatsEl.innerHTML = statsHtml;
+    }
+
+    document.addEventListener('mouseover', function(e) {
+      const target = getTooltipTarget(e.target);
+      if (!target) {
+        hideTooltip();
+        return;
+      }
+      if (target !== activeTooltipTarget) {
+        showTooltipForTarget(target, { x: e.clientX, y: e.clientY });
+      }
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (activeTooltipTarget) {
+        positionTooltip(e.clientX, e.clientY);
+      }
+    });
+
+    document.addEventListener('mouseout', function(e) {
+      if (!activeTooltipTarget) return;
+      const relatedTarget = e.relatedTarget;
+      if (!relatedTarget || !activeTooltipTarget.contains(relatedTarget)) {
+        hideTooltip();
+      }
+    });
+
+    document.addEventListener('focusin', function(e) {
+      const target = getTooltipTarget(e.target);
+      if (!target) return;
+      const rect = target.getBoundingClientRect();
+      showTooltipForTarget(target, {
+        x: rect.left + rect.width / 2,
+        y: rect.bottom,
+      });
+    });
+
+    document.addEventListener('focusout', function() {
+      hideTooltip();
+    });
 
     _dbg('DOM elements: input=' + !!inputEl + ' sendBtn=' + !!sendBtn + ' messages=' + !!messagesEl + ' status=' + !!statusEl);
 
@@ -1855,8 +2086,14 @@ export function getWebviewHtml(
     newThreadBtn.addEventListener('click', () => vscode.postMessage({ type: 'newThread' }));
     compactBtn.addEventListener('click', () => vscode.postMessage({ type: 'compact' }));
     interruptBtn.addEventListener('click', () => vscode.postMessage({ type: 'interrupt' }));
-    undoBtn.addEventListener('click', () => vscode.postMessage({ type: 'undoLastTurn' }));
-    retryBtn.addEventListener('click', () => vscode.postMessage({ type: 'retryLastTurn' }));
+    undoBtn.addEventListener('click', () => {
+      if (undoBtn.getAttribute('aria-disabled') === 'true') return;
+      vscode.postMessage({ type: 'undoLastTurn' });
+    });
+    retryBtn.addEventListener('click', () => {
+      if (retryBtn.getAttribute('aria-disabled') === 'true') return;
+      vscode.postMessage({ type: 'retryLastTurn' });
+    });
     function toggleThreadsPanel() {
       const opening = !threadsPanel.classList.contains('open');
       threadsPanel.classList.toggle('open');
@@ -2129,7 +2366,11 @@ export function getWebviewHtml(
       if (fc.changeType !== 'deleted') {
         html += '<button class="fc-open-file" data-file-path="' + escapeHtml(fc.filePath) + '" title="' + escapeHtml(__i18n.openFileTooltip) + '">📄 ' + escapeHtml(__i18n.openFile) + '</button>';
       }
-      html += '<button class="fc-revert" data-file-path="' + escapeHtml(fc.filePath) + '" data-change-type="' + escapeHtml(fc.changeType) + '" data-diff-key="' + (fc.diff ? diffKey : '') + '" title="Revert this file change">↩ Revert</button>';
+      if (apiCapabilities.revertFileChange) {
+        html += '<button class="fc-revert" data-file-path="' + escapeHtml(fc.filePath) + '" data-change-type="' + escapeHtml(fc.changeType) + '" data-diff-key="' + (fc.diff ? diffKey : '') + '" title="' + escapeHtml(__i18n.revertFileTooltip) + '">↩ ' + escapeHtml(__i18n.revertFile) + '</button>';
+      } else {
+        html += '<button class="fc-revert is-unavailable" aria-disabled="true" data-disabled="true" data-tooltip="' + escapeHtml(__i18n.revertUnsupportedTooltip) + '">↩ ' + escapeHtml(__i18n.revertFile) + '</button>';
+      }
       html += '</div>';
       html += '</div>';
       return html;
@@ -2179,6 +2420,9 @@ export function getWebviewHtml(
       }
 
       if (target.classList.contains('fc-revert')) {
+        if (target.getAttribute('aria-disabled') === 'true' || target.getAttribute('data-disabled') === 'true') {
+          return;
+        }
         const filePath = target.getAttribute('data-file-path');
         const changeType = target.getAttribute('data-change-type') || 'modified';
         const diffKey = target.getAttribute('data-diff-key');
@@ -2695,6 +2939,7 @@ export function getWebviewHtml(
 
     // Tell extension we're ready to receive messages (side-effect of loading)
     _dbg('Sending webviewReady...');
+    applyApiCapabilities();
     vscode.postMessage({ type: 'webviewReady' });
 
     window.addEventListener('message', (event) => {
@@ -2714,6 +2959,8 @@ export function getWebviewHtml(
           if (msg.mode) currentModeEl.textContent = msg.mode;
           if (msg.model) currentModelEl.textContent = msg.model;
           if (msg.reasoningEffort) currentReasoningEl.textContent = msg.reasoningEffort;
+          runtimeVersion = msg.runtimeVersion || runtimeVersion || '';
+          renderStatusStats();
           break;
           
         case 'settingsUpdated':
@@ -2749,6 +2996,8 @@ export function getWebviewHtml(
           break;
 
         case 'workState':
+          apiCapabilities = Object.assign({}, apiCapabilities, msg.capabilities || {});
+          applyApiCapabilities();
           workState = {
             goal: msg.goal || null,
             checklist: msg.checklist || [],
@@ -2759,6 +3008,12 @@ export function getWebviewHtml(
             coherenceLabel: msg.coherenceLabel || '',
             fileChanges: msg.fileChanges || [],
           };
+          renderWork();
+          break;
+
+        case 'apiCapabilities':
+          apiCapabilities = Object.assign({}, apiCapabilities, msg.capabilities || {});
+          applyApiCapabilities();
           renderWork();
           break;
 
@@ -3160,23 +3415,13 @@ export function getWebviewHtml(
           break;
 
         case 'sessionStats': {
-          if (!statusStatsEl) break;
-          let statsHtml = '';
-          if (msg.cost) {
-            statsHtml += '<span class="stat-chip cost">' + escapeHtml(msg.cost) + '</span>';
-          }
-          if (msg.cacheHitRate !== undefined) {
-            const rate = parseFloat(msg.cacheHitRate);
-            let cacheClass = 'cache-neutral';
-            if (rate > 80) cacheClass = 'cache-good';
-            else if (rate >= 40) cacheClass = 'cache-warn';
-            else if (rate > 0) cacheClass = 'cache-bad';
-            statsHtml += '<span class="stat-chip ' + cacheClass + '">Cache: ' + msg.cacheHitRate + '%</span>';
-          }
-          if (msg.totalInputTokens || msg.totalOutputTokens) {
-            statsHtml += '<span class="stat-chip tokens">↥' + Number(msg.totalInputTokens || 0).toLocaleString() + ' ↧' + Number(msg.totalOutputTokens || 0).toLocaleString() + '</span>';
-          }
-          statusStatsEl.innerHTML = statsHtml;
+          sessionStats = {
+            cost: msg.cost,
+            cacheHitRate: msg.cacheHitRate,
+            totalInputTokens: msg.totalInputTokens,
+            totalOutputTokens: msg.totalOutputTokens,
+          };
+          renderStatusStats();
           break;
         }
 
@@ -3203,7 +3448,8 @@ export function getWebviewHtml(
           isStreaming = false;
           if (streamingTimeout) { clearTimeout(streamingTimeout); streamingTimeout = null; }
           statusTextEl.textContent = __i18n.ready;
-          if (statusStatsEl) statusStatsEl.innerHTML = '';
+          sessionStats = null;
+          renderStatusStats();
           renderWelcome();
           break;
 

@@ -6,6 +6,7 @@ import { exec } from "child_process";
 import {
   CodeWhaleApiClient,
   CodeWhaleEngine,
+  RuntimeApiCapabilities,
   RuntimeEvent,
   ThreadRecord,
   TurnRecord,
@@ -385,6 +386,15 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   private turnFileChanges: FileChangeInfo[] = [];
   private currentAttachments: Array<{ kind: string; path: string; name: string }> = [];
   private showAllWorkspaces: boolean = false;
+  private runtimeVersion: string | null = null;
+  private apiCapabilities: RuntimeApiCapabilities = {
+    saveSession: false,
+    threadUndo: false,
+    threadPatchUndo: false,
+    threadRetry: false,
+    snapshotList: false,
+    snapshotRestore: false,
+  };
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -547,6 +557,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   }
 
   private async syncWebviewState(): Promise<void> {
+    await this.refreshRuntimeVersion();
+    await this.refreshApiCapabilities();
     this.refreshSessionList();
     this.refreshThreadList();
     this.refreshTaskList();
@@ -566,6 +578,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       model: this.getCurrentModel(),
       mode: this.getCurrentMode(),
       reasoningEffort: this.getCurrentReasoningEffort(),
+      runtimeVersion: this.runtimeVersion,
     });
   }
 
@@ -579,6 +592,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       this.debugLog(`engine running on ${this.engine.baseUrl}`);
       this.api.setBaseUrl(this.engine.baseUrl);
       this.api.setToken(this.engine.token);
+      await this.refreshRuntimeVersion();
+      await this.refreshApiCapabilities();
 
       this.debugLog("calling listThreads...");
       const threads = await this.api.listThreads({ limit: 20 });
@@ -608,7 +623,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         type: "ready", 
         model: this.getCurrentModel(),
         mode: this.getCurrentMode(),
-        reasoningEffort: this.getCurrentReasoningEffort()
+        reasoningEffort: this.getCurrentReasoningEffort(),
+        runtimeVersion: this.runtimeVersion,
       });
     } catch (err) {
       this.debugLog(`initializeThread ERROR: ${(err as Error).message}\n${(err as Error).stack}`);
@@ -616,7 +632,13 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         type: "error",
         message: `Failed to initialize: ${(err as Error).message}`,
       });
-      this.postMessage({ type: "ready", model: this.getCurrentModel(), mode: this.getCurrentMode(), reasoningEffort: this.getCurrentReasoningEffort() });
+      this.postMessage({
+        type: "ready",
+        model: this.getCurrentModel(),
+        mode: this.getCurrentMode(),
+        reasoningEffort: this.getCurrentReasoningEffort(),
+        runtimeVersion: this.runtimeVersion,
+      });
     }
   }
 
@@ -1374,6 +1396,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       cycleCount: this.cycleCount,
       coherenceState: this.coherenceState,
       coherenceLabel: this.coherenceLabel,
+      capabilities: this.getWebviewCapabilities(),
       fileChanges: this.turnFileChanges.map(fc => ({
         filePath: fc.filePath,
         changeType: fc.changeType,
@@ -1383,6 +1406,53 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         toolName: fc.toolName,
       })),
     });
+  }
+
+  private getWebviewCapabilities(): {
+    saveSession: boolean;
+    undoLastTurn: boolean;
+    retryLastTurn: boolean;
+    revertFileChange: boolean;
+  } {
+    return {
+      saveSession: this.apiCapabilities.saveSession,
+      undoLastTurn: this.apiCapabilities.threadPatchUndo,
+      retryLastTurn: this.apiCapabilities.threadRetry,
+      revertFileChange:
+        this.apiCapabilities.snapshotList && this.apiCapabilities.snapshotRestore,
+    };
+  }
+
+  private postApiCapabilities(): void {
+    this.postMessage({
+      type: "apiCapabilities",
+      capabilities: this.getWebviewCapabilities(),
+    });
+  }
+
+  private async refreshApiCapabilities(): Promise<void> {
+    try {
+      this.apiCapabilities = await this.api.probeRuntimeCapabilities();
+    } catch {
+      this.apiCapabilities = {
+        saveSession: false,
+        threadUndo: false,
+        threadPatchUndo: false,
+        threadRetry: false,
+        snapshotList: false,
+        snapshotRestore: false,
+      };
+    }
+    this.postApiCapabilities();
+  }
+
+  private async refreshRuntimeVersion(): Promise<void> {
+    try {
+      const info = await this.api.getRuntimeInfo();
+      this.runtimeVersion = info.version || null;
+    } catch {
+      this.runtimeVersion = null;
+    }
   }
 
   private startPeriodicTaskRefresh(): void {
@@ -1429,6 +1499,11 @@ export class ChatProvider implements vscode.WebviewViewProvider {
    * 3. Save the updated session
    */
   private async handleUndoLastTurn(): Promise<void> {
+    if (!this.apiCapabilities.threadPatchUndo) {
+      this.postMessage({ type: "info", message: t().undoNotSupported });
+      return;
+    }
+
     // If viewing a session (not a live thread), resume it first.
     if (this.viewingSessionId && !this.currentThread) {
       try {
@@ -1492,8 +1567,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       });
       this.refreshWorkPanel();
       // Immediately save the session so the session list reflects the
-      // undo (TUI does this implicitly: undo modifies api_messages in
-      // memory, and the next turn.completed auto-save picks it up).
+      // undo. On older runtimes we emulate "update current session" by
+      // replacing the previous saved snapshot with a newly created one.
       if (this.currentSessionId) {
         try {
           await this.api.saveThreadAsSession(result.thread.id, this.currentSessionId);
@@ -1520,6 +1595,11 @@ export class ChatProvider implements vscode.WebviewViewProvider {
    * `retry` behavior.
    */
   private async handleRetryLastTurn(): Promise<void> {
+    if (!this.apiCapabilities.threadRetry) {
+      this.postMessage({ type: "info", message: t().retryNotSupported });
+      return;
+    }
+
     // If viewing a session (not a live thread), resume it first.
     if (this.viewingSessionId && !this.currentThread) {
       try {
@@ -1593,6 +1673,14 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     _changeType: string,
     _diff: string | undefined
   ): Promise<void> {
+    if (
+      !this.apiCapabilities.snapshotList ||
+      !this.apiCapabilities.snapshotRestore
+    ) {
+      this.postMessage({ type: "info", message: t().revertNotSupported });
+      return;
+    }
+
     try {
       await this.engine.ensureRunning();
       this.api.setBaseUrl(this.engine.baseUrl);
@@ -3046,10 +3134,9 @@ Usage: /jobs run ${automation.id.slice(0, 8)} | /jobs pause ${automation.id.slic
           });
         }
         this.refreshSessionList();
-        // Auto-save session after each completed turn, consistent with TUI behavior.
-        // TUI saves after every turn via persistence_actor; we do the same via API.
-        // Pass currentSessionId so the backend updates the existing session
-        // instead of creating duplicates.
+        // Auto-save session after each completed turn. Newer runtimes can
+        // update an existing session in place; on older runtimes the API
+        // client replaces the previous saved snapshot best-effort.
         if (this.currentThread) {
           const threadId = this.currentThread.id;
           const sessionId = this.currentSessionId;

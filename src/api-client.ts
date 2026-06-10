@@ -249,11 +249,6 @@ export interface ResumeSessionResponse {
   summary: string;
 }
 
-interface SaveCurrentSessionResponse {
-  session_id: string;
-  session: SessionDetailResponse;
-}
-
 export interface SaveThreadAsSessionRequest {
   thread_id: string;
   session_id?: string;
@@ -283,6 +278,15 @@ export interface RuntimeInfoResponse {
   port: number;
   auth_required: boolean;
   version: string;
+}
+
+export interface RuntimeApiCapabilities {
+  saveSession: boolean;
+  threadUndo: boolean;
+  threadPatchUndo: boolean;
+  threadRetry: boolean;
+  snapshotList: boolean;
+  snapshotRestore: boolean;
 }
 
 export interface UsageTotals {
@@ -630,18 +634,19 @@ export class CodeWhaleApiClient {
   }
 
   async saveThreadAsSession(threadId: string, sessionId?: string): Promise<SaveThreadAsSessionResponse> {
-    const body: Record<string, unknown> = { thread_id: threadId };
-    if (sessionId) body.session_id = sessionId;
     const result = (await this.post(
-      `/v1/sessions/save-current`,
-      body
-    )) as SaveCurrentSessionResponse;
-    return {
-      session_id: result.session_id,
-      thread_id: threadId,
-      message_count: result.session.metadata.message_count,
-      title: result.session.metadata.title,
-    };
+      `/v1/sessions`,
+      { thread_id: threadId }
+    )) as SaveThreadAsSessionResponse;
+    const normalizedSessionId = sessionId?.trim();
+    if (normalizedSessionId && normalizedSessionId !== result.session_id) {
+      try {
+        await this.delete(`/v1/sessions/${normalizedSessionId}`);
+      } catch {
+        // Best-effort cleanup when the runtime lacks in-place session update.
+      }
+    }
+    return result;
   }
 
   // ── Workspace ──
@@ -654,6 +659,33 @@ export class CodeWhaleApiClient {
 
   async getRuntimeInfo(): Promise<RuntimeInfoResponse> {
     return (await this.get("/v1/runtime/info")) as RuntimeInfoResponse;
+  }
+
+  async probeRuntimeCapabilities(): Promise<RuntimeApiCapabilities> {
+    const [
+      saveSession,
+      threadUndo,
+      threadPatchUndo,
+      threadRetry,
+      snapshotList,
+      snapshotRestore,
+    ] = await Promise.all([
+      this.probePath("/v1/sessions"),
+      this.probePath("/v1/threads/__probe__/undo"),
+      this.probePath("/v1/threads/__probe__/patch-undo"),
+      this.probePath("/v1/threads/__probe__/retry"),
+      this.probePath("/v1/snapshots"),
+      this.probePath("/v1/snapshots/__probe__/restore"),
+    ]);
+
+    return {
+      saveSession,
+      threadUndo,
+      threadPatchUndo,
+      threadRetry,
+      snapshotList,
+      snapshotRestore,
+    };
   }
 
   // ── Usage ──
@@ -798,11 +830,37 @@ export class CodeWhaleApiClient {
     return this.request("DELETE", path, undefined);
   }
 
+  private async probePath(path: string): Promise<boolean> {
+    try {
+      const { statusCode } = await this.requestRaw("HEAD", path, undefined);
+      return statusCode !== 404;
+    } catch {
+      return false;
+    }
+  }
+
   private request(
     method: string,
     path: string,
     body: unknown
   ): Promise<unknown> {
+    return this.requestRaw(method, path, body).then(({ statusCode, data }) => {
+      if (statusCode >= 400) {
+        throw new Error(`API error ${statusCode}: ${data.slice(0, 500)}`);
+      }
+      try {
+        return JSON.parse(data);
+      } catch {
+        return data;
+      }
+    });
+  }
+
+  private requestRaw(
+    method: string,
+    path: string,
+    body: unknown
+  ): Promise<{ statusCode: number; data: string }> {
     return new Promise((resolve, reject) => {
       const url = new URL(path, this.baseUrl);
       const payload = body ? JSON.stringify(body) : undefined;
@@ -824,19 +882,10 @@ export class CodeWhaleApiClient {
           let data = "";
           res.on("data", (chunk: Buffer) => (data += chunk.toString()));
           res.on("end", () => {
-            if (res.statusCode && res.statusCode >= 400) {
-              reject(
-                new Error(
-                  `API error ${res.statusCode}: ${data.slice(0, 500)}`
-                )
-              );
-              return;
-            }
-            try {
-              resolve(JSON.parse(data));
-            } catch {
-              resolve(data);
-            }
+            resolve({
+              statusCode: res.statusCode ?? 0,
+              data,
+            });
           });
         }
       );

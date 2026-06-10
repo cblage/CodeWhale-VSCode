@@ -12,4 +12,5 @@ export {
   type TaskCounts,
   type EventListener,
   type ThreadDetailResponse,
+  type RuntimeApiCapabilities,
 } from "./api-client";
