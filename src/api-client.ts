@@ -249,8 +249,14 @@ export interface ResumeSessionResponse {
   summary: string;
 }
 
+interface SaveCurrentSessionResponse {
+  session_id: string;
+  session: SessionDetailResponse;
+}
+
 export interface SaveThreadAsSessionRequest {
   thread_id: string;
+  session_id?: string;
   title?: string;
 }
 
@@ -626,7 +632,16 @@ export class CodeWhaleApiClient {
   async saveThreadAsSession(threadId: string, sessionId?: string): Promise<SaveThreadAsSessionResponse> {
     const body: Record<string, unknown> = { thread_id: threadId };
     if (sessionId) body.session_id = sessionId;
-    return (await this.post(`/v1/sessions`, body)) as SaveThreadAsSessionResponse;
+    const result = (await this.post(
+      `/v1/sessions/save-current`,
+      body
+    )) as SaveCurrentSessionResponse;
+    return {
+      session_id: result.session_id,
+      thread_id: threadId,
+      message_count: result.session.metadata.message_count,
+      title: result.session.metadata.title,
+    };
   }
 
   // ── Workspace ──

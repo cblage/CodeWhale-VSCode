@@ -1565,9 +1565,6 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       // the same session instead of creating duplicates.
       await this.loadThread(result.thread.id, true);
 
-      // Subscribe to events for the new thread so the retry turn streams.
-      this.subscribeToEvents();
-
       this.postMessage({
         type: "info",
         message: t().retrySuccess(result.thread.id),
