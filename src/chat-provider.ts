@@ -17,6 +17,13 @@ import {
 import { getWebviewHtml } from "./webview-html";
 import { renderMarkdown } from "./markdown";
 import { t, webviewTranslations } from "./i18n";
+import {
+  SessionStateStore,
+  type ChatMessage,
+  type ContentBlock,
+  type ToolCallInfo,
+  type FileChangeInfo,
+} from "./session-state";
 
 const FRIENDLY_TOOL_NAMES: Record<string, string> = {
   write_file: "Write file",
@@ -262,50 +269,7 @@ function buildApprovalSummary(toolName: string, input: Record<string, unknown>):
   return friendlyToolName(toolName);
 }
 
-// ── UI model ──
-
-interface ContentBlock {
-  type: "text" | "thinking" | "tool_call";
-  content?: string;
-  contentHtml?: string;
-  toolCallIdx?: number;
-}
-
-interface ChatMessage {
-  id: string;
-  role: "user" | "assistant" | "system";
-  content: string;
-  thinking?: string;
-  contentHtml?: string;
-  thinkingHtml?: string;
-  toolCalls?: ToolCallInfo[];
-  blocks?: ContentBlock[];
-  status: "streaming" | "complete" | "error";
-  timestamp: number;
-}
-
-interface ToolCallInfo {
-  name: string;
-  displayName?: string;
-  input: Record<string, unknown>;
-  output?: string;
-  status: "pending" | "running" | "complete" | "error" | "awaiting_approval";
-  approvalId?: string;
-  approvalSummary?: string;
-  itemId?: string;
-  fileChange?: FileChangeInfo;
-}
-
-interface FileChangeInfo {
-  filePath: string;
-  changeType: "created" | "modified" | "deleted";
-  addedLines: number;
-  removedLines: number;
-  diff?: string;
-  oldContent?: string;
-  newContent?: string;
-  toolName?: string;
-}
+// ── UI model (interfaces imported from session-state.ts) ──
 
 // ── Provider ──
 
@@ -348,39 +312,10 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private api: CodeWhaleApiClient;
   private engine: CodeWhaleEngine;
-  private currentThread: ThreadRecord | null = null;
-  private viewingSessionId: string | null = null;
-  private messages: ChatMessage[] = [];
+  private sessionState = new SessionStateStore();
   private eventController: AbortController | null = null;
-  private lastEventSeq: number = 0;
-  private currentTurnId: string | null = null;
-  private pendingApprovals: Map<string, ToolCallInfo> = new Map();
-  private pendingUserInputs: Map<string, {
-    questions: Array<{ header: string; id: string; question: string; options: Array<{ label: string; description: string }> }>;
-    answers: Array<{ id: string; label: string; value: string }>;
-    answeredQuestions: Set<string>;
-  }> = new Map();
-  /** Active agent items for the current turn, keyed by item_id */
-  private activeItems: Map<string, { kind: string; msgId: string; toolCallName?: string; toolCallIdx?: number; blockIdx?: number }> =
-    new Map();
-  private currentTextBlockIdx: number = -1;
-  private currentThinkingBlockIdx: number = -1;
-  private cycleCount: number = 0;
-  private checklistItems: { id: string; content: string; status: string }[] = [];
-  private checklistCompletionPct: number = 0;
-  private coherenceState: string = "healthy";
-  private coherenceLabel: string = "";
   private taskRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private _disposables: vscode.Disposable[] = [];
-  private sessionCostUsd: number = 0;
-  private sessionCostCny: number = 0;
-  private lastCacheHitTokens: number = 0;
-  private lastCacheMissTokens: number = 0;
-  private lastInputTokens: number = 0;
-  private lastOutputTokens: number = 0;
-  private totalInputTokens: number = 0;
-  private totalOutputTokens: number = 0;
-  private turnFileChanges: FileChangeInfo[] = [];
   private currentAttachments: Array<{ kind: string; path: string; name: string }> = [];
   private showAllWorkspaces: boolean = false;
   private runtimeVersion: string | null = null;
@@ -393,6 +328,53 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     snapshotRestore: false,
   };
 
+  // Convenience accessors for session state
+  private get currentThread(): ThreadRecord | null { return this.sessionState.data.currentThread; }
+  private set currentThread(v: ThreadRecord | null) { this.sessionState.data.currentThread = v; }
+  private get viewingSessionId(): string | null { return this.sessionState.data.viewingSessionId; }
+  private set viewingSessionId(v: string | null) { this.sessionState.data.viewingSessionId = v; }
+  private get messages(): ChatMessage[] { return this.sessionState.data.messages; }
+  private set messages(v: ChatMessage[]) { this.sessionState.data.messages = v; }
+  private get lastEventSeq(): number { return this.sessionState.data.lastEventSeq; }
+  private set lastEventSeq(v: number) { this.sessionState.data.lastEventSeq = v; }
+  private get currentTurnId(): string | null { return this.sessionState.data.currentTurnId; }
+  private set currentTurnId(v: string | null) { this.sessionState.data.currentTurnId = v; }
+  private get pendingApprovals(): Map<string, ToolCallInfo> { return this.sessionState.data.pendingApprovals; }
+  private get pendingUserInputs() { return this.sessionState.data.pendingUserInputs; }
+  private get activeItems() { return this.sessionState.data.activeItems; }
+  private get currentTextBlockIdx(): number { return this.sessionState.data.currentTextBlockIdx; }
+  private set currentTextBlockIdx(v: number) { this.sessionState.data.currentTextBlockIdx = v; }
+  private get currentThinkingBlockIdx(): number { return this.sessionState.data.currentThinkingBlockIdx; }
+  private set currentThinkingBlockIdx(v: number) { this.sessionState.data.currentThinkingBlockIdx = v; }
+  private get cycleCount(): number { return this.sessionState.data.cycleCount; }
+  private set cycleCount(v: number) { this.sessionState.data.cycleCount = v; }
+  private get checklistItems() { return this.sessionState.data.checklistItems; }
+  private set checklistItems(v: { id: string; content: string; status: string }[]) { this.sessionState.data.checklistItems = v; }
+  private get checklistCompletionPct(): number { return this.sessionState.data.checklistCompletionPct; }
+  private set checklistCompletionPct(v: number) { this.sessionState.data.checklistCompletionPct = v; }
+  private get coherenceState(): string { return this.sessionState.data.coherenceState; }
+  private set coherenceState(v: string) { this.sessionState.data.coherenceState = v; }
+  private get coherenceLabel(): string { return this.sessionState.data.coherenceLabel; }
+  private set coherenceLabel(v: string) { this.sessionState.data.coherenceLabel = v; }
+  private get turnFileChanges(): FileChangeInfo[] { return this.sessionState.data.turnFileChanges; }
+  private set turnFileChanges(v: FileChangeInfo[]) { this.sessionState.data.turnFileChanges = v; }
+  private get sessionCostUsd(): number { return this.sessionState.data.stats.sessionCostUsd; }
+  private set sessionCostUsd(v: number) { this.sessionState.data.stats.sessionCostUsd = v; }
+  private get sessionCostCny(): number { return this.sessionState.data.stats.sessionCostCny; }
+  private set sessionCostCny(v: number) { this.sessionState.data.stats.sessionCostCny = v; }
+  private get lastCacheHitTokens(): number { return this.sessionState.data.stats.lastCacheHitTokens; }
+  private set lastCacheHitTokens(v: number) { this.sessionState.data.stats.lastCacheHitTokens = v; }
+  private get lastCacheMissTokens(): number { return this.sessionState.data.stats.lastCacheMissTokens; }
+  private set lastCacheMissTokens(v: number) { this.sessionState.data.stats.lastCacheMissTokens = v; }
+  private get lastInputTokens(): number { return this.sessionState.data.stats.lastInputTokens; }
+  private set lastInputTokens(v: number) { this.sessionState.data.stats.lastInputTokens = v; }
+  private get lastOutputTokens(): number { return this.sessionState.data.stats.lastOutputTokens; }
+  private set lastOutputTokens(v: number) { this.sessionState.data.stats.lastOutputTokens = v; }
+  private get totalInputTokens(): number { return this.sessionState.data.stats.totalInputTokens; }
+  private set totalInputTokens(v: number) { this.sessionState.data.stats.totalInputTokens = v; }
+  private get totalOutputTokens(): number { return this.sessionState.data.stats.totalOutputTokens; }
+  private set totalOutputTokens(v: number) { this.sessionState.data.stats.totalOutputTokens = v; }
+
   constructor(
     private readonly extensionUri: vscode.Uri,
     engine: CodeWhaleEngine,
@@ -400,6 +382,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   ) {
     this.engine = engine;
     this.api = api;
+    this.api.bindEngine(engine);
   }
 
   private debugLog(msg: string): void {
@@ -505,9 +488,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         break;
       case "webviewReady":
         try {
-          await this.engine.ensureRunning();
-          this.api.setBaseUrl(this.engine.baseUrl);
-          this.api.setToken(this.engine.token);
+          await this.api.ensureReady();
           await this.syncWebviewState();
         } catch (err) {
           this.postMessage({
@@ -518,7 +499,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         break;
       case "refreshSidebar":
         if (this.engine.isRunning) {
-          this.api.setBaseUrl(this.engine.baseUrl);
+          this.api.syncFromEngine();
           this.refreshSessionList();
           this.refreshThreadList();
           this.refreshTaskList();
@@ -584,11 +565,9 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   private async initializeThread(): Promise<void> {
     this.debugLog("initializeThread START");
     try {
-      this.debugLog("calling engine.ensureRunning()...");
-      await this.engine.ensureRunning();
+      this.debugLog("calling api.ensureReady()...");
+      await this.api.ensureReady();
       this.debugLog(`engine running on ${this.engine.baseUrl}`);
-      this.api.setBaseUrl(this.engine.baseUrl);
-      this.api.setToken(this.engine.token);
       await this.refreshRuntimeVersion();
       await this.refreshApiCapabilities();
 
@@ -837,21 +816,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
       const title = session.metadata.title || "Session";
 
       this.cleanup();
-      this.currentThread = null;
+      this.sessionState.reset();
       this.viewingSessionId = sessionId;
-      this.messages = [];
-      this.lastEventSeq = 0;
-      this.currentTurnId = null;
-      this.activeItems.clear();
-      this.currentTextBlockIdx = -1;
-      this.currentThinkingBlockIdx = -1;
-      this.cycleCount = 0;
-      this.checklistItems = [];
-      this.checklistCompletionPct = 0;
-      this.coherenceState = "healthy";
-      this.coherenceLabel = "";
-      this.turnFileChanges = [];
-      this.resetSessionStats();
 
       const rawMessages = session.messages as Array<{
         role: string;
@@ -1045,19 +1011,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
 
   private async loadThread(threadId: string): Promise<void> {
     this.cleanup();
-    this.messages = [];
-    this.lastEventSeq = 0;
-    this.currentTurnId = null;
-    this.activeItems.clear();
-    this.currentTextBlockIdx = -1;
-    this.currentThinkingBlockIdx = -1;
-    this.cycleCount = 0;
-    this.checklistItems = [];
-    this.checklistCompletionPct = 0;
-    this.coherenceState = "healthy";
-    this.coherenceLabel = "";
-    this.turnFileChanges = [];
-    this.resetSessionStats();
+    this.sessionState.reset();
 
     try {
       this.currentThread = await this.api.getThread(threadId);
@@ -1188,9 +1142,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     }
 
     try {
-      await this.engine.ensureRunning();
-      this.api.setBaseUrl(this.engine.baseUrl);
-      this.api.setToken(this.engine.token);
+      await this.api.ensureReady();
 
       if (this.viewingSessionId) {
         const sessionId = this.viewingSessionId;
@@ -1308,20 +1260,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
 
   private async handleNewThread(): Promise<void> {
     this.cleanup();
-    this.currentThread = null;
-    this.messages = [];
-    this.lastEventSeq = 0;
-    this.currentTurnId = null;
-    this.activeItems.clear();
-    this.currentTextBlockIdx = -1;
-    this.currentThinkingBlockIdx = -1;
-    this.cycleCount = 0;
-    this.checklistItems = [];
-    this.checklistCompletionPct = 0;
-    this.coherenceState = "healthy";
-    this.coherenceLabel = "";
-    this.turnFileChanges = [];
-    this.resetSessionStats();
+    this.sessionState.reset();
     this.postMessage({ type: "clearChat" });
   }
 
@@ -1467,9 +1406,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   private async handleInterrupt(): Promise<void> {
     if (this.currentThread) {
       try {
-        await this.engine.ensureRunning();
-        this.api.setBaseUrl(this.engine.baseUrl);
-        this.api.setToken(this.engine.token);
+        await this.api.ensureReady();
 
         if (this.currentTurnId) {
           try {
@@ -1502,9 +1439,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     // If viewing a session (not a live thread), resume it first.
     if (this.viewingSessionId && !this.currentThread) {
       try {
-        await this.engine.ensureRunning();
-        this.api.setBaseUrl(this.engine.baseUrl);
-        this.api.setToken(this.engine.token);
+        await this.api.ensureReady();
         const sessionId = this.viewingSessionId;
         const result = await this.api.resumeSessionThread(sessionId);
         this.viewingSessionId = null;
@@ -1522,9 +1457,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     }
 
     try {
-      await this.engine.ensureRunning();
-      this.api.setBaseUrl(this.engine.baseUrl);
-      this.api.setToken(this.engine.token);
+      await this.api.ensureReady();
 
       // Use patch-undo endpoint: tries snapshot file rollback first,
       // then removes the last conversation turn — same as TUI's `/undo`.
@@ -1585,9 +1518,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     // If viewing a session (not a live thread), resume it first.
     if (this.viewingSessionId && !this.currentThread) {
       try {
-        await this.engine.ensureRunning();
-        this.api.setBaseUrl(this.engine.baseUrl);
-        this.api.setToken(this.engine.token);
+        await this.api.ensureReady();
         const sessionId = this.viewingSessionId;
         const result = await this.api.resumeSessionThread(sessionId);
         this.viewingSessionId = null;
@@ -1605,9 +1536,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     }
 
     try {
-      await this.engine.ensureRunning();
-      this.api.setBaseUrl(this.engine.baseUrl);
-      this.api.setToken(this.engine.token);
+      await this.api.ensureReady();
 
       const result = await this.api.retryThreadTurn(this.currentThread.id);
 
@@ -1661,9 +1590,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     }
 
     try {
-      await this.engine.ensureRunning();
-      this.api.setBaseUrl(this.engine.baseUrl);
-      this.api.setToken(this.engine.token);
+      await this.api.ensureReady();
 
       // Find the most recent pre-turn snapshot.
       const snapshots = await this.api.listSnapshots({ limit: 20 });
@@ -1850,9 +1777,8 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         
         if (tokenArg === "history" || tokenArg === "all" || tokenArg === "today" || tokenArg.startsWith("since ")) {
           try {
-            await this.engine.ensureRunning();
-            this.api.setBaseUrl(this.engine.baseUrl);
-            
+            await this.api.ensureReady();
+
             let since: string | undefined;
             let until: string | undefined;
             
@@ -1913,9 +1839,8 @@ Usage: /tokens [history|today|since <date>]`
         
         if (costArg === "history" || costArg === "all" || costArg === "today" || costArg.startsWith("since ")) {
           try {
-            await this.engine.ensureRunning();
-            this.api.setBaseUrl(this.engine.baseUrl);
-            
+            await this.api.ensureReady();
+
             let since: string | undefined;
             let until: string | undefined;
             
@@ -1978,9 +1903,8 @@ Usage: /cost [history|today|since <date>]`
       }
       case "/status": {
         try {
-          await this.engine.ensureRunning();
-          this.api.setBaseUrl(this.engine.baseUrl);
-          
+          await this.api.ensureReady();
+
           const runtimeInfo = await this.api.getRuntimeInfo();
           const running = this.engine.isRunning;
           const authInfo = runtimeInfo.auth_required ? "✓ (token required)" : "✗ (no auth)";
@@ -2011,9 +1935,8 @@ Usage: /cost [history|today|since <date>]`
       }
       case "/workspace": {
         try {
-          await this.engine.ensureRunning();
-          this.api.setBaseUrl(this.engine.baseUrl);
-          
+          await this.api.ensureReady();
+
           const status = await this.api.getWorkspaceStatus();
           const wsPath = status.workspace;
           const gitInfo = status.git_repo
@@ -2039,8 +1962,7 @@ Usage: /cost [history|today|since <date>]`
         const taskSub = args.trim().split(/\s+/)[0]?.toLowerCase() || "";
         const taskRest = args.trim().slice(taskSub.length).trim();
         try {
-          await this.engine.ensureRunning();
-          this.api.setBaseUrl(this.engine.baseUrl);
+          await this.api.ensureReady();
           if (taskSub === "add" && taskRest) {
             const cfg = vscode.workspace.getConfiguration("brotherwhale");
             const task = await this.api.createTask({
@@ -2229,8 +2151,7 @@ Use the TUI for full command support.` });
       }
       case "/skills": {
         try {
-          await this.engine.ensureRunning();
-          this.api.setBaseUrl(this.engine.baseUrl);
+          await this.api.ensureReady();
           const result = await this.api.listSkills();
           const skills = result.skills;
           if (skills && skills.length > 0) {
@@ -2299,9 +2220,8 @@ Use the TUI for full command support.` });
         }
         
         try {
-          await this.engine.ensureRunning();
-          this.api.setBaseUrl(this.engine.baseUrl);
-          
+          await this.api.ensureReady();
+
           if (action === "on" || action === "enable" || action === "") {
             const result = await this.api.setSkillEnabled(skillName, true);
             this.postMessage({ type: "info", message: `Skill '${result.name}' enabled. It will auto-trigger when task matches.` });
@@ -2407,9 +2327,8 @@ Use the TUI for full command support.` });
       }
       case "/sessions": {
         try {
-          await this.engine.ensureRunning();
-          this.api.setBaseUrl(this.engine.baseUrl);
-          
+          await this.api.ensureReady();
+
           const searchArg = args.trim();
           const searchMatch = searchArg.match(/^search\s+(.+)$/i);
           const searchQuery = searchMatch ? searchMatch[1].trim() : undefined;
@@ -2454,8 +2373,7 @@ Use the TUI for full command support.` });
         }
 
         try {
-          await this.engine.ensureRunning();
-          this.api.setBaseUrl(this.engine.baseUrl);
+          await this.api.ensureReady();
 
           let sessionId = sessionIdInput;
 
@@ -2625,9 +2543,8 @@ Use the TUI for full command support.` });
         const jobsId = jobsParts[1] || "";
         
         try {
-          await this.engine.ensureRunning();
-          this.api.setBaseUrl(this.engine.baseUrl);
-          
+          await this.api.ensureReady();
+
           if (jobsSub === "list" || jobsSub === "") {
             const automations = await this.api.listAutomations();
             
@@ -3552,17 +3469,6 @@ Usage: /jobs run ${automation.id.slice(0, 8)} | /jobs pause ${automation.id.slic
     });
   }
 
-  private resetSessionStats(): void {
-    this.sessionCostUsd = 0;
-    this.sessionCostCny = 0;
-    this.lastCacheHitTokens = 0;
-    this.lastCacheMissTokens = 0;
-    this.lastInputTokens = 0;
-    this.lastOutputTokens = 0;
-    this.totalInputTokens = 0;
-    this.totalOutputTokens = 0;
-  }
-
   private getCurrentModel(): string {
     const cfg = vscode.workspace.getConfiguration("brotherwhale");
     return cfg.get<string>("defaultModel", "deepseek-v4-pro");
@@ -3634,7 +3540,6 @@ Usage: /jobs run ${automation.id.slice(0, 8)} | /jobs pause ${automation.id.slic
     this.diffContentStore.clear();
     this.diffProviderDisposable?.dispose();
     this.diffProviderDisposable = null;
-    this.viewingSessionId = null;
   }
 
   dispose(): void {

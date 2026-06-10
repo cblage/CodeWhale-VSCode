@@ -366,11 +366,28 @@ export interface UpdateAutomationRequest {
 
 export type EventListener = (event: RuntimeEvent) => void;
 
+/** Interface for the engine object that ApiClient syncs with */
+export interface EngineRef {
+  ensureRunning(): Promise<void>;
+  readonly baseUrl: string;
+  readonly token: string | null;
+}
+
+const NOT_SYNCED: unique symbol = Symbol("NOT_SYNCED");
+
 export class CodeWhaleApiClient {
   private authToken: string | null;
+  private engine: EngineRef | null = null;
+  private _lastSyncedBaseUrl: string | typeof NOT_SYNCED = NOT_SYNCED;
+  private _lastSyncedToken: string | null | typeof NOT_SYNCED = NOT_SYNCED;
 
   constructor(private baseUrl: string, token?: string) {
     this.authToken = token ?? null;
+  }
+
+  /** Bind this API client to an engine for automatic sync */
+  bindEngine(engine: EngineRef): void {
+    this.engine = engine;
   }
 
   setToken(token: string | null): void {
@@ -379,6 +396,39 @@ export class CodeWhaleApiClient {
 
   setBaseUrl(url: string): void {
     this.baseUrl = url;
+  }
+
+  /**
+   * Ensures the engine is running and synchronizes baseUrl/token
+   * from the engine to this client. Replaces the repeated 3-line pattern:
+   *   await engine.ensureRunning();
+   *   api.setBaseUrl(engine.baseUrl);
+   *   api.setToken(engine.token);
+   */
+  async ensureReady(): Promise<void> {
+    if (this.engine) {
+      await this.engine.ensureRunning();
+    }
+    this.syncFromEngine();
+  }
+
+  /**
+   * Syncs baseUrl and token from the bound engine without calling
+   * ensureRunning(). Useful when the engine is already known to be running.
+   */
+  syncFromEngine(): void {
+    if (!this.engine) return;
+    const currentUrl = this.engine.baseUrl;
+    const currentToken = this.engine.token;
+
+    if (this._lastSyncedBaseUrl !== currentUrl) {
+      this.setBaseUrl(currentUrl);
+      this._lastSyncedBaseUrl = currentUrl;
+    }
+    if (this._lastSyncedToken !== currentToken) {
+      this.setToken(currentToken);
+      this._lastSyncedToken = currentToken;
+    }
   }
 
   // ── Threads ──

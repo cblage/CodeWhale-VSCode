@@ -1,6 +1,7 @@
 export { CodeWhaleEngine } from "./engine";
 export {
   CodeWhaleApiClient,
+  type EngineRef,
   type ThreadRecord,
   type TurnRecord,
   type TurnItemRecord,
