@@ -28,7 +28,7 @@ const COMMANDS: SlashCommand[] = [
   { name: "/workspace", desc: "Set workspace", category: "config", availability: "full", helpText: "/workspace [path] - Show/set workspace" },
   { name: "/task", desc: "Manage tasks", category: "core", availability: "full", helpText: "/task add <prompt> | /task list | /task show <id> | /task cancel <id> — Create and manage background tasks" },
   { name: "/jobs", desc: "Manage automations", category: "core", availability: "full", helpText: "/jobs list | /jobs show <id> | /jobs run <id> | /jobs pause <id> | /jobs resume <id> | /jobs history <id> - Manage scheduled automations" },
-  { name: "/note", desc: "Manage notes", category: "core", availability: "full", helpText: "/note <text> | /note add <text> | /note list | /note remove <n> | /note clear | /note path" },
+  { name: "/note", desc: "Manage notes", category: "core", availability: "full", helpText: "/note <text> | /note add <text> | /note list | /note show <n> | /note remove <n> | /note clear | /note path" },
   { name: "/memory", desc: "Manage memory", category: "core", availability: "full", helpText: "/memory [show|path|clear|edit] - Inspect or manage persistent user-memory file" },
   { name: "/trust", desc: "Manage trust settings", category: "config", availability: "full", helpText: "/trust [on|off] - Toggle trust mode" },
   { name: "/verbose", desc: "Toggle verbose mode", category: "config", availability: "full", helpText: "/verbose [on|off] - Toggle verbose mode" },

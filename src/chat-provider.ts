@@ -12,6 +12,7 @@ import {
   TurnRecord,
   TurnItemRecord,
 } from "./types";
+import { formatError, getErrorMessage } from "./error-handler";
 import { getWebviewHtml } from "./webview-html";
 import { renderMarkdown } from "./markdown";
 import { finalizeAssistantMessage } from "./event-helpers";
@@ -150,8 +151,8 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
           this.debugLog(`onDidReceiveMessage: ${msg.type}`);
           await this.handleWebviewMessage(msg);
         } catch (err) {
-          this.debugLog(`onDidReceiveMessage error: ${(err as Error).message}`);
-          this.postMessage({ type: "error", message: `Internal error: ${(err as Error).message}` });
+          this.debugLog(`onDidReceiveMessage error: ${getErrorMessage(err)}`);
+          this.postMessage({ type: "error", message: formatError("Internal error", err) });
         }
       },
       null,
@@ -161,8 +162,8 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     webviewView.onDidDispose(() => this.cleanup());
 
     this.initializeThread().catch((err) => {
-      this.debugLog(`initializeThread FAILED: ${(err as Error).message}`);
-      this.postMessage({ type: "error", message: `Initialization failed: ${(err as Error).message}` });
+      this.debugLog(`initializeThread FAILED: ${getErrorMessage(err)}`);
+      this.postMessage({ type: "error", message: formatError("Initialization failed", err) });
       this.postMessage({ type: "status", text: "Failed to connect to engine" });
     });
   }
@@ -228,7 +229,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
         } catch (err) {
           this.postMessage({
             type: "error",
-            message: `Failed to initialize: ${(err as Error).message}`,
+            message: formatError("Failed to initialize", err),
           });
         }
         break;
@@ -338,10 +339,10 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
         runtimeVersion: this.runtimeVersion,
       });
     } catch (err) {
-      this.debugLog(`initializeThread ERROR: ${(err as Error).message}\n${(err as Error).stack}`);
+      this.debugLog(`initializeThread ERROR: ${getErrorMessage(err)}\n${(err as Error).stack}`);
       this.postMessage({
         type: "error",
-        message: `Failed to initialize: ${(err as Error).message}`,
+        message: formatError("Failed to initialize", err),
       });
       this.postMessage({
         type: "ready",
@@ -539,7 +540,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     } catch (err) {
       this.postMessage({
         type: "error",
-        message: `Failed to load history: ${(err as Error).message}`,
+        message: formatError("Failed to load history", err),
       });
       return this.lastEventSeq;
     }
@@ -715,7 +716,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     });
     this.postMessage({ type: "sessionLoaded", sessionId: session.metadata.id });
     } catch (err) {
-      const errorMsg = (err as Error).message;
+      const errorMsg = getErrorMessage(err);
       this.debugLog(`loadSessionMessages error: ${errorMsg}`);
 
       // Provide user-friendly error messages for common errors
@@ -734,7 +735,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       } else {
         this.postMessage({
           type: "error",
-          message: `Failed to load session: ${errorMsg}`,
+          message: formatError("Failed to load session", err),
         });
       }
 
@@ -788,7 +789,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     } catch (err) {
       this.postMessage({
         type: "error",
-        message: `Failed to load thread: ${(err as Error).message}`,
+        message: formatError("Failed to load thread", err),
       });
     }
   }
@@ -839,7 +840,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     } catch (err) {
       this.postMessage({
         type: "error",
-        message: `Failed to attach file: ${(err as Error).message}`,
+        message: formatError("Failed to attach file", err),
       });
     }
   }
@@ -988,7 +989,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     } catch (err) {
       this.postMessage({
         type: "error",
-        message: `Failed to send message: ${(err as Error).message}`,
+        message: formatError("Failed to send message", err),
       });
     }
   }
@@ -1181,7 +1182,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
         await this.loadThread(result.thread_id);
         this.refreshSessionList();
       } catch (err) {
-        this.postMessage({ type: "error", message: `Failed to resume session: ${(err as Error).message}` });
+        this.postMessage({ type: "error", message: formatError("Failed to resume session", err) });
         return;
       }
     }
@@ -1229,11 +1230,11 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       this.refreshSessionList();
       this.postMessage({ type: "historyUpdated" });
     } catch (err) {
-      const msg = (err as Error).message || String(err);
+      const msg = getErrorMessage(err);
       if (msg.includes("exceeds") || msg.includes("No user turn")) {
         this.postMessage({ type: "info", message: t().undoNoTurns });
       } else {
-        this.postMessage({ type: "error", message: `Undo failed: ${msg}` });
+        this.postMessage({ type: "error", message: formatError("Undo failed", err) });
       }
     }
   }
@@ -1260,7 +1261,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
         await this.loadThread(result.thread_id);
         this.refreshSessionList();
       } catch (err) {
-        this.postMessage({ type: "error", message: `Failed to resume session: ${(err as Error).message}` });
+        this.postMessage({ type: "error", message: formatError("Failed to resume session", err) });
         return;
       }
     }
@@ -1296,11 +1297,11 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       this.refreshSessionList();
       this.postMessage({ type: "historyUpdated" });
     } catch (err) {
-      const msg = (err as Error).message || String(err);
+      const msg = getErrorMessage(err);
       if (msg.includes("exceeds") || msg.includes("No user") || msg.includes("no user text")) {
         this.postMessage({ type: "info", message: t().retryNoTurns });
       } else {
-        this.postMessage({ type: "error", message: `Retry failed: ${msg}` });
+        this.postMessage({ type: "error", message: formatError("Retry failed", err) });
       }
     }
   }
@@ -1349,7 +1350,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     } catch (err) {
       this.postMessage({
         type: "error",
-        message: t().revertFailure(filePath, (err as Error).message),
+        message: t().revertFailure(filePath, getErrorMessage(err)),
       });
     }
   }
@@ -1362,7 +1363,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       } catch (err) {
         this.postMessage({
           type: "error",
-          message: `Compact failed: ${(err as Error).message}`,
+          message: formatError("Compact failed", err),
         });
       }
     }
@@ -1389,7 +1390,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     } catch (err) {
       this.postMessage({
         type: "error",
-        message: `Approval failed: ${(err as Error).message}`,
+        message: formatError("Approval failed", err),
       });
     }
   }
@@ -1430,10 +1431,9 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
           answers: pending.answers,
         });
       } catch (err) {
-        const errorMsg = (err as Error).message;
         this.postMessage({
           type: "error",
-          message: `Failed to submit user input: ${errorMsg}. Use /interrupt to clear the stuck turn.`,
+          message: `${formatError("Failed to submit user input", err)}. Use /interrupt to clear the stuck turn.`,
         });
         this.pendingUserInputs.delete(inputId);
       }
@@ -1500,7 +1500,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
         await vscode.window.showTextDocument(doc);
       }
     } catch (err) {
-      this.postMessage({ type: "error", message: `Failed to open diff: ${(err as Error).message}` });
+      this.postMessage({ type: "error", message: formatError("Failed to open diff", err) });
     }
   }
 
@@ -1512,7 +1512,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absPath));
       await vscode.window.showTextDocument(doc);
     } catch (err) {
-      this.postMessage({ type: "error", message: `Failed to open file: ${(err as Error).message}` });
+      this.postMessage({ type: "error", message: formatError("Failed to open file", err) });
     }
   }
 
@@ -1744,7 +1744,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       }
     }
     } catch (err) {
-      this.debugLog(`handleRuntimeEvent error on ${event.event}: ${(err as Error).message}`);
+      this.debugLog(`handleRuntimeEvent error on ${event.event}: ${getErrorMessage(err)}`);
     }
   }
 
