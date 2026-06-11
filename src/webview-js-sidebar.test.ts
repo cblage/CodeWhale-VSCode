@@ -1,0 +1,116 @@
+import { describe, it, expect } from "vitest";
+import { getSidebarScript } from "./webview-js-sidebar";
+import { makeTr } from "./webview-test-helpers";
+
+describe("webview-js-sidebar.ts", () => {
+  it("returns a non-empty string", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toBeTruthy();
+    expect(script.length).toBeGreaterThan(100);
+  });
+
+  it("is wrapped in an IIFE", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script.startsWith("(function()")).toBe(true);
+    expect(script.endsWith("})();")).toBe(true);
+  });
+
+  it("uses strict mode", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("'use strict'");
+  });
+
+  it("references __wvEscapeHtml from utilities", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("window.__wvEscapeHtml");
+  });
+
+  it("references __wvI18n from utilities", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("window.__wvI18n");
+  });
+
+  it("contains renderSessions function", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("function renderSessions");
+  });
+
+  it("contains renderThreads function", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("function renderThreads");
+  });
+
+  it("contains renderTasks function", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("function renderTasks");
+  });
+
+  it("contains renderWork function", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("function renderWork");
+  });
+
+  it("contains sidebar tab switching logic", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("function switchSidebarTab");
+  });
+
+  it("contains task detail rendering", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("function showTaskDetail");
+    expect(script).toContain("function closeTaskDetail");
+  });
+
+  it("contains threads panel toggle", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("function toggleThreadsPanel");
+  });
+
+  it("handles workspace filter toggle", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("workspace-filter-toggle");
+    expect(script).toContain("toggleAllWorkspaces");
+  });
+
+  it("contains section collapse/expand via sidebar-section-header", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("sidebar-section-header");
+    expect(script).toContain("collapsed");
+  });
+
+  it("wires render functions to window.__wvSidebar", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("window.__wvSidebar = {");
+    expect(script).toContain("renderSessions: renderSessions");
+    expect(script).toContain("renderThreads: renderThreads");
+    expect(script).toContain("renderTasks: renderTasks");
+    expect(script).toContain("renderWork: renderWork");
+    expect(script).toContain("switchSidebarTab: switchSidebarTab");
+  });
+
+  it("exposes getter/setter for sessions, threads, workState", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("setSessions:");
+    expect(script).toContain("setActiveSessionId:");
+    expect(script).toContain("setThreads:");
+    expect(script).toContain("setActiveThreadId:");
+    expect(script).toContain("setShowAllWorkspaces:");
+    expect(script).toContain("setWorkState:");
+  });
+
+  it("uses __wvFormatRelativeTime for time display", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("window.__wvFormatRelativeTime");
+  });
+
+  it("uses __wvFormatThreadsCount for thread count display", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("window.__wvFormatThreadsCount");
+  });
+
+  it("uses __wvDiffStore for file change diffs", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("__wvDiffStore");
+    expect(script).toContain("__wvDiffIdCounter");
+  });
+});

@@ -1,7 +1,7 @@
 # [OPEN] ide-plugin-freeze
 
 ## Symptom
-- DeepSeek-GUI IDE 插件界面已加载，状态栏显示 `Ready`
+- CodeWhale VSCode 插件界面已加载，状态栏显示 `Ready`
 - 日志中可见 `input=true sendBtn=true messages=true status=true`
 - 用户操作无响应，表现为输入/发送/历史相关交互失效
 
@@ -17,7 +17,7 @@
 - 找到最可能的证据点后，再补最小化埋点验证。
 
 ## Evidence
-- E1: `~/.deepseek-gui-logs/debug.log` 中宿主侧持续收到 `onDidReceiveMessage: webviewReady`，但没有任何 `sendMessage/newThread/compact/loadThread/...` 入站记录，说明扩展与 webview 的初始化桥接是通的，但用户交互没有转化成发回宿主的消息。
+- E1: `~/.codewhale-vscode-logs/debug.log` 中宿主侧持续收到 `onDidReceiveMessage: webviewReady`，但没有任何 `sendMessage/newThread/compact/loadThread/...` 入站记录，说明扩展与 webview 的初始化桥接是通的，但用户交互没有转化成发回宿主的消息。
 - E2: `src/webview-html.ts` 已经绑定了 `sendBtn/input/newThread/compact/interrupt/threads` 等事件监听，且这些绑定位于 `window.addEventListener('message', ...)` 之前；截图已证明后者生效，因此“脚本早期崩溃导致根本没绑监听”概率很低。
 - E3: 当前页面存在一个默认启用的高 z-index 固定调试层：`#debug-panel`，样式为 `position:fixed; bottom:0; left:0; right:0; z-index:99999; max-height:80px;`。它正好覆盖输入区附近，是最可能影响点击命中的 DOM 层。
 - E4: Markdown 渲染链路 `marked.parse(text) -> innerHTML` 完全未做 HTML/CSS 清洗，历史消息理论上可以注入覆盖层或全局样式，属于另一条可导致“页面完全不响应”的高风险路径。
@@ -33,4 +33,4 @@
 ## Next
 - Primary suspect: remove/disable fixed debug overlay and re-check hit testing near toolbar/input.
 - Secondary hardening: sanitize rendered markdown/thinking HTML before assigning to `innerHTML`.
-- Verify after redeploy: reload Trae window, reopen DeepSeek-GUI, confirm input/send/sidebar interactions recover and status no longer sticks on initializing after tab switches.
+- Verify after redeploy: reload Trae window, reopen CodeWhale VSCode, confirm input/send/sidebar interactions recover and status no longer sticks on initializing after tab switches.
