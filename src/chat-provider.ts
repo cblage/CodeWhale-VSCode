@@ -40,6 +40,11 @@ import {
   buildApprovalSummary,
 } from "./tool-utils";
 
+/** Normalize file path for dedup comparison: backslashes to forward, strip trailing slashes. */
+function normalizePath(p: string): string {
+  return p.replace(/\\/g, '/').replace(/\/+$/, '');
+}
+
 export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandContext {
   public static readonly viewType = "brotherwhale.chat";
 
@@ -360,6 +365,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     try {
       const detail = await this.api.getThreadDetail(id);
       this.messages = [];
+      this.turnFileChanges = [];
       this.lastEventSeq = detail.latest_seq ?? 0;
       const itemById = new Map(detail.items.map((item) => [item.id, item]));
 
@@ -503,7 +509,10 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
 
         for (const tc of toolCalls) {
           if (tc.fileChange) {
-            this.turnFileChanges.push(tc.fileChange);
+            const normPath = normalizePath(tc.fileChange.filePath);
+            if (!this.turnFileChanges.some(existing => normalizePath(existing.filePath) === normPath)) {
+              this.turnFileChanges.push(tc.fileChange);
+            }
           }
         }
       }
@@ -1066,8 +1075,15 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       cycleCount: this.cycleCount,
       coherenceState: this.coherenceState,
       coherenceLabel: this.coherenceLabel,
-      capabilities: this.getWebviewCapabilities(),
-      fileChanges: this.turnFileChanges.map(fc => ({
+    });
+    this.refreshChangesPanel();
+  }
+
+  /** Push file changes to the webview Changes panel */
+  private refreshChangesPanel(): void {
+    this.postMessage({
+      type: "changesState",
+      changes: this.turnFileChanges.map(fc => ({
         filePath: fc.filePath,
         changeType: fc.changeType,
         addedLines: fc.addedLines,
@@ -1620,6 +1636,16 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
         const toolInput = (request || pl) as Record<string, unknown>;
         if (!approvalId) break;
 
+        // In YOLO/auto-approve mode, the TUI runtime auto-approves after
+        // emitting this event (see runtime_threads.rs:2748-2761).  Mirror
+        // the TUI UI behaviour (ui.rs:2427) and skip the approval dialog
+        // entirely so the user isn't shown a confusing confirmation that
+        // has already been decided server-side.
+        const thread = this.currentThread;
+        if (thread?.auto_approve || thread?.trust_mode) {
+          break;
+        }
+
         const lastMsg = this.messages[this.messages.length - 1];
         let tc: ToolCallInfo | undefined;
         let tcIdx: number | undefined;
@@ -1918,7 +1944,10 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
               if (tc) {
                 tc.fileChange = fc;
               }
-              this.turnFileChanges.push(fc);
+              const normPath = normalizePath(fc.filePath);
+              if (!this.turnFileChanges.some(existing => normalizePath(existing.filePath) === normPath)) {
+                this.turnFileChanges.push(fc);
+              }
               if (tcIdx !== undefined) {
                 this.postMessage({
                   type: "fileChangeDetected",

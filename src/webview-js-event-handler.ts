@@ -97,9 +97,6 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
         break;
 
       case 'workState':
-        apiCapabilities = Object.assign({}, apiCapabilities, msg.capabilities || {});
-        window.__wvApiCapabilities = apiCapabilities;
-        window.__wvInput.applyApiCapabilities();
         window.__wvSidebar.setWorkState({
           goal: msg.goal || null,
           checklist: msg.checklist || [],
@@ -108,9 +105,13 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
           cycleCount: msg.cycleCount || 0,
           coherenceState: msg.coherenceState || 'healthy',
           coherenceLabel: msg.coherenceLabel || '',
-          fileChanges: msg.fileChanges || [],
         });
         window.__wvSidebar.renderWork();
+        break;
+
+      case 'changesState':
+        window.__wvSidebar.setChangesState(msg.changes || []);
+        window.__wvSidebar.renderChanges();
         break;
 
       case 'apiCapabilities':

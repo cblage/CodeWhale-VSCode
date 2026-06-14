@@ -1116,6 +1116,84 @@ export function getWebviewCss(): string {
       font-size: 0.85em;
     }
 
+    /* ── Changes Section ── */
+
+    .change-summary-row {
+      display: flex;
+      gap: 8px;
+      font-size: 0.8em;
+      padding-bottom: 4px;
+    }
+    .change-summary-created { color: #4caf50; }
+    .change-summary-modified { color: #2196f3; }
+    .change-summary-deleted { color: #f44336; }
+    .change-list { padding: 2px 10px; }
+    .change-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 0;
+      border-bottom: 1px solid rgba(128,128,128,0.06);
+    }
+    .change-item:last-child { border-bottom: none; }
+    .change-badge {
+      flex-shrink: 0;
+      width: 16px;
+      height: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 2px;
+      font-size: 0.7em;
+      font-weight: 700;
+      font-family: var(--vscode-editor-font-family, monospace);
+      letter-spacing: -0.5px;
+    }
+    .change-badge-created { background: rgba(76,175,80,0.18); color: #4caf50; }
+    .change-badge-modified { background: rgba(33,150,243,0.18); color: #2196f3; }
+    .change-badge-deleted { background: rgba(244,67,54,0.18); color: #f44336; }
+    .change-path {
+      font-family: var(--vscode-editor-font-family, monospace);
+      font-size: 0.85em;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .change-stats {
+      font-family: var(--vscode-editor-font-family, monospace);
+      font-size: 0.8em;
+      flex-shrink: 0;
+    }
+    .change-added { color: #4caf50; }
+    .change-removed { color: #f44336; }
+    .change-actions {
+      flex-shrink: 0;
+      display: flex;
+      gap: 3px;
+    }
+    .change-btn {
+      padding: 1px 5px;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.7em;
+      font-family: var(--vscode-editor-font-family, monospace);
+      line-height: 1.4;
+      transition: all 0.1s ease;
+    }
+    .change-btn:hover {
+      color: var(--fg);
+      border-color: var(--muted);
+      background: rgba(128,128,128,0.06);
+    }
+    .change-btn:active {
+      background: rgba(128,128,128,0.12);
+    }
+
     /* ── Task Detail Overlay ── */
 
     .task-detail-overlay {

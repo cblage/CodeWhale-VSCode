@@ -148,6 +148,8 @@ export function makeTr(overrides?: Partial<WebviewTranslations>): WebviewTransla
     removeAttachment: "Remove",
     attachedFileCount: "{n} files attached",
     fileNotSupported: "File type not supported",
+    changes: "Changes",
+    noFileChanges: "No file changes in this session",
     undoUnsupportedTooltip: "Undo not supported",
     retryUnsupportedTooltip: "Retry not supported",
     revertUnsupportedTooltip: "Revert not supported",

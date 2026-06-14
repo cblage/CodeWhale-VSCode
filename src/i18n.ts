@@ -153,6 +153,8 @@ interface Translations {
   removeAttachment: string;
   attachedFileCount: string;
   fileNotSupported: string;
+  changes: string;
+  noFileChanges: string;
   fileChanges: string;
   viewDiff: string;
   viewDiffTooltip: string;
@@ -329,6 +331,8 @@ const en: Translations = {
   removeAttachment: "Remove",
   attachedFileCount: "{n} file(s) attached",
   fileNotSupported: "File type not supported",
+  changes: "Changes",
+  noFileChanges: "No file changes in this session",
   fileChanges: "Changes",
   viewDiff: "View Diff",
   viewDiffTooltip: "Open diff view for this file",
@@ -505,6 +509,8 @@ const zhCn: Translations = {
   removeAttachment: "移除",
   attachedFileCount: "已附加 {n} 个文件",
   fileNotSupported: "不支持的文件类型",
+  changes: "变更",
+  noFileChanges: "本次会话无文件变更",
   fileChanges: "文件变更",
   viewDiff: "查看差异",
   viewDiffTooltip: "在差异视图中对比文件变更",
@@ -724,6 +730,8 @@ export function webviewTranslations(tr: Translations) {
     removeAttachment: tr.removeAttachment,
     attachedFileCount: tr.attachedFileCount,
     fileNotSupported: tr.fileNotSupported,
+    changes: tr.changes,
+    noFileChanges: tr.noFileChanges,
     fileChanges: tr.fileChanges,
     viewDiff: tr.viewDiff,
     viewDiffTooltip: tr.viewDiffTooltip,

@@ -108,9 +108,31 @@ describe("webview-js-sidebar.ts", () => {
     expect(script).toContain("window.__wvFormatThreadsCount");
   });
 
-  it("uses __wvDiffStore for file change diffs", () => {
+  it("does not render file changes in work panel (TUI design: file changes are shown inline, not in Work sidebar)", () => {
     const script = getSidebarScript(makeTr());
-    expect(script).toContain("__wvDiffStore");
-    expect(script).toContain("__wvDiffIdCounter");
+    expect(script).not.toContain("workState.fileChanges");
+  });
+
+  it("contains renderChanges function for the Changes panel", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("function renderChanges");
+  });
+
+  it("wires renderChanges to window.__wvSidebar", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("renderChanges: renderChanges");
+  });
+
+  it("exposes setChangesState getter/setter", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("setChangesState:");
+    expect(script).toContain("getChangesState:");
+  });
+
+  it("renders file changes in the Changes panel, not the Work panel", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("changesState");
+    expect(script).toContain("tab-changes");
+    expect(script).not.toContain("workState.fileChanges");
   });
 });

@@ -142,6 +142,8 @@ export interface WebviewTranslations {
   removeAttachment: string;
   attachedFileCount: string;
   fileNotSupported: string;
+  changes: string;
+  noFileChanges: string;
   undoUnsupportedTooltip: string;
   retryUnsupportedTooltip: string;
   revertUnsupportedTooltip: string;
@@ -204,6 +206,13 @@ ${css}
           <span class="sidebar-section-arrow">▼</span>
         </div>
         <div class="sidebar-section-body" id="tab-tasks"></div>
+      </div>
+      <div class="sidebar-section" id="sidebar-changes">
+        <div class="sidebar-section-header" id="changes-section-toggle">
+          <span class="sidebar-section-title">📝 ${tr.changes}</span>
+          <span class="sidebar-section-arrow">▼</span>
+        </div>
+        <div class="sidebar-section-body" id="tab-changes"></div>
       </div>
     </div>
     <div id="chat-area">
@@ -280,11 +289,12 @@ ${css}
         activeThreadId: null,
         showAllWorkspaces: false,
         sidebarTab: 'sessions',
-        workState: { goal: null, checklist: [], checklistCompletionPct: 0, strategy: [], cycleCount: 0, coherenceState: 'healthy', coherenceLabel: '', fileChanges: [] },
+        workState: { goal: null, checklist: [], checklistCompletionPct: 0, strategy: [], cycleCount: 0, coherenceState: 'healthy', coherenceLabel: '' },
         renderSessions: function() {},
         renderThreads: function() {},
         renderTasks: function() {},
         renderWork: function() {},
+        renderChanges: function() {},
         switchSidebarTab: function() {},
         closeTaskDetail: function() {},
         showTaskDetail: function() {},
@@ -294,6 +304,7 @@ ${css}
         setActiveThreadId: function(id) { this.activeThreadId = id; },
         setShowAllWorkspaces: function(v) { this.showAllWorkspaces = v; },
         setWorkState: function(ws) { this.workState = ws; },
+        setChangesState: function(cs) { this.changesState = cs; },
       };
     })();
   </script>

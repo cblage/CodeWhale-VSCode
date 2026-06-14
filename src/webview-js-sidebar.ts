@@ -23,11 +23,12 @@ export function getSidebarScript(tr: WebviewTranslations): string {
   var threadCountEl = document.getElementById('thread-count');
 
   // ── Work state ──
-  var workState = { goal: null, checklist: [], checklistCompletionPct: 0, strategy: [], cycleCount: 0, coherenceState: 'healthy', coherenceLabel: '', fileChanges: [] };
+  var workState = { goal: null, checklist: [], checklistCompletionPct: 0, strategy: [], cycleCount: 0, coherenceState: 'healthy', coherenceLabel: '' };
 
-  // ── Diff store (shared with messages module) ──
-  var _diffIdCounter = window.__wvDiffIdCounter || { value: 0 };
-  window.__wvDiffIdCounter = _diffIdCounter;
+  // ── Changes state ──
+  var changesState = [];
+  var _diffStore = window.__wvDiffStore;
+  var _diffIdCounter = window.__wvDiffIdCounter;
 
   // ── Render Sessions ──
   function renderSessions() {
@@ -250,7 +251,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     var container = document.getElementById('tab-work');
     if (!container) return;
     container.innerHTML = '';
-    var hasContent = workState.goal || workState.checklist.length > 0 || workState.strategy.length > 0 || workState.cycleCount > 0 || (workState.coherenceState && workState.coherenceState !== 'healthy') || (workState.fileChanges && workState.fileChanges.length > 0);
+    var hasContent = workState.goal || workState.checklist.length > 0 || workState.strategy.length > 0 || workState.cycleCount > 0 || (workState.coherenceState && workState.coherenceState !== 'healthy');
     if (!hasContent) {
       var el = document.createElement('div');
       el.className = 'work-empty';
@@ -314,45 +315,84 @@ export function getSidebarScript(tr: WebviewTranslations): string {
       section.innerHTML = '<div style="font-size:0.8em;color:var(--muted)">' + __wvEscapeHtml(__i18n.cycles) + ': ' + workState.cycleCount + '</div>';
       container.appendChild(section);
     }
-    if (workState.fileChanges && workState.fileChanges.length > 0) {
-      var section = document.createElement('div');
-      section.className = 'work-section';
-      var html = '<div class="work-section-title">' + __wvEscapeHtml(__i18n.fileChanges) + ' <span style="font-weight:400;color:var(--muted);font-size:0.9em">(' + workState.fileChanges.length + ')</span></div>';
-      var _diffStore = window.__wvDiffStore;
-      for (var fi = 0; fi < workState.fileChanges.length; fi++) {
-        var fc = workState.fileChanges[fi];
-        var changeTypeLabel = fc.changeType === 'created' ? __i18n.fileCreated : fc.changeType === 'deleted' ? __i18n.fileDeleted : __i18n.fileModified;
-        var shortP = fc.filePath.replace(/\\\\\\\\/g, '/').split('/').slice(-3).join('/');
-        var displayPath = fc.filePath.replace(/\\\\\\\\/g, '/').split('/').length > 3 ? '\\u2026/' + shortP : fc.filePath;
-        var badgeColor = fc.changeType === 'created' ? '#4caf50' : fc.changeType === 'deleted' ? '#f44336' : '#2196f3';
-        html += '<div class="work-checklist-item" style="display:flex;align-items:center;gap:6px;padding:3px 0;flex-wrap:wrap">';
-        html += '<span style="flex-shrink:0;font-size:0.8em;padding:1px 5px;border-radius:3px;background:' + badgeColor + '22;color:' + badgeColor + '">' + __wvEscapeHtml(changeTypeLabel) + '</span>';
-        html += '<span style="font-family:var(--vscode-editor-font-family,monospace);font-size:0.85em;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + __wvEscapeHtml(fc.filePath) + '">' + __wvEscapeHtml(displayPath) + '</span>';
-        if (fc.toolName) {
-          var fn = fc.toolName.replace(/_/g, ' ').replace(/\\b\\w/g, function(c) { return c.toUpperCase(); });
-          html += '<span style="font-size:0.75em;color:var(--muted);flex-shrink:0">\\uD83D\\uDD27' + __wvEscapeHtml(fn) + '</span>';
-        }
-        if (fc.addedLines > 0 || fc.removedLines > 0) {
-          html += '<span style="font-family:var(--vscode-editor-font-family,monospace);font-size:0.8em;flex-shrink:0">';
-          if (fc.addedLines > 0) html += '<span style="color:#4caf50">+' + fc.addedLines + '</span>';
-          if (fc.removedLines > 0) html += '<span style="color:#f44336">-' + fc.removedLines + '</span>';
-          html += '</span>';
-        }
-        var workDiffKey = fc.filePath + '@' + (++_diffIdCounter.value);
-        html += '<span style="flex-shrink:0;display:flex;gap:3px">';
-        if (fc.diff) {
-          _diffStore.set(workDiffKey, fc.diff);
-          html += '<button class="work-fc-view-diff" data-file-path="' + __wvEscapeHtml(fc.filePath) + '" data-diff-key="' + workDiffKey + '" title="' + __wvEscapeHtml(__i18n.viewDiffTooltip) + '" style="padding:0 5px;border:1px solid var(--border);border-radius:2px;background:transparent;color:var(--muted);cursor:pointer;font-size:0.75em">\\uD83D\\uDD0D</button>';
-        }
-        if (fc.changeType !== 'deleted') {
-          html += '<button class="work-fc-open-file" data-file-path="' + __wvEscapeHtml(fc.filePath) + '" title="' + __wvEscapeHtml(__i18n.openFileTooltip) + '" style="padding:0 5px;border:1px solid var(--border);border-radius:2px;background:transparent;color:var(--muted);cursor:pointer;font-size:0.75em">\\uD83D\\uDCC4</button>';
-        }
-        html += '</span>';
-        html += '</div>';
-      }
-      section.innerHTML = html;
-      container.appendChild(section);
+  }
+
+  // ── Render Changes ──
+  function renderChanges() {
+    var container = document.getElementById('tab-changes');
+    if (!container) return;
+    container.innerHTML = '';
+    _diffStore.clear();
+    _diffIdCounter.value = 0;
+    if (!changesState || changesState.length === 0) {
+      var el = document.createElement('div');
+      el.className = 'work-empty';
+      el.textContent = __i18n.noFileChanges;
+      container.appendChild(el);
+      return;
     }
+    // Summary header
+    var header = document.createElement('div');
+    header.className = 'work-section';
+    var createdCount = 0, modifiedCount = 0, deletedCount = 0;
+    for (var si = 0; si < changesState.length; si++) {
+      if (changesState[si].changeType === 'created') createdCount++;
+      else if (changesState[si].changeType === 'deleted') deletedCount++;
+      else modifiedCount++;
+    }
+    var summaryParts = [];
+    if (createdCount > 0) summaryParts.push('<span class="change-summary-created">' + createdCount + ' ' + __wvEscapeHtml(__i18n.fileCreated) + '</span>');
+    if (modifiedCount > 0) summaryParts.push('<span class="change-summary-modified">' + modifiedCount + ' ' + __wvEscapeHtml(__i18n.fileModified) + '</span>');
+    if (deletedCount > 0) summaryParts.push('<span class="change-summary-deleted">' + deletedCount + ' ' + __wvEscapeHtml(__i18n.fileDeleted) + '</span>');
+    header.innerHTML = '<div class="work-section-title">' + __wvEscapeHtml(__i18n.fileChanges) + ' <span style="font-weight:400;color:var(--muted);font-size:0.9em">(' + changesState.length + ')</span></div><div class="change-summary-row">' + summaryParts.join(' ') + '</div>';
+    container.appendChild(header);
+
+    // File list
+    var list = document.createElement('div');
+    list.className = 'work-section change-list';
+    var html = '';
+    for (var fi = 0; fi < changesState.length; fi++) {
+      var fc = changesState[fi];
+      var changeIcon = fc.changeType === 'created' ? 'A' : fc.changeType === 'deleted' ? 'D' : 'M';
+      var changeTypeLabel = fc.changeType === 'created' ? __i18n.fileCreated : fc.changeType === 'deleted' ? __i18n.fileDeleted : __i18n.fileModified;
+      var shortP = fc.filePath.replace(/\\\\/g, '/').split('/').slice(-3).join('/');
+      var displayPath = fc.filePath.replace(/\\\\/g, '/').split('/').length > 3 ? '\\u2026/' + shortP : fc.filePath;
+      var diffKey = fc.filePath + '@' + (++_diffIdCounter.value);
+      if (fc.diff) _diffStore.set(diffKey, fc.diff);
+      html += '<div class="change-item change-type-' + fc.changeType + '">';
+      html += '<span class="change-badge change-badge-' + fc.changeType + '" title="' + __wvEscapeHtml(changeTypeLabel) + '">' + changeIcon + '</span>';
+      html += '<span class="change-path" title="' + __wvEscapeHtml(fc.filePath) + '">' + __wvEscapeHtml(displayPath) + '</span>';
+      if (fc.addedLines > 0 || fc.removedLines > 0) {
+        html += '<span class="change-stats">';
+        if (fc.addedLines > 0) html += '<span class="change-added">+' + fc.addedLines + '</span>';
+        if (fc.removedLines > 0) html += '<span class="change-removed">-' + fc.removedLines + '</span>';
+        html += '</span>';
+      }
+      html += '<span class="change-actions">';
+      if (fc.diff) {
+        html += '<button class="change-btn change-view-diff" data-file-path="' + __wvEscapeHtml(fc.filePath) + '" data-diff-key="' + diffKey + '" title="' + __wvEscapeHtml(__i18n.viewDiffTooltip) + '">Diff</button>';
+      }
+      if (fc.changeType !== 'deleted') {
+        html += '<button class="change-btn change-open-file" data-file-path="' + __wvEscapeHtml(fc.filePath) + '" title="' + __wvEscapeHtml(__i18n.openFileTooltip) + '">Open</button>';
+      }
+      html += '</span>';
+      html += '</div>';
+    }
+    list.innerHTML = html;
+    container.appendChild(list);
+
+    // Click delegation for diff/open buttons
+    list.addEventListener('click', function(e) {
+      var target = e.target;
+      if (target.classList.contains('change-view-diff')) {
+        var filePath = target.getAttribute('data-file-path');
+        var diffKey = target.getAttribute('data-diff-key');
+        vscode.postMessage({ type: 'openDiff', filePath: filePath, diff: (diffKey ? _diffStore.get(diffKey) : undefined) || undefined });
+      } else if (target.classList.contains('change-open-file')) {
+        var filePath = target.getAttribute('data-file-path');
+        vscode.postMessage({ type: 'openFile', filePath: filePath });
+      }
+    });
   }
 
   // ── Task Detail ──
@@ -464,6 +504,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     renderThreads: renderThreads,
     renderTasks: renderTasks,
     renderWork: renderWork,
+    renderChanges: renderChanges,
     switchSidebarTab: switchSidebarTab,
     closeTaskDetail: closeTaskDetail,
     showTaskDetail: showTaskDetail,
@@ -479,6 +520,8 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     setShowAllWorkspaces: function(v) { showAllWorkspaces = v; },
     getWorkState: function() { return workState; },
     setWorkState: function(v) { workState = v; },
+    getChangesState: function() { return changesState; },
+    setChangesState: function(v) { changesState = v; },
   };
 
   closeTaskDetail();

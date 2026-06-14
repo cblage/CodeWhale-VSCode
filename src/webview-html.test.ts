@@ -144,6 +144,8 @@ function makeTr(): WebviewTranslations {
     removeAttachment: "Remove",
     attachedFileCount: "{n} files attached",
     fileNotSupported: "File type not supported",
+    changes: "Changes",
+    noFileChanges: "No file changes in this session",
     undoUnsupportedTooltip: "Undo not supported",
     retryUnsupportedTooltip: "Retry not supported",
     revertUnsupportedTooltip: "Revert not supported",
@@ -213,10 +215,12 @@ describe("webview-html.ts assembler", () => {
     expect(html).toContain('id="sidebar-threads"');
     expect(html).toContain('id="sidebar-work"');
     expect(html).toContain('id="sidebar-tasks"');
+    expect(html).toContain('id="sidebar-changes"');
     expect(html).toContain('id="tab-sessions"');
     expect(html).toContain('id="tab-threads-list"');
     expect(html).toContain('id="tab-work"');
     expect(html).toContain('id="tab-tasks"');
+    expect(html).toContain('id="tab-changes"');
   });
 
   it("contains input area with all controls", () => {
