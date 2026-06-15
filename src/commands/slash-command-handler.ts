@@ -11,11 +11,11 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { exec } from "child_process";
-import { t } from "./i18n";
-import { formatCostAmount } from "./cost-calculator";
+import { t } from "../i18n";
+import { formatCostAmount } from "../utils/cost-calculator";
 import { isCommandAvailableInGui } from "./slash-commands";
-import { formatError, getErrorMessage } from "./error-handler";
-import type { CodeWhaleApiClient, CodeWhaleEngine, ThreadRecord, TaskSummary } from "./types";
+import { formatError, getErrorMessage } from "../utils/error-handler";
+import type { CodeWhaleApiClient, CodeWhaleEngine, ThreadRecord, TaskSummary } from "../types";
 
 // ── Context interface for dependency injection ──
 

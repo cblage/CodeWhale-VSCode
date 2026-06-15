@@ -374,5 +374,5 @@ export interface EngineRef {
 
 // ── Re-exports from other modules ──
 
-export { CodeWhaleEngine } from "./engine";
-export { CodeWhaleApiClient } from "./api-client";
+export { CodeWhaleEngine } from "./api/engine";
+export { CodeWhaleApiClient } from "./api/api-client";

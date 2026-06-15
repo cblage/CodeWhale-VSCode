@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { SlashCommandHandler, type SlashCommandContext } from "./slash-command-handler";
+import { SlashCommandHandler, type SlashCommandContext } from "./commands/slash-command-handler";
 import {
   CodeWhaleApiClient,
   CodeWhaleEngine,
@@ -12,18 +12,18 @@ import {
   TurnRecord,
   TurnItemRecord,
 } from "./types";
-import { formatError, getErrorMessage } from "./error-handler";
-import { getWebviewHtml } from "./webview-html";
-import { renderMarkdown } from "./markdown";
-import { finalizeAssistantMessage } from "./event-helpers";
-import { calculateTurnCost, formatCostAmount } from "./cost-calculator";
+import { formatError, getErrorMessage } from "./utils/error-handler";
+import { getWebviewHtml } from "./webview/webview-html";
+import { renderMarkdown } from "./utils/markdown";
+import { finalizeAssistantMessage } from "./utils/event-helpers";
+import { calculateTurnCost, formatCostAmount } from "./utils/cost-calculator";
 import {
   parseDiffStats,
   extractDiffFromOutput,
   extractFilePathFromDiff,
   parseDiffToSides,
   stripTurnMeta,
-} from "./diff-utils";
+} from "./utils/diff-utils";
 import { t, webviewTranslations } from "./i18n";
 import {
   SessionStateStore,
@@ -31,14 +31,14 @@ import {
   type ContentBlock,
   type ToolCallInfo,
   type FileChangeInfo,
-} from "./session-state";
+} from "./utils/session-state";
 import {
   friendlyToolName,
   isFileChangeTool,
   extractFilePath,
   extractToolNameFromSummary,
   buildApprovalSummary,
-} from "./tool-utils";
+} from "./utils/tool-utils";
 
 /** Normalize file path for dedup comparison: backslashes to forward, strip trailing slashes. */
 function normalizePath(p: string): string {

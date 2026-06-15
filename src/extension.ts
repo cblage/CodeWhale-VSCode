@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
-import { CodeWhaleEngine } from "./engine";
-import { CodeWhaleApiClient } from "./api-client";
+import { CodeWhaleEngine } from "./api/engine";
+import { CodeWhaleApiClient } from "./api/api-client";
 import { ChatProvider } from "./chat-provider";
 import { t } from "./i18n";
 

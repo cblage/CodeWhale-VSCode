@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { CodeWhaleApiClient } from "./api-client";
-import type { EngineRef } from "./types";
+import { CodeWhaleApiClient } from "../api/api-client";
+import type { EngineRef } from "../types";
 
 function createBoundClient(opts?: {
   baseUrl?: string;

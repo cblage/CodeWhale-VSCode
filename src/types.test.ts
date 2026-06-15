@@ -27,7 +27,7 @@ vi.mock("vscode", () => ({
 
 // ── types.ts re-export backward compatibility ──
 // After extracting types from api-client.ts to types.ts, all existing
-// import paths (from "./types" and from "./api-client") must still work.
+// import paths (from "./types" and from "./api/api-client") must still work.
 
 describe("types.ts - Re-export backward compatibility", () => {
   it("re-exports CodeWhaleApiClient from api-client", async () => {
@@ -50,7 +50,7 @@ describe("types.ts - Re-export backward compatibility", () => {
   });
 
   it("api-client re-exports types for backward compatibility", async () => {
-    const apiModule = await import("./api-client");
+    const apiModule = await import("./api/api-client");
     expect(apiModule.CodeWhaleApiClient).toBeDefined();
   });
 });

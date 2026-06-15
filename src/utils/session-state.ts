@@ -6,7 +6,7 @@
  * and cleanup(). A single reset() call now covers all fields.
  */
 
-import type { ThreadRecord } from "./types";
+import type { ThreadRecord } from "../types";
 
 export interface ContentBlock {
   type: "text" | "thinking" | "tool_call";

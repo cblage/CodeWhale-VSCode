@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { CodeWhaleApiClient } from "./api-client";
-import type { RuntimeEvent, ThreadRecord, TurnRecord, TaskSummary, EngineRef } from "./types";
+import type { RuntimeEvent, ThreadRecord, TurnRecord, TaskSummary, EngineRef } from "../types";
 
 describe("SSE event parsing", () => {
   function parseSseChunk(raw: string): { event: string | null; data: string | null }[] {
