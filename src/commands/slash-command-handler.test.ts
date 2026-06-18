@@ -203,6 +203,9 @@ function createContext(overrides: Partial<SlashCommandContext> = {}): SlashComma
     totalOutputTokens: 4000,
     postMessage: vi.fn(),
     getCurrentModel: vi.fn(() => "deepseek-v4-pro"),
+    getCurrentSessionId: vi.fn(() => null),
+    setCurrentSessionId: vi.fn(),
+    saveCurrentSession: vi.fn(async () => ({ session_id: "session-test" })),
     refreshSessionList: vi.fn(),
     refreshTaskList: vi.fn(async () => undefined),
     refreshWorkPanel: vi.fn(),
@@ -635,6 +638,33 @@ describe("SlashCommandHandler - Dispatcher Pattern", () => {
       expect(postMessage).toHaveBeenCalledWith(
         expect.objectContaining({ type: "error", message: expect.stringContaining("No active thread") })
       );
+    });
+
+    it("saves session and refreshes list", async () => {
+      const postMessage = vi.fn();
+      const saveCurrentSession = vi.fn(async () => ({ session_id: "sess-abc123" }));
+      const setCurrentSessionId = vi.fn();
+      const getCurrentSessionId = vi.fn(() => "session-prev");
+      const refreshSessionList = vi.fn();
+      const ctx = createContext({
+        currentThread: { id: "thread-1" } as any,
+        postMessage,
+        saveCurrentSession,
+        setCurrentSessionId,
+        getCurrentSessionId,
+        refreshSessionList,
+      });
+      const handler = new SlashCommandHandler(ctx);
+
+      await handler.handle("/save", "");
+
+      expect(saveCurrentSession).toHaveBeenCalledWith("thread-1", "session-prev");
+      expect(setCurrentSessionId).toHaveBeenCalledWith("sess-abc123");
+      expect(refreshSessionList).toHaveBeenCalled();
+      expect(postMessage).toHaveBeenCalledWith({
+         type: "info",
+         message: "Session saved (sess-abc)",
+       });
     });
   });
 

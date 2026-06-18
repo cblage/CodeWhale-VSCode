@@ -92,6 +92,8 @@ export interface SessionStats {
 export interface SessionStateData {
   currentThread: ThreadRecord | null;
   viewingSessionId: string | null;
+  /** Session ID for auto-save — same thread always saves to the same session */
+  currentSessionId: string | null;
   messages: ChatMessage[];
   lastEventSeq: number;
   currentTurnId: string | null;
@@ -113,6 +115,7 @@ function createEmptyState(): SessionStateData {
   return {
     currentThread: null,
     viewingSessionId: null,
+    currentSessionId: null,
     messages: [],
     lastEventSeq: 0,
     currentTurnId: null,

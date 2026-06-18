@@ -414,6 +414,33 @@ export class CodeWhaleApiClient {
     return result;
   }
 
+  /**
+   * PUT /v1/sessions — save (or update) a session from the engine's live state.
+   * If `sessionId` is provided, updates the existing session in-place (same
+   * thread → same session). Otherwise creates a new session.
+   * This mirrors TUI's `build_session_snapshot` auto-save behavior.
+   *
+   * Falls back to POST /v1/sessions on TUI < v0.8.61 (which lacks PUT).
+   * POST always creates a new session, so same-thread dedup won't work,
+   * but at least the save itself succeeds.
+   */
+  async saveCurrentSession(threadId: string, sessionId?: string): Promise<SaveThreadAsSessionResponse> {
+    const body: Record<string, unknown> = { thread_id: threadId };
+    if (sessionId) body.session_id = sessionId;
+    try {
+      return (await this.put(`/v1/sessions`, body)) as SaveThreadAsSessionResponse;
+    } catch (err) {
+      // PUT /v1/sessions was added in v0.8.61.  On older TUI the endpoint
+      // returns 405 Method Not Allowed.  Fall back to POST which always
+      // creates a new session (no in-place update, but at least the save
+      // succeeds). The caller is responsible for logging the outcome.
+      if (err instanceof Error && err.message.includes("405")) {
+        return (await this.post(`/v1/sessions`, { thread_id: threadId })) as SaveThreadAsSessionResponse;
+      }
+      throw err;
+    }
+  }
+
   // ── Workspace ──
 
   async getWorkspaceStatus(): Promise<WorkspaceStatusResponse> {
@@ -595,9 +622,16 @@ export class CodeWhaleApiClient {
     return this.request("DELETE", path, undefined);
   }
 
+  private async put(path: string, body: unknown): Promise<unknown> {
+    return this.request("PUT", path, body);
+  }
+
   private async probePath(path: string): Promise<boolean> {
     try {
-      const { statusCode } = await this.requestRaw("HEAD", path, undefined);
+      // Use GET instead of HEAD since TUI doesn't explicitly support HEAD.
+      // For 404, return false; for other errors (401, 500), still return true
+      // since the endpoint exists (just requires auth or has internal error).
+      const { statusCode } = await this.requestRaw("GET", path, undefined);
       return statusCode !== 404;
     } catch {
       return false;

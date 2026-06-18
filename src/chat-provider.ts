@@ -73,6 +73,8 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
   public set currentThread(v: ThreadRecord | null) { this.sessionState.data.currentThread = v; }
   private get viewingSessionId(): string | null { return this.sessionState.data.viewingSessionId; }
   private set viewingSessionId(v: string | null) { this.sessionState.data.viewingSessionId = v; }
+  private get currentSessionId(): string | null { return this.sessionState.data.currentSessionId; }
+  private set currentSessionId(v: string | null) { this.sessionState.data.currentSessionId = v; }
   public get messages(): ChatMessage[] { return this.sessionState.data.messages; }
   public set messages(v: ChatMessage[]) { this.sessionState.data.messages = v; }
   private get lastEventSeq(): number { return this.sessionState.data.lastEventSeq; }
@@ -904,6 +906,10 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
 
         this.viewingSessionId = null;
         await this.loadThread(result.thread_id);
+        // Preserve the original session ID so subsequent auto-saves update
+        // the same session instead of creating a new one (mirrors TUI's
+        // /load behavior which sets current_session_id from the loaded session).
+        this.currentSessionId = sessionId;
         this.refreshSessionList();
       }
 
@@ -1007,6 +1013,30 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     this.cleanup();
     this.sessionState.reset();
     this.postMessage({ type: "clearChat" });
+  }
+
+  /** Auto-save the current thread as a session after each completed turn.
+   *  Same thread → same session (via PUT with session_id), mirroring TUI's
+   *  build_session_snapshot → SessionSnapshot persistence flow. */
+  private async autoSaveSession(): Promise<void> {
+    const thread = this.currentThread;
+    if (!thread) {
+      this.debugLog("[autoSaveSession] No current thread, skipping");
+      return;
+    }
+    if (!this.apiCapabilities.saveSession) {
+      this.debugLog("[autoSaveSession] saveSession capability not available, skipping");
+      return;
+    }
+    try {
+      this.debugLog(`[autoSaveSession] Saving thread ${thread.id} with sessionId=${this.currentSessionId}`);
+      const result = await this.api.saveCurrentSession(thread.id, this.currentSessionId ?? undefined);
+      this.currentSessionId = result.session_id;
+      this.debugLog(`[autoSaveSession] Saved successfully, sessionId=${result.session_id}`);
+    } catch (err) {
+      this.debugLog(`[autoSaveSession] Failed: ${err instanceof Error ? err.message : String(err)}`);
+      // Auto-save is best-effort; don't disrupt the UI on failure.
+    }
   }
 
   /** Refresh the session list shown in the sidebar */
@@ -1594,6 +1624,10 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
           const payload = finalizeAssistantMessage(lastMsg, "complete", { usage: pl.turn?.usage });
           this.postMessage(payload);
         }
+        // Auto-save session after each completed turn (mirrors TUI's
+        // build_session_snapshot → SessionSnapshot). Same thread always
+        // saves to the same session via PUT with session_id.
+        this.autoSaveSession();
         this.refreshSessionList();
         this.stopPeriodicTaskRefresh();
         this.refreshTaskList();
@@ -2024,6 +2058,18 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
   public getCurrentModel(): string {
     const cfg = vscode.workspace.getConfiguration("brotherwhale");
     return cfg.get<string>("defaultModel", "deepseek-v4-pro");
+  }
+
+  public getCurrentSessionId(): string | null {
+    return this.currentSessionId;
+  }
+
+  public setCurrentSessionId(id: string | null): void {
+    this.currentSessionId = id;
+  }
+
+  public async saveCurrentSession(threadId: string, sessionId?: string): Promise<{ session_id: string }> {
+    return this.api.saveCurrentSession(threadId, sessionId);
   }
 
   private getCurrentMode(): string {

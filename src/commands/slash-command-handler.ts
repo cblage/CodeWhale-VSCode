@@ -35,6 +35,12 @@ export interface SlashCommandContext {
 
   postMessage(msg: Record<string, unknown>): void;
   getCurrentModel(): string;
+  /** Returns the current session ID tracking auto-save continuity, or null if none. */
+  getCurrentSessionId(): string | null;
+  /** Sets the current session ID for auto-save continuity. Pass null to reset. */
+  setCurrentSessionId(id: string | null): void;
+  /** Saves (or updates) a session snapshot from the engine's live state for the given thread. */
+  saveCurrentSession(threadId: string, sessionId?: string): Promise<{ session_id: string }>;
   refreshSessionList(): void;
   refreshTaskList(): Promise<void>;
   refreshWorkPanel(): void;
@@ -157,11 +163,13 @@ async function handleRename(ctx: SlashCommandContext, args: string): Promise<voi
 async function handleSave(ctx: SlashCommandContext, _args: string): Promise<void> {
   if (ctx.currentThread) {
     try {
-      const detail = await ctx.api.getThreadDetail(ctx.currentThread.id);
-      const content = JSON.stringify(detail, null, 2);
-      const doc = await vscode.workspace.openTextDocument({ content, language: "json" });
-      vscode.window.showTextDocument(doc);
-      ctx.postMessage({ type: "info", message: "Conversation opened for saving" });
+      const result = await ctx.saveCurrentSession(
+        ctx.currentThread.id,
+        ctx.getCurrentSessionId() ?? undefined,
+      );
+      ctx.setCurrentSessionId(result.session_id);
+      ctx.refreshSessionList();
+      ctx.postMessage({ type: "info", message: `Session saved (${result.session_id.slice(0, 8)})` });
     } catch (err) {
       ctx.postMessage({ type: "error", message: formatError("Failed to save", err) });
     }
