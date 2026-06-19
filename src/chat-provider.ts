@@ -372,23 +372,22 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       const itemById = new Map(detail.items.map((item) => [item.id, item]));
 
       for (const turn of detail.turns) {
-        // user message from turn input
-        const userMsg: ChatMessage = {
-          id: `user-${turn.id}`,
-          role: "user",
-          content: turn.input_summary.slice(0, 280),
-          status: "complete",
-          timestamp: new Date(turn.created_at).getTime(),
-        };
-        this.messages.push(userMsg);
-
-        // collect assistant content from items
+        const userTexts: string[] = [];
         let content = "";
         let thinking = "";
         const toolCalls: ToolCallInfo[] = [];
+        const toolCallIdToIndex = new Map<string, number>();
         const blocks: ContentBlock[] = [];
         let currentTextBlock: ContentBlock | undefined;
         let currentThinkingBlock: ContentBlock | undefined;
+
+        const applyToolResult = (toolUseId: string, output: string, isError: boolean): void => {
+          const tcIdx = toolCallIdToIndex.get(toolUseId);
+          const tc = tcIdx !== undefined ? toolCalls[tcIdx] : undefined;
+          if (!tc) return;
+          tc.output = output;
+          tc.status = isError ? "error" : "complete";
+        };
 
         const turnItems = (turn.item_ids || [])
           .map((itemId) => itemById.get(itemId))
@@ -396,6 +395,13 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
 
         for (const item of turnItems) {
           switch (item.kind) {
+            case "user_message": {
+              const text = item.detail || item.summary;
+              if (text && text.trim()) {
+                userTexts.push(text);
+              }
+              break;
+            }
             case "agent_message": {
               const text = item.detail || item.summary;
               if (!text) break;
@@ -423,14 +429,30 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
             case "tool_call": {
               currentTextBlock = undefined;
               currentThinkingBlock = undefined;
+              const metadata = (item.metadata as Record<string, unknown>) || {};
+              const toolResultFor = typeof metadata.tool_result_for === "string"
+                ? metadata.tool_result_for
+                : undefined;
+              if (toolResultFor) {
+                applyToolResult(
+                  toolResultFor,
+                  item.detail || item.summary || "",
+                  !!metadata.is_error,
+                );
+                break;
+              }
               const tcIdx = toolCalls.length;
               const rawName = extractToolNameFromSummary(item.summary || "");
               const tc: ToolCallInfo = {
                 name: rawName,
-                input: (item.metadata as Record<string, unknown>) || {},
+                input: metadata,
                 output: item.detail || undefined,
                 status: item.status === "completed" ? "complete" : "error",
+                itemId: typeof metadata.tool_use_id === "string" ? metadata.tool_use_id : item.id,
               };
+              if (tc.itemId) {
+                toolCallIdToIndex.set(tc.itemId, tcIdx);
+              }
               if (isFileChangeTool(tc.name) && tc.input) {
                 const filePath = extractFilePath(tc.name, tc.input);
                 if (filePath) {
@@ -489,6 +511,18 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
               break;
             }
           }
+        }
+
+        const userContent = stripTurnMeta(userTexts.join("\n")).trim()
+          || turn.input_summary.trim();
+        if (userContent) {
+          this.messages.push({
+            id: `user-${turn.id}`,
+            role: "user",
+            content: userContent.slice(0, 280),
+            status: "complete",
+            timestamp: new Date(turn.created_at).getTime(),
+          });
         }
 
         for (const b of blocks) {
@@ -584,6 +618,40 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
 
     const globalToolCalls: ToolCallInfo[] = [];
     const globalToolIdMap: Map<string, number> = new Map();
+    const getToolResultText = (block: {
+      content?: string;
+      content_blocks?: Array<{ type: string; text?: string }>;
+    }): string => {
+      if (typeof block.content === "string") {
+        return block.content;
+      }
+      if (Array.isArray(block.content_blocks)) {
+        return block.content_blocks
+          .map((part) => part.text || "")
+          .filter((text) => text.length > 0)
+          .join("\n");
+      }
+      return "";
+    };
+    const updateFileChangeCard = (toolCall: ToolCallInfo): void => {
+      if (!isFileChangeTool(toolCall.name) || !toolCall.input) return;
+      const filePath = extractFilePath(toolCall.name, toolCall.input);
+      if (!filePath) return;
+      const output = toolCall.output || "";
+      const diff = extractDiffFromOutput(output);
+      const stats = diff ? parseDiffStats(diff) : { added: 0, removed: 0 };
+      const changeType: "created" | "modified" | "deleted" =
+        toolCall.name === "delete_file" ? "deleted" :
+        toolCall.name === "write_file" && !diff ? "created" : "modified";
+      toolCall.fileChange = {
+        filePath,
+        changeType,
+        addedLines: stats.added,
+        removedLines: stats.removed,
+        diff,
+        toolName: toolCall.name,
+      };
+    };
 
     let i = 0;
     while (i < rawMessages.length) {
@@ -594,9 +662,10 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
           if (block.type === "tool_result" && block.tool_use_id) {
             const idx = globalToolIdMap.get(block.tool_use_id);
             if (idx !== undefined && globalToolCalls[idx]) {
-              const outputText = typeof block.content === "string" ? block.content : "";
+              const outputText = getToolResultText(block);
               globalToolCalls[idx].output = outputText;
               globalToolCalls[idx].status = block.is_error ? "error" : "complete";
+              updateFileChangeCard(globalToolCalls[idx]);
             }
           }
         }
@@ -639,21 +708,24 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
             } else if ((block.type === "tool_use" || block.type === "server_tool_use") && block.id && block.name) {
               const idx = globalToolCalls.length;
               globalToolIdMap.set(block.id, idx);
-              globalToolCalls.push({
+              const toolCall: ToolCallInfo = {
                 name: block.name,
                 displayName: friendlyToolName(block.name),
                 input: block.input || {},
                 status: "pending",
                 itemId: block.id,
-              });
+              };
+              updateFileChangeCard(toolCall);
+              globalToolCalls.push(toolCall);
               blocks.push({ type: "tool_call", toolCallIdx: idx });
               turnToolCallIndices.push(idx);
             } else if (block.type === "tool_result" && block.tool_use_id) {
               const idx = globalToolIdMap.get(block.tool_use_id);
               if (idx !== undefined && globalToolCalls[idx]) {
-                const outputText = typeof block.content === "string" ? block.content : "";
+                const outputText = getToolResultText(block);
                 globalToolCalls[idx].output = outputText;
                 globalToolCalls[idx].status = block.is_error ? "error" : "complete";
+                updateFileChangeCard(globalToolCalls[idx]);
               }
             }
           }
@@ -666,9 +738,10 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
             if (block.type === "tool_result" && block.tool_use_id) {
               const idx = globalToolIdMap.get(block.tool_use_id);
               if (idx !== undefined && globalToolCalls[idx]) {
-                const outputText = typeof block.content === "string" ? block.content : "";
+                const outputText = getToolResultText(block);
                 globalToolCalls[idx].output = outputText;
                 globalToolCalls[idx].status = block.is_error ? "error" : "complete";
+                updateFileChangeCard(globalToolCalls[idx]);
               }
             }
           }
