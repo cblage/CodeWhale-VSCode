@@ -784,6 +784,18 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       }
     }
 
+    // Collect file changes from reconstructed tool calls so the sidebar
+    // Changes panel reflects the loaded session (mirrors loadHistory).
+    for (const tc of globalToolCalls) {
+      if (tc.fileChange) {
+        const normPath = normalizePath(tc.fileChange.filePath);
+        if (!this.turnFileChanges.some(existing => normalizePath(existing.filePath) === normPath)) {
+          this.turnFileChanges.push(tc.fileChange);
+        }
+      }
+    }
+    this.refreshChangesPanel();
+
     const msgCount = this.messages.length;
     const costUsd = session.metadata.cost?.session_cost_usd ?? 0;
     const costStr = costUsd > 0 ? ` | $${costUsd.toFixed(2)}` : "";
