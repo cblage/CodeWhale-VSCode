@@ -1,5 +1,25 @@
 # Change Log
 
+## 0.2.0
+
+### New Features
+
+- **Independent Changes Panel** — Added a dedicated Changes sidebar panel so file modifications are easier to inspect during a conversation, while also reducing duplicate change entries.
+
+- **Per-Turn Session Auto-Save** — The GUI now saves the current session after each completed turn, improving recovery and continuation across restarts.
+
+### Improvements
+
+- **Session Recovery Performance** — Optimized session recovery to make better use of cached state and reduce unnecessary reload work.
+
+- **Frontend Architecture Cleanup** — Reorganized the source tree into feature-focused modules, split the webview HTML/CSS/JS into smaller units, and centralized session state and engine/API synchronization for easier maintenance.
+
+- **History Rendering And Test Coverage** — Improved chat history rendering and expanded the automated test suite around the refactored GUI flows.
+
+### Bug Fixes
+
+- **Changes Panel Sync** — File changes produced by tool calls now stay in sync with the Changes panel instead of being missed or shown inconsistently.
+
 ## 0.1.2
 
 ### New Features
