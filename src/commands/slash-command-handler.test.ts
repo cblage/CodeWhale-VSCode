@@ -78,7 +78,7 @@ vi.mock("child_process", () => ({
 
 // ── Mock i18n ──
 
-vi.mock("./i18n", () => ({
+vi.mock("../i18n", () => ({
   t: vi.fn(() => ({ commandNotAvailableInGui: "This command is not available in GUI mode." })),
 }));
 
