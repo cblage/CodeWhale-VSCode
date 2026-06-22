@@ -226,9 +226,12 @@ export interface SessionMetadata {
     session_cost_cny: number;
     subagent_cost_usd: number;
     subagent_cost_cny: number;
+    displayed_cost_high_water_usd?: number;
+    displayed_cost_high_water_cny?: number;
   };
   parent_session_id?: string | null;
   forked_from_message_count?: number | null;
+  cumulative_turn_secs?: number;
 }
 
 export interface SessionsResponse {

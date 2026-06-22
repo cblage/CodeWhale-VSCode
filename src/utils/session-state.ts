@@ -79,12 +79,23 @@ export interface UserInputState {
 export interface SessionStats {
   sessionCostUsd: number;
   sessionCostCny: number;
+  /** Monotonic high-water mark for displayed cost — survives session
+   *  restarts so the UI never shows a lower total than previously seen
+   *  (mirrors TUI's displayed_cost_high_water, ui.rs:9560-9567). */
+  displayedCostHighWaterUsd: number;
+  displayedCostHighWaterCny: number;
   lastCacheHitTokens: number;
   lastCacheMissTokens: number;
   lastInputTokens: number;
   lastOutputTokens: number;
   totalInputTokens: number;
   totalOutputTokens: number;
+  /** Cumulative input tokens across all turns (for display parity with
+   *  TUI's session.total_tokens, ui.rs:9549). */
+  totalTokens: number;
+  /** Cumulative turn duration in seconds (mirrors TUI's
+   *  cumulative_turn_duration, ui.rs:9573). */
+  cumulativeTurnSecs: number;
 }
 
 // ── Session State ──
@@ -109,6 +120,23 @@ export interface SessionStateData {
   stats: SessionStats;
   pendingApprovals: Map<string, ToolCallInfo>;
   pendingUserInputs: Map<string, UserInputState>;
+  /** Cost snapshot from the original session, stashed by loadSessionMessages
+   *  and restored after resumeSessionThread + loadThread (which zero stats
+   *  because seeded turns have no usage data). Mirrors TUI's
+   *  apply_loaded_session cost restoration. */
+  pendingSessionCost: SessionCostSnapshot | null;
+}
+
+/** Cost fields restored from session.metadata.cost after resume. */
+export interface SessionCostSnapshot {
+  sessionCostUsd: number;
+  sessionCostCny: number;
+  subagentCostUsd: number;
+  subagentCostCny: number;
+  displayedCostHighWaterUsd: number;
+  displayedCostHighWaterCny: number;
+  totalTokens: number;
+  cumulativeTurnSecs: number;
 }
 
 function createEmptyState(): SessionStateData {
@@ -131,15 +159,20 @@ function createEmptyState(): SessionStateData {
     stats: {
       sessionCostUsd: 0,
       sessionCostCny: 0,
+      displayedCostHighWaterUsd: 0,
+      displayedCostHighWaterCny: 0,
       lastCacheHitTokens: 0,
       lastCacheMissTokens: 0,
       lastInputTokens: 0,
       lastOutputTokens: 0,
       totalInputTokens: 0,
       totalOutputTokens: 0,
+      totalTokens: 0,
+      cumulativeTurnSecs: 0,
     },
     pendingApprovals: new Map(),
     pendingUserInputs: new Map(),
+    pendingSessionCost: null,
   };
 }
 

@@ -31,6 +31,7 @@ import {
   type ContentBlock,
   type ToolCallInfo,
   type FileChangeInfo,
+  type SessionCostSnapshot,
 } from "./utils/session-state";
 import {
   friendlyToolName,
@@ -75,6 +76,8 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
   private set viewingSessionId(v: string | null) { this.sessionState.data.viewingSessionId = v; }
   private get currentSessionId(): string | null { return this.sessionState.data.currentSessionId; }
   private set currentSessionId(v: string | null) { this.sessionState.data.currentSessionId = v; }
+  private get pendingSessionCost(): SessionCostSnapshot | null { return this.sessionState.data.pendingSessionCost; }
+  private set pendingSessionCost(v: SessionCostSnapshot | null) { this.sessionState.data.pendingSessionCost = v; }
   public get messages(): ChatMessage[] { return this.sessionState.data.messages; }
   public set messages(v: ChatMessage[]) { this.sessionState.data.messages = v; }
   private get lastEventSeq(): number { return this.sessionState.data.lastEventSeq; }
@@ -104,6 +107,14 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
   public set sessionCostUsd(v: number) { this.sessionState.data.stats.sessionCostUsd = v; }
   public get sessionCostCny(): number { return this.sessionState.data.stats.sessionCostCny; }
   public set sessionCostCny(v: number) { this.sessionState.data.stats.sessionCostCny = v; }
+  public get displayedCostHighWaterUsd(): number { return this.sessionState.data.stats.displayedCostHighWaterUsd; }
+  public set displayedCostHighWaterUsd(v: number) { this.sessionState.data.stats.displayedCostHighWaterUsd = v; }
+  public get displayedCostHighWaterCny(): number { return this.sessionState.data.stats.displayedCostHighWaterCny; }
+  public set displayedCostHighWaterCny(v: number) { this.sessionState.data.stats.displayedCostHighWaterCny = v; }
+  public get totalTokens(): number { return this.sessionState.data.stats.totalTokens; }
+  public set totalTokens(v: number) { this.sessionState.data.stats.totalTokens = v; }
+  public get cumulativeTurnSecs(): number { return this.sessionState.data.stats.cumulativeTurnSecs; }
+  public set cumulativeTurnSecs(v: number) { this.sessionState.data.stats.cumulativeTurnSecs = v; }
   public get lastCacheHitTokens(): number { return this.sessionState.data.stats.lastCacheHitTokens; }
   public set lastCacheHitTokens(v: number) { this.sessionState.data.stats.lastCacheHitTokens = v; }
   public get lastCacheMissTokens(): number { return this.sessionState.data.stats.lastCacheMissTokens; }
@@ -562,6 +573,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
           const u = turn.usage;
           this.totalInputTokens += u.input_tokens;
           this.totalOutputTokens += u.output_tokens;
+          this.totalTokens += u.input_tokens + u.output_tokens;
           this.lastCacheHitTokens = u.prompt_cache_hit_tokens ?? 0;
           this.lastCacheMissTokens = u.prompt_cache_miss_tokens ?? Math.max(0, u.input_tokens - (u.prompt_cache_hit_tokens ?? 0));
           this.lastInputTokens = u.input_tokens;
@@ -574,6 +586,8 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
           if (cost) {
             this.sessionCostUsd += cost.usd;
             this.sessionCostCny += cost.cny;
+            this.displayedCostHighWaterUsd = Math.max(this.displayedCostHighWaterUsd, this.sessionCostUsd);
+            this.displayedCostHighWaterCny = Math.max(this.displayedCostHighWaterCny, this.sessionCostCny);
           }
         }
       }
@@ -599,6 +613,50 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       this.cleanup();
       this.sessionState.reset();
       this.viewingSessionId = sessionId;
+
+      // Sync VSCode config to the session's model/mode so that startTurn
+      // (which reads getCurrentModel/getCurrentMode from config) sends the
+      // same values the session was created with. If the config's default
+      // differs from the session's model/mode, the first post-resume turn
+      // would switch model/mode → system prompt and tool catalog change →
+      // prefix cache completely busted. Mirrors TUI's
+      // apply_loaded_session → set_model_selection (ui.rs:9548).
+      const sessionModel = session.metadata.model;
+      const sessionMode = session.metadata.mode || "agent";
+      const cfg = vscode.workspace.getConfiguration("brotherwhale");
+      const currentModel = cfg.get<string>("defaultModel", "deepseek-v4-pro");
+      const currentMode = cfg.get<string>("defaultMode", "agent");
+      if (sessionModel && sessionModel !== currentModel) {
+        await cfg.update("defaultModel", sessionModel, vscode.ConfigurationTarget.Global);
+      }
+      if (sessionMode !== currentMode) {
+        await cfg.update("defaultMode", sessionMode, vscode.ConfigurationTarget.Global);
+      }
+      if (sessionModel !== currentModel || sessionMode !== currentMode) {
+        this.postMessage({
+          type: "settingsUpdated",
+          model: sessionModel || currentModel,
+          mode: sessionMode,
+          reasoningEffort: cfg.get<string>("reasoningEffort", "auto"),
+        });
+      }
+
+      // Stash the session's persisted cost so it can be restored after
+      // resumeSessionThread + loadThread (which zero stats because seeded
+      // turns have no usage data). Mirrors TUI's apply_loaded_session.
+      const cost = session.metadata.cost;
+      if (cost) {
+        this.pendingSessionCost = {
+          sessionCostUsd: cost.session_cost_usd || 0,
+          sessionCostCny: cost.session_cost_cny || 0,
+          subagentCostUsd: cost.subagent_cost_usd || 0,
+          subagentCostCny: cost.subagent_cost_cny || 0,
+          displayedCostHighWaterUsd: cost.displayed_cost_high_water_usd || 0,
+          displayedCostHighWaterCny: cost.displayed_cost_high_water_cny || 0,
+          totalTokens: session.metadata.total_tokens || 0,
+          cumulativeTurnSecs: session.metadata.cumulative_turn_secs || 0,
+        };
+      }
 
       const rawMessages = session.messages as Array<{
         role: string;
@@ -978,11 +1036,12 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
 
       if (this.viewingSessionId) {
         const sessionId = this.viewingSessionId;
-        const cfg = vscode.workspace.getConfiguration("brotherwhale");
-        const result = await this.api.resumeSessionThread(sessionId, {
-          model: cfg.get<string>("defaultModel", "deepseek-v4-pro"),
-          mode: cfg.get<string>("defaultMode", "agent"),
-        });
+        // Don't pass model/mode — let the backend use the session's persisted
+        // values (runtime_api.rs:911-918 unwraps to session.metadata.model/mode).
+        // Passing cfg defaults would override the session's original model/mode,
+        // busting the prefix cache because the system prompt and tool catalog
+        // change with the model/mode.
+        const result = await this.api.resumeSessionThread(sessionId);
         try {
           await this.api.updateThread(result.thread_id, {
             title: `Resumed: ${result.summary.slice(0, 50)}`,
@@ -991,9 +1050,29 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
 
         this.viewingSessionId = null;
         await this.loadThread(result.thread_id);
+        // Restore cost from the original session's metadata. loadThread →
+        // loadHistory iterates the NEW thread's seeded turns, which have
+        // usage: None, so stats are zeroed. Restore the persisted cost here
+        // (mirrors TUI's apply_loaded_session, ui.rs:9399-9413).
+        if (this.pendingSessionCost) {
+          this.sessionCostUsd = this.pendingSessionCost.sessionCostUsd;
+          this.sessionCostCny = this.pendingSessionCost.sessionCostCny;
+          this.displayedCostHighWaterUsd = this.pendingSessionCost.displayedCostHighWaterUsd;
+          this.displayedCostHighWaterCny = this.pendingSessionCost.displayedCostHighWaterCny;
+          this.totalTokens = this.pendingSessionCost.totalTokens;
+          this.cumulativeTurnSecs = this.pendingSessionCost.cumulativeTurnSecs;
+          this.pendingSessionCost = null;
+          this.sendSessionStats();
+        }
         // Preserve the original session ID so subsequent auto-saves update
-        // the same session instead of creating a new one (mirrors TUI's
-        // /load behavior which sets current_session_id from the loaded session).
+        // the same session in-place (mirrors TUI's /load behavior). This is
+        // safe because seed_thread_from_messages now stores the full original
+        // messages (with tool_use/tool_result blocks) on the thread record
+        // via seeded_messages, and ensure_engine_loaded uses those directly
+        // for SyncSession — so the engine's session preserves the exact
+        // prefix. Auto-save (PUT /v1/sessions) snapshots the engine's live
+        // state, which includes the full tool blocks, so the original
+        // session's messages stay cache-friendly for future resumes.
         this.currentSessionId = sessionId;
         this.refreshSessionList();
       }
@@ -1308,9 +1387,36 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       try {
         await this.api.ensureReady();
         const sessionId = this.viewingSessionId;
+        // Stash cost before resume — loadThread will zero stats.
+        const session = await this.api.getSession(sessionId);
+        const cost = session.metadata.cost;
+        if (cost) {
+          this.pendingSessionCost = {
+            sessionCostUsd: cost.session_cost_usd || 0,
+            sessionCostCny: cost.session_cost_cny || 0,
+            subagentCostUsd: cost.subagent_cost_usd || 0,
+            subagentCostCny: cost.subagent_cost_cny || 0,
+            displayedCostHighWaterUsd: cost.displayed_cost_high_water_usd || 0,
+            displayedCostHighWaterCny: cost.displayed_cost_high_water_cny || 0,
+            totalTokens: session.metadata.total_tokens || 0,
+            cumulativeTurnSecs: session.metadata.cumulative_turn_secs || 0,
+          };
+        }
         const result = await this.api.resumeSessionThread(sessionId);
         this.viewingSessionId = null;
         await this.loadThread(result.thread_id);
+        // Restore cost and preserve original session ID for auto-save.
+        if (this.pendingSessionCost) {
+          this.sessionCostUsd = this.pendingSessionCost.sessionCostUsd;
+          this.sessionCostCny = this.pendingSessionCost.sessionCostCny;
+          this.displayedCostHighWaterUsd = this.pendingSessionCost.displayedCostHighWaterUsd;
+          this.displayedCostHighWaterCny = this.pendingSessionCost.displayedCostHighWaterCny;
+          this.totalTokens = this.pendingSessionCost.totalTokens;
+          this.cumulativeTurnSecs = this.pendingSessionCost.cumulativeTurnSecs;
+          this.pendingSessionCost = null;
+          this.sendSessionStats();
+        }
+        this.currentSessionId = sessionId;
         this.refreshSessionList();
       } catch (err) {
         this.postMessage({ type: "error", message: formatError("Failed to resume session", err) });
@@ -1387,9 +1493,36 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       try {
         await this.api.ensureReady();
         const sessionId = this.viewingSessionId;
+        // Stash cost before resume — loadThread will zero stats.
+        const session = await this.api.getSession(sessionId);
+        const cost = session.metadata.cost;
+        if (cost) {
+          this.pendingSessionCost = {
+            sessionCostUsd: cost.session_cost_usd || 0,
+            sessionCostCny: cost.session_cost_cny || 0,
+            subagentCostUsd: cost.subagent_cost_usd || 0,
+            subagentCostCny: cost.subagent_cost_cny || 0,
+            displayedCostHighWaterUsd: cost.displayed_cost_high_water_usd || 0,
+            displayedCostHighWaterCny: cost.displayed_cost_high_water_cny || 0,
+            totalTokens: session.metadata.total_tokens || 0,
+            cumulativeTurnSecs: session.metadata.cumulative_turn_secs || 0,
+          };
+        }
         const result = await this.api.resumeSessionThread(sessionId);
         this.viewingSessionId = null;
         await this.loadThread(result.thread_id);
+        // Restore cost and preserve original session ID for auto-save.
+        if (this.pendingSessionCost) {
+          this.sessionCostUsd = this.pendingSessionCost.sessionCostUsd;
+          this.sessionCostCny = this.pendingSessionCost.sessionCostCny;
+          this.displayedCostHighWaterUsd = this.pendingSessionCost.displayedCostHighWaterUsd;
+          this.displayedCostHighWaterCny = this.pendingSessionCost.displayedCostHighWaterCny;
+          this.totalTokens = this.pendingSessionCost.totalTokens;
+          this.cumulativeTurnSecs = this.pendingSessionCost.cumulativeTurnSecs;
+          this.pendingSessionCost = null;
+          this.sendSessionStats();
+        }
+        this.currentSessionId = sessionId;
         this.refreshSessionList();
       } catch (err) {
         this.postMessage({ type: "error", message: formatError("Failed to resume session", err) });
@@ -1693,6 +1826,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
           this.lastCacheMissTokens = u.prompt_cache_miss_tokens ?? Math.max(0, u.input_tokens - (u.prompt_cache_hit_tokens ?? 0));
           this.totalInputTokens += u.input_tokens;
           this.totalOutputTokens += u.output_tokens;
+          this.totalTokens += u.input_tokens + u.output_tokens;
           const model = this.getCurrentModel();
           const cost = calculateTurnCost(
             model, u.input_tokens, u.output_tokens,
@@ -1701,6 +1835,10 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
           if (cost) {
             this.sessionCostUsd += cost.usd;
             this.sessionCostCny += cost.cny;
+            // Maintain monotonic high-water mark so the displayed cost
+            // never decreases across turns (mirrors TUI #244).
+            this.displayedCostHighWaterUsd = Math.max(this.displayedCostHighWaterUsd, this.sessionCostUsd);
+            this.displayedCostHighWaterCny = Math.max(this.displayedCostHighWaterCny, this.sessionCostCny);
           }
           this.sendSessionStats();
         }
@@ -2124,9 +2262,11 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     const cacheHitRate = total > 0 ? (totalCacheHit / total * 100) : 0;
     const cfg = vscode.workspace.getConfiguration("brotherwhale");
     const currency = cfg.get<string>("costCurrency", "usd");
+    // Use the monotonic high-water mark for display so the cost never
+    // decreases across turns or session restarts (mirrors TUI #244).
     const costDisplay = currency === "cny"
-      ? formatCostAmount(this.sessionCostCny, "cny")
-      : formatCostAmount(this.sessionCostUsd, "usd");
+      ? formatCostAmount(this.displayedCostHighWaterCny, "cny")
+      : formatCostAmount(this.displayedCostHighWaterUsd, "usd");
     this.postMessage({
       type: "sessionStats",
       cost: costDisplay,
