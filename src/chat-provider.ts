@@ -1854,7 +1854,29 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
   private handleRuntimeEvent(event: RuntimeEvent): void {
     this.lastEventSeq = event.seq;
 
-    if (event.item_id && this.currentTurnId) {
+    // Drop stale events from a previous turn. SSE is ordered within a single
+    // connection, but a delayed turn.completed for turn A can arrive after
+    // turn B has started (e.g. across reconnects or buffered chunks). Without
+    // this guard the stale turn.completed would clobber currentTurnId (set to
+    // null) so every subsequent item event for turn B gets dropped by the old
+    // `currentTurnId` truthiness check — the root cause of "agent responds
+    // with the previous message" in multi-turn chats.
+    //
+    // We intentionally do NOT require currentTurnId to be set before routing
+    // item events: the backend (runtime_threads.rs::start_turn) emits the
+    // first item events before the HTTP response carrying the turn id reaches
+    // us. Routing by lastMsg instead of currentTurnId means those early
+    // deltas are appended to the new assistant message instead of being
+    // dropped on the floor.
+    if (event.turn_id && this.currentTurnId && event.turn_id !== this.currentTurnId) {
+      this.debugLog(
+        `[handleRuntimeEvent] dropping stale event seq=${event.seq} ` +
+        `type=${event.event} turn=${event.turn_id} (current=${this.currentTurnId})`
+      );
+      return;
+    }
+
+    if (event.item_id) {
       this.handleItemEvent(event);
     }
 
