@@ -212,6 +212,9 @@ interface Translations {
   deleteSessionConfirmButton: string;
   deleteSessionSuccess: string;
   deleteSessionFailed: string;
+  switchSessionActiveTurnTitle: string;
+  switchSessionActiveTurnMessage: string;
+  switchSessionActiveTurnButton: string;
   noSearchResults: string;
 }
 
@@ -400,6 +403,9 @@ const en: Translations = {
   deleteSessionConfirmButton: "Delete",
   deleteSessionSuccess: "Session deleted",
   deleteSessionFailed: "Failed to delete session",
+  switchSessionActiveTurnTitle: "Conversation in progress",
+  switchSessionActiveTurnMessage: "The assistant is currently reasoning. Loading a session will stop the current turn. Continue?",
+  switchSessionActiveTurnButton: "Stop & Switch",
   noSearchResults: "No matching sessions",
 };
 
@@ -588,6 +594,9 @@ const zhCn: Translations = {
   deleteSessionConfirmButton: "删除",
   deleteSessionSuccess: "会话已删除",
   deleteSessionFailed: "删除会话失败",
+  switchSessionActiveTurnTitle: "当前对话正在进行中",
+  switchSessionActiveTurnMessage: "助手正在推理中，加载会话将中断当前对话。是否继续？",
+  switchSessionActiveTurnButton: "中断并切换",
   noSearchResults: "没有匹配的会话",
 };
 
@@ -817,6 +826,9 @@ export function webviewTranslations(tr: Translations) {
     deleteSessionConfirmButton: tr.deleteSessionConfirmButton,
     deleteSessionSuccess: tr.deleteSessionSuccess,
     deleteSessionFailed: tr.deleteSessionFailed,
+    switchSessionActiveTurnTitle: tr.switchSessionActiveTurnTitle,
+    switchSessionActiveTurnMessage: tr.switchSessionActiveTurnMessage,
+    switchSessionActiveTurnButton: tr.switchSessionActiveTurnButton,
     noSearchResults: tr.noSearchResults,
   };
 }

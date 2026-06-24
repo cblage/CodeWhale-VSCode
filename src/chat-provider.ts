@@ -68,6 +68,11 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     snapshotList: false,
     snapshotRestore: false,
   };
+  // Guard to prevent concurrent autoSaveSession calls.  When multiple
+  // turn.completed events fire in quick succession (e.g. SSE reconnection
+  // replaying buffered events) and currentSessionId is null, each call
+  // would create a new session on the server, producing duplicates.
+  private autoSaveInProgress = false;
 
   // Convenience accessors for session state
   public get currentThread(): ThreadRecord | null { return this.sessionState.data.currentThread; }
@@ -615,6 +620,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
   }
 
   public async loadSessionMessages(sessionId: string): Promise<void> {
+    if (!(await this.confirmSwitchWhenActive())) return;
     try {
       const session = await this.api.getSession(sessionId);
       const title = session.metadata.title || "Session";
@@ -912,6 +918,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
   }
 
   private async loadThread(threadId: string): Promise<void> {
+    if (!(await this.confirmSwitchWhenActive())) return;
     this.cleanup();
     this.sessionState.reset();
 
@@ -1195,6 +1202,14 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
    *  Same thread → same session (via PUT with session_id), mirroring TUI's
    *  build_session_snapshot → SessionSnapshot persistence flow. */
   private async autoSaveSession(): Promise<void> {
+    // Prevent concurrent saves.  When multiple turn.completed events fire
+    // in quick succession (e.g. SSE reconnection replay) and
+    // currentSessionId is still null, each concurrent call would create a
+    // new session on the server, producing duplicates.
+    if (this.autoSaveInProgress) {
+      this.debugLog("[autoSaveSession] Save already in progress, skipping");
+      return;
+    }
     const thread = this.currentThread;
     if (!thread) {
       this.debugLog("[autoSaveSession] No current thread, skipping");
@@ -1204,6 +1219,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       this.debugLog("[autoSaveSession] saveSession capability not available, skipping");
       return;
     }
+    this.autoSaveInProgress = true;
     try {
       this.debugLog(`[autoSaveSession] Saving thread ${thread.id} with sessionId=${this.currentSessionId}`);
       const result = await this.api.saveCurrentSession(thread.id, this.currentSessionId ?? undefined);
@@ -1212,6 +1228,8 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     } catch (err) {
       this.debugLog(`[autoSaveSession] Failed: ${err instanceof Error ? err.message : String(err)}`);
       // Auto-save is best-effort; don't disrupt the UI on failure.
+    } finally {
+      this.autoSaveInProgress = false;
     }
   }
 
@@ -1423,6 +1441,31 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
         // ignore
       }
     }
+  }
+
+  /** Show confirmation dialog if a turn is currently in progress.
+   *  Returns true if it's safe to proceed (no active turn or user confirmed). */
+  private async confirmSwitchWhenActive(): Promise<boolean> {
+    if (!this.currentTurnId) return true;
+
+    const confirm = await vscode.window.showWarningMessage(
+      t().switchSessionActiveTurnTitle,
+      { modal: true },
+      t().switchSessionActiveTurnButton,
+    );
+    if (confirm !== t().switchSessionActiveTurnButton) return false;
+
+    // Interrupt the current turn before switching
+    if (this.currentThread && this.currentTurnId) {
+      try {
+        await this.api.interruptTurn(this.currentThread.id, this.currentTurnId);
+      } catch {
+        // ignore
+      }
+      this.currentTurnId = null;
+      this.postMessage({ type: "turnInterrupted" });
+    }
+    return true;
   }
 
   /**
@@ -1699,6 +1742,17 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
   ): Promise<void> {
     try {
       await this.api.decideApproval(approvalId, decision, remember);
+      // When the user checks "remember" and allows, the TUI flips
+      // thread.auto_approve to true (see runtime_threads.rs
+      // remember_thread_auto_approve).  Update our local cache immediately
+      // so subsequent approval.required events are correctly filtered out
+      // — otherwise the stale cache causes the GUI to show approval
+      // dialogs for tools the TUI has already auto-approved server-side,
+      // leading to a frozen UI (no approval.decided event arrives for
+      // auto-approved calls, so the dialog never clears).
+      if (remember && decision === "allow" && this.currentThread) {
+        this.currentThread = { ...this.currentThread, auto_approve: true };
+      }
       const tc = this.pendingApprovals.get(approvalId);
       if (tc) {
         tc.status = decision === "allow" ? "running" : "error";
@@ -1995,6 +2049,13 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
           if (tc) tcIdx = lastMsg.toolCalls.indexOf(tc);
         }
 
+        // Safety net: if the tool call is already complete, the TUI has
+        // already auto-approved and finished it.  Showing an approval
+        // dialog now would freeze the UI (no approval.decided will arrive).
+        if (tc && tc.status === "complete") {
+          break;
+        }
+
         const actualInput = tc?.input || toolInput;
         const summary = buildApprovalSummary(toolName, actualInput);
 
@@ -2026,6 +2087,12 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
         };
         const approvalId = pl.approval_id;
         if (!approvalId) break;
+        // Mirror the optimistic auto_approve update when the TUI reports
+        // a remember=true allow decision (covers the case where the
+        // decision was made via a different code path, e.g. TUI UI).
+        if (pl.remember && pl.decision === "allow" && this.currentThread) {
+          this.currentThread = { ...this.currentThread, auto_approve: true };
+        }
         const tc = this.pendingApprovals.get(approvalId);
         if (tc) {
           tc.status = pl.decision === "allow" ? "running" : "error";
