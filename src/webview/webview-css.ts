@@ -755,10 +755,75 @@ export function getWebviewCss(): string {
     }
 
     .streaming-indicator::after {
-      content: '\u258A';
-      animation: blink 1s step-end infinite;
+      content: '';
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--brand-primary);
+      margin-left: 4px;
+      vertical-align: middle;
+      animation: pulse-dot 1.4s ease-in-out infinite;
     }
-    @keyframes blink { 50% { opacity: 0; } }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 0.3; transform: scale(0.8); }
+      50% { opacity: 1; transform: scale(1.2); }
+    }
+
+    /* ── Thinking/Streaming Activity Indicator ── */
+
+    .thinking-activity {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 10px;
+      margin-top: 6px;
+      border-radius: 4px;
+      background: rgba(44, 79, 84, 0.06);
+      color: var(--brand-primary);
+      font-size: 0.85em;
+      font-weight: 500;
+    }
+    body[data-vscode-theme-kind="vscode-dark"] .thinking-activity {
+      background: rgba(109, 158, 166, 0.1);
+    }
+    .thinking-activity-dots {
+      display: inline-flex;
+      gap: 3px;
+      align-items: center;
+    }
+    .thinking-activity-dots span {
+      display: inline-block;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--brand-primary);
+      animation: bounce-dot 1.4s ease-in-out infinite;
+    }
+    .thinking-activity-dots span:nth-child(1) { animation-delay: 0s; }
+    .thinking-activity-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .thinking-activity-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce-dot {
+      0%, 80%, 100% { opacity: 0.25; transform: scale(0.7); }
+      40% { opacity: 1; transform: scale(1.1); }
+    }
+
+    /* ── Status Bar Streaming Indicator ── */
+
+    .status-bar.is-streaming .status-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .status-bar.is-streaming .status-left::before {
+      content: '';
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--brand-primary);
+      animation: pulse-dot 1.4s ease-in-out infinite;
+    }
 
     /* ── Input / Toolbar ── */
 

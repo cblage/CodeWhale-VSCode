@@ -24,6 +24,54 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
   var runtimeVersion = '';
   var sessionStats = null;
 
+  // ── Streaming state helpers ──
+  var statusBarEl = document.getElementById('status');
+
+  function setStreamingState(streaming, label) {
+    if (statusBarEl) {
+      if (streaming) {
+        statusBarEl.classList.add('is-streaming');
+      } else {
+        statusBarEl.classList.remove('is-streaming');
+      }
+    }
+    if (statusTextEl) {
+      statusTextEl.textContent = label || (streaming ? __i18n.thinking : __i18n.ready);
+    }
+  }
+
+  function showThinkingActivity(messageId, label) {
+    var bodyEl = document.getElementById('body-' + messageId);
+    if (!bodyEl) return;
+    var existing = bodyEl.querySelector('.thinking-activity');
+    if (existing) {
+      var labelEl = existing.querySelector('.thinking-activity-label');
+      if (labelEl) labelEl.textContent = label || __i18n.thinking;
+      return;
+    }
+    var indicator = document.createElement('div');
+    indicator.className = 'thinking-activity';
+    indicator.innerHTML = '<div class="thinking-activity-dots"><span></span><span></span><span></span></div><span class="thinking-activity-label">' + __wvEscapeHtml(label || __i18n.thinking) + '</span>';
+    bodyEl.insertBefore(indicator, bodyEl.firstChild);
+  }
+
+  function updateThinkingActivityLabel(messageId, label) {
+    var bodyEl = document.getElementById('body-' + messageId);
+    if (!bodyEl) return;
+    var indicator = bodyEl.querySelector('.thinking-activity');
+    if (indicator) {
+      var labelEl = indicator.querySelector('.thinking-activity-label');
+      if (labelEl) labelEl.textContent = label || __i18n.thinking;
+    }
+  }
+
+  function hideThinkingActivity(messageId) {
+    var bodyEl = document.getElementById('body-' + messageId);
+    if (!bodyEl) return;
+    var indicator = bodyEl.querySelector('.thinking-activity');
+    if (indicator) indicator.remove();
+  }
+
   function renderStatusStats() {
     if (!statusStatsEl) return;
     var statsHtml = '';
@@ -56,7 +104,7 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
     switch (msg.type) {
       case 'ready':
         window.__wvSidebar.closeTaskDetail();
-        statusTextEl.textContent = '${tr.ready} (' + (msg.model || 'deepseek-v4-pro') + ')';
+        setStreamingState(false, '${tr.ready} (' + (msg.model || 'deepseek-v4-pro') + ')');
         if (msg.mode) currentModeEl.textContent = msg.mode;
         if (msg.model) currentModelEl.textContent = msg.model;
         if (msg.reasoningEffort) currentReasoningEl.textContent = msg.reasoningEffort;
@@ -144,10 +192,11 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
           window.__wvMessages.setStreamingTimeout(setTimeout(function() {
             if (window.__wvMessages.isStreaming()) {
               window.__wvMessages.setStreaming(false);
-              statusTextEl.textContent = __i18n.readyTimedOut;
+              setStreamingState(false, __i18n.readyTimedOut);
             }
           }, 300000));
-          statusTextEl.textContent = __i18n.thinking;
+          showThinkingActivity(msg.message.id, __i18n.thinking);
+          setStreamingState(true, __i18n.thinking);
         }
         break;
 
@@ -173,7 +222,8 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
           contentEl.textContent = msg.content || '';
           window.__wvMessages.smartScrollToBottom();
         }
-        statusTextEl.textContent = __i18n.streaming;
+        updateThinkingActivityLabel(msg.messageId, __i18n.streaming);
+        setStreamingState(true, __i18n.streaming);
         break;
       }
 
@@ -205,7 +255,8 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
           thinkingEl.classList.add('open');
           window.__wvMessages.smartScrollToBottom();
         }
-        statusTextEl.textContent = __i18n.thinking;
+        updateThinkingActivityLabel(msg.messageId, __i18n.thinking);
+        setStreamingState(true, __i18n.thinking);
         break;
       }
 
@@ -270,6 +321,9 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
             }
           }
           window.__wvMessages.smartScrollToBottom();
+        }
+        if (msg.toolCall && msg.toolCall.displayName) {
+          updateThinkingActivityLabel(msg.messageId, msg.toolCall.displayName);
         }
         break;
       }
@@ -355,7 +409,7 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
             }
           }
         }
-        statusTextEl.textContent = __i18n.approvalAwaiting;
+        setStreamingState(true, __i18n.approvalAwaiting);
         break;
       }
 
@@ -374,7 +428,7 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
             }
           });
         }
-        statusTextEl.textContent = __i18n.streaming;
+        setStreamingState(true, __i18n.streaming);
         break;
 
       case 'userInputRequired': {
@@ -393,7 +447,7 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
           }
           questionsHtml += '</div></div>';
         }
-        if (statusTextEl) statusTextEl.textContent = __i18n.userInputAwaiting;
+        setStreamingState(true, __i18n.userInputAwaiting);
         var bodyEl = document.getElementById('body-' + msg.messageId);
         if (bodyEl) {
           var bar = document.createElement('div');
@@ -421,7 +475,7 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
             }
           });
         }
-        statusTextEl.textContent = __i18n.streaming;
+        setStreamingState(true, __i18n.streaming);
         break;
 
       case 'messageComplete': {
@@ -460,19 +514,21 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
         window.__wvMessages.setStreaming(false);
         var st = window.__wvMessages.getStreamingTimeout();
         if (st) { clearTimeout(st); window.__wvMessages.setStreamingTimeout(null); }
-        statusTextEl.textContent = msg.error ? __i18n.error : __i18n.ready;
+        hideThinkingActivity(msg.messageId);
+        setStreamingState(false, msg.error ? __i18n.error : __i18n.ready);
         break;
       }
 
       case 'turnStarted':
-        statusTextEl.textContent = __i18n.processing;
+        setStreamingState(true, __i18n.processing);
         break;
 
       case 'turnInterrupted':
         window.__wvMessages.setStreaming(false);
         var st = window.__wvMessages.getStreamingTimeout();
         if (st) { clearTimeout(st); window.__wvMessages.setStreamingTimeout(null); }
-        statusTextEl.textContent = __i18n.ready;
+        setStreamingState(false, __i18n.ready);
+        document.querySelectorAll('.thinking-activity').forEach(function(el) { el.remove(); });
         document.querySelectorAll('.approval-bar').forEach(function(bar) { bar.remove(); });
         document.querySelectorAll('.user-input-bar').forEach(function(bar) { bar.remove(); });
         break;
@@ -489,7 +545,7 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
       }
 
       case 'status':
-        statusTextEl.textContent = msg.text;
+        setStreamingState(false, msg.text);
         break;
 
       case 'setInputText':
@@ -511,14 +567,14 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
         window.__wvMessages.setStreaming(false);
         var st = window.__wvMessages.getStreamingTimeout();
         if (st) { clearTimeout(st); window.__wvMessages.setStreamingTimeout(null); }
-        statusTextEl.textContent = __i18n.ready;
+        setStreamingState(false, __i18n.ready);
         sessionStats = null;
         renderStatusStats();
         window.__wvMessages.renderWelcome();
         break;
 
       case 'error':
-        statusTextEl.textContent = __i18n.error;
+        setStreamingState(false, __i18n.error);
         var errEl = document.createElement('div');
         errEl.className = 'error-banner';
         errEl.innerHTML = '<span class="msg-label error">' + __wvEscapeHtml(__i18n.error) + '</span><span>' + __wvEscapeHtml(msg.message) + '</span>';
