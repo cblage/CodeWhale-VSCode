@@ -39,6 +39,8 @@ import type {
   AutomationRunRecord,
   CreateAutomationRequest,
   UpdateAutomationRequest,
+  AgentRunRecord,
+  AgentRunsResponse,
   EventListener,
   EngineRef,
 } from "../types";
@@ -84,6 +86,8 @@ export type {
   AutomationRunRecord,
   CreateAutomationRequest,
   UpdateAutomationRequest,
+  AgentRunRecord,
+  AgentRunsResponse,
   EventListener,
   EngineRef,
 };
@@ -530,6 +534,16 @@ export class CodeWhaleApiClient {
     if (opts?.limit) params.set("limit", String(opts.limit));
     const qs = params.toString() ? `?${params.toString()}` : "";
     return (await this.get(`/v1/automations/${automationId}/runs${qs}`)) as AutomationRunRecord[];
+  }
+
+  // ── Agent Runs ──
+
+  async listAgentRuns(): Promise<AgentRunsResponse> {
+    return (await this.get("/v1/agent-runs")) as AgentRunsResponse;
+  }
+
+  async getAgentRun(runId: string): Promise<AgentRunRecord> {
+    return (await this.get(`/v1/agent-runs/${runId}`)) as AgentRunRecord;
   }
 
   // ── SSE Event Stream ──

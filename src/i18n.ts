@@ -216,6 +216,30 @@ interface Translations {
   switchSessionActiveTurnMessage: string;
   switchSessionActiveTurnButton: string;
   noSearchResults: string;
+  // Agent panel
+  agents: string;
+  noAgentRuns: string;
+  agentStatusQueued: string;
+  agentStatusStarting: string;
+  agentStatusRunning: string;
+  agentStatusWaitingForUser: string;
+  agentStatusModelWait: string;
+  agentStatusRunningTool: string;
+  agentStatusCompleted: string;
+  agentStatusFailed: string;
+  agentStatusCancelled: string;
+  agentStatusInterrupted: string;
+  agentObjective: string;
+  agentModel: string;
+  agentSteps: string;
+  agentResult: string;
+  agentError: string;
+  agentRole: string;
+  agentArtifacts: string;
+  agentUsage: string;
+  agentSpawned: string;
+  agentDelegating: string;
+  agentFanout: string;
 }
 
 const en: Translations = {
@@ -407,6 +431,30 @@ const en: Translations = {
   switchSessionActiveTurnMessage: "The assistant is currently reasoning. Loading a session will stop the current turn. Continue?",
   switchSessionActiveTurnButton: "Stop & Switch",
   noSearchResults: "No matching sessions",
+  // Agent panel
+  agents: "Agents",
+  noAgentRuns: "No agent runs",
+  agentStatusQueued: "Queued",
+  agentStatusStarting: "Starting",
+  agentStatusRunning: "Running",
+  agentStatusWaitingForUser: "Waiting for input",
+  agentStatusModelWait: "Waiting for model",
+  agentStatusRunningTool: "Running tool",
+  agentStatusCompleted: "Completed",
+  agentStatusFailed: "Failed",
+  agentStatusCancelled: "Cancelled",
+  agentStatusInterrupted: "Interrupted",
+  agentObjective: "Objective",
+  agentModel: "Model",
+  agentSteps: "Steps",
+  agentResult: "Result",
+  agentError: "Error",
+  agentRole: "Role",
+  agentArtifacts: "Artifacts",
+  agentUsage: "Token usage",
+  agentSpawned: "Spawned",
+  agentDelegating: "Delegating",
+  agentFanout: "Fan-out",
 };
 
 const zhCn: Translations = {
@@ -598,6 +646,30 @@ const zhCn: Translations = {
   switchSessionActiveTurnMessage: "助手正在推理中，加载会话将中断当前对话。是否继续？",
   switchSessionActiveTurnButton: "中断并切换",
   noSearchResults: "没有匹配的会话",
+  // Agent panel
+  agents: "子代理",
+  noAgentRuns: "暂无子代理运行",
+  agentStatusQueued: "排队中",
+  agentStatusStarting: "启动中",
+  agentStatusRunning: "运行中",
+  agentStatusWaitingForUser: "等待输入",
+  agentStatusModelWait: "等待模型",
+  agentStatusRunningTool: "执行工具中",
+  agentStatusCompleted: "已完成",
+  agentStatusFailed: "失败",
+  agentStatusCancelled: "已取消",
+  agentStatusInterrupted: "已中断",
+  agentObjective: "目标",
+  agentModel: "模型",
+  agentSteps: "步骤",
+  agentResult: "结果",
+  agentError: "错误",
+  agentRole: "角色",
+  agentArtifacts: "产物",
+  agentUsage: "Token 用量",
+  agentSpawned: "已启动",
+  agentDelegating: "委派中",
+  agentFanout: "扇出",
 };
 
 const translations: Record<string, Translations> = {
@@ -830,5 +902,29 @@ export function webviewTranslations(tr: Translations) {
     switchSessionActiveTurnMessage: tr.switchSessionActiveTurnMessage,
     switchSessionActiveTurnButton: tr.switchSessionActiveTurnButton,
     noSearchResults: tr.noSearchResults,
+    // Agent panel
+    agents: tr.agents,
+    noAgentRuns: tr.noAgentRuns,
+    agentStatusQueued: tr.agentStatusQueued,
+    agentStatusStarting: tr.agentStatusStarting,
+    agentStatusRunning: tr.agentStatusRunning,
+    agentStatusWaitingForUser: tr.agentStatusWaitingForUser,
+    agentStatusModelWait: tr.agentStatusModelWait,
+    agentStatusRunningTool: tr.agentStatusRunningTool,
+    agentStatusCompleted: tr.agentStatusCompleted,
+    agentStatusFailed: tr.agentStatusFailed,
+    agentStatusCancelled: tr.agentStatusCancelled,
+    agentStatusInterrupted: tr.agentStatusInterrupted,
+    agentObjective: tr.agentObjective,
+    agentModel: tr.agentModel,
+    agentSteps: tr.agentSteps,
+    agentResult: tr.agentResult,
+    agentError: tr.agentError,
+    agentRole: tr.agentRole,
+    agentArtifacts: tr.agentArtifacts,
+    agentUsage: tr.agentUsage,
+    agentSpawned: tr.agentSpawned,
+    agentDelegating: tr.agentDelegating,
+    agentFanout: tr.agentFanout,
   };
 }

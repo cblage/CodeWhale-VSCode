@@ -375,6 +375,76 @@ export interface EngineRef {
   readonly token: string | null;
 }
 
+// ── Agent Run types (matching TUI's AgentWorkerRecord) ──
+
+export type AgentWorkerStatus =
+  | "queued" | "starting" | "running" | "waiting_for_user"
+  | "model_wait" | "running_tool" | "completed" | "failed"
+  | "cancelled" | "interrupted";
+
+export interface AgentWorkerSpec {
+  worker_id: string;
+  run_id: string;
+  parent_run_id: string | null;
+  session_name: string | null;
+  objective: string;
+  role: string | null;
+  agent_type: string;
+  model: string;
+  workspace: string;
+  git_branch: string | null;
+  context_mode: string;
+  fork_context: boolean;
+  max_steps: number;
+  spawn_depth: number;
+  max_spawn_depth: number;
+}
+
+export interface AgentRunUsage {
+  status: string;
+  input_tokens: number;
+  output_tokens: number;
+  budget_spent_tokens: number;
+  budget_remaining_tokens: number;
+}
+
+export interface AgentRunArtifactRef {
+  kind: string;
+  path: string;
+}
+
+export interface AgentWorkerEvent {
+  timestamp_ms: number;
+  kind: string;
+  summary: string;
+}
+
+export interface AgentRunRecord {
+  spec: AgentWorkerSpec;
+  actor_kind: string;
+  parent_run_id: string | null;
+  follow_up: Record<string, unknown>;
+  takeover: Record<string, unknown>;
+  artifacts: AgentRunArtifactRef[];
+  usage: AgentRunUsage;
+  verification: Record<string, unknown>;
+  recommended_action: Record<string, unknown>;
+  status: AgentWorkerStatus;
+  created_at_ms: number;
+  updated_at_ms: number;
+  started_at_ms: number | null;
+  completed_at_ms: number | null;
+  latest_message: string | null;
+  result_summary: string | null;
+  error: string | null;
+  steps_taken: number;
+  events: AgentWorkerEvent[];
+}
+
+export interface AgentRunsResponse {
+  runs: AgentRunRecord[];
+}
+
 // ── Re-exports from other modules ──
 
 export { CodeWhaleEngine } from "./api/engine";

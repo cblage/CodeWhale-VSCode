@@ -28,6 +28,57 @@ export function getSidebarScript(tr: WebviewTranslations): string {
 
   // ── Changes state ──
   var changesState = [];
+
+  // ── Agent runs state ──
+  var agentRuns = [];
+
+  // ── Agent status label helper ──
+  function agentStatusLabel(status) {
+    var map = {
+      queued: __i18n.agentStatusQueued,
+      starting: __i18n.agentStatusStarting,
+      running: __i18n.agentStatusRunning,
+      waiting_for_user: __i18n.agentStatusWaitingForUser,
+      model_wait: __i18n.agentStatusModelWait,
+      running_tool: __i18n.agentStatusRunningTool,
+      completed: __i18n.agentStatusCompleted,
+      failed: __i18n.agentStatusFailed,
+      cancelled: __i18n.agentStatusCancelled,
+      interrupted: __i18n.agentStatusInterrupted,
+    };
+    return map[status] || status;
+  }
+
+  function agentStatusIcon(status) {
+    if (status === 'completed') return '\\u2713';
+    if (status === 'failed') return '\\u2717';
+    if (status === 'cancelled') return '\\u2298';
+    if (status === 'interrupted') return '\\u2717';
+    if (status === 'running' || status === 'starting' || status === 'running_tool' || status === 'model_wait') return '\\u27F3';
+    if (status === 'queued') return '\\u23F3';
+    if (status === 'waiting_for_user') return '\\u2709';
+    return '\\u00B7';
+  }
+
+  function agentStatusColor(status) {
+    if (status === 'completed') return '#4caf50';
+    if (status === 'failed' || status === 'interrupted') return '#f44336';
+    if (status === 'cancelled') return '#888';
+    if (status === 'running' || status === 'starting' || status === 'running_tool' || status === 'model_wait') return '#ff9800';
+    if (status === 'queued') return '#888';
+    if (status === 'waiting_for_user') return '#2196f3';
+    return '#888';
+  }
+
+  function formatAgentTokenUsage(usage) {
+    if (!usage) return '';
+    var inp = usage.input_tokens || 0;
+    var out = usage.output_tokens || 0;
+    if (inp === 0 && out === 0) return '';
+    var inpK = inp >= 1000 ? (inp / 1000).toFixed(1) + 'k' : String(inp);
+    var outK = out >= 1000 ? (out / 1000).toFixed(1) + 'k' : String(out);
+    return inpK + ' / ' + outK;
+  }
   var _diffStore = window.__wvDiffStore;
   var _diffIdCounter = window.__wvDiffIdCounter;
 
@@ -296,6 +347,88 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     }
   }
 
+  // ── Render Agent Runs ──
+  function renderAgents(runs) {
+    var container = document.getElementById('tab-agents');
+    if (!container) return;
+    container.innerHTML = '';
+    if (!runs || runs.length === 0) {
+      var el = document.createElement('div');
+      el.className = 'work-empty';
+      el.textContent = __i18n.noAgentRuns;
+      container.appendChild(el);
+      return;
+    }
+    // Sort: running first, then by updated_at desc
+    var sorted = runs.slice().sort(function(a, b) {
+      var aActive = (a.status === 'running' || a.status === 'starting' || a.status === 'running_tool' || a.status === 'model_wait' || a.status === 'queued' || a.status === 'waiting_for_user') ? 0 : 1;
+      var bActive = (b.status === 'running' || b.status === 'starting' || b.status === 'running_tool' || b.status === 'model_wait' || b.status === 'queued' || b.status === 'waiting_for_user') ? 0 : 1;
+      if (aActive !== bActive) return aActive - bActive;
+      return (b.updated_at_ms || 0) - (a.updated_at_ms || 0);
+    });
+    for (var i = 0; i < sorted.length; i++) {
+      var r = sorted[i];
+      var spec = r.spec || {};
+      var card = document.createElement('div');
+      card.className = 'agent-card' + (r.status === 'running' || r.status === 'starting' || r.status === 'running_tool' || r.status === 'model_wait' ? ' agent-active' : '');
+      var icon = agentStatusIcon(r.status);
+      var color = agentStatusColor(r.status);
+      var statusLabel = agentStatusLabel(r.status);
+      var objective = (spec.objective || r.spec.run_id || '').slice(0, 60);
+      var role = spec.role || '';
+      var model = spec.model || '';
+      var steps = r.steps_taken || 0;
+      var html =
+        '<div class="agent-header">' +
+          '<span class="agent-status-icon" style="color:' + color + '">' + icon + '</span>' +
+          '<span class="agent-objective">' + __wvEscapeHtml(objective) + '</span>' +
+        '</div>' +
+        '<div class="agent-meta">' +
+          '<span class="agent-status-badge" style="color:' + color + '">' + __wvEscapeHtml(statusLabel) + '</span>';
+      if (role) {
+        html += ' <span class="agent-role-badge">' + __wvEscapeHtml(role) + '</span>';
+      }
+      html += ' <span class="agent-model-badge">' + __wvEscapeHtml(model) + '</span>';
+      html += '</div>';
+      // Steps & tokens
+      var tokenUsage = formatAgentTokenUsage(r.usage);
+      html += '<div class="agent-detail">';
+      html += __i18n.agentSteps + ': ' + steps;
+      if (tokenUsage) {
+        html += ' \\u00B7 ' + __i18n.agentUsage + ': ' + __wvEscapeHtml(tokenUsage);
+      }
+      html += '</div>';
+      // Result or error
+      if (r.status === 'completed' && r.result_summary) {
+        html += '<div class="agent-result">' + __wvEscapeHtml(r.result_summary.slice(0, 120)) + '</div>';
+      }
+      if ((r.status === 'failed' || r.status === 'interrupted') && r.error) {
+        html += '<div class="agent-error-text">' + __wvEscapeHtml(r.error.slice(0, 120)) + '</div>';
+      }
+      // Artifacts
+      if (r.artifacts && r.artifacts.length > 0) {
+        html += '<div class="agent-artifacts">';
+        for (var ai = 0; ai < r.artifacts.length && ai < 3; ai++) {
+          var art = r.artifacts[ai];
+          var artPath = (art.path || '').split('/').pop() || art.path || '';
+          html += '<span class="agent-artifact-chip">' + __wvEscapeHtml(artPath) + '</span>';
+        }
+        if (r.artifacts.length > 3) {
+          html += '<span class="agent-artifact-more">+' + (r.artifacts.length - 3) + '</span>';
+        }
+        html += '</div>';
+      }
+      card.innerHTML = html;
+      (function(runData) {
+        card.addEventListener('click', function(e) {
+          if (e.target.tagName === 'BUTTON') return;
+          showAgentDetail(runData);
+        });
+      })(r);
+      container.appendChild(card);
+    }
+  }
+
   // ── Render Work ──
   function renderWork() {
     var container = document.getElementById('tab-work');
@@ -372,8 +505,11 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     var container = document.getElementById('tab-changes');
     if (!container) return;
     container.innerHTML = '';
-    _diffStore.clear();
-    _diffIdCounter.value = 0;
+    // NOTE: Do NOT clear _diffStore or reset _diffIdCounter here.
+    // Message cards in the stream share this store; clearing it invalidates
+    // their diff keys (especially during real-time inference where
+    // fileChangeDetected is sent before refreshWorkPanel).
+    // The store is cleared on loadHistory/clearChat instead.
     if (!changesState || changesState.length === 0) {
       var el = document.createElement('div');
       el.className = 'work-empty';
@@ -511,6 +647,120 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     overlay.onclick = function(e) { if (e.target === overlay) closeTaskDetail(); };
   }
 
+  // ── Agent Detail ──
+  function closeAgentDetail() {
+    var overlay = document.getElementById('agent-detail-overlay');
+    if (overlay) {
+      overlay.style.display = 'none';
+      overlay.innerHTML = '';
+      overlay.onclick = null;
+    }
+  }
+
+  function showAgentDetail(run) {
+    var overlay = document.getElementById('agent-detail-overlay');
+    if (!overlay) return;
+    var spec = run.spec || {};
+    var statusIcon = agentStatusIcon(run.status);
+    var statusColor = agentStatusColor(run.status);
+    var statusLabel = agentStatusLabel(run.status);
+    var objective = spec.objective || '';
+    var role = spec.role || '';
+    var model = spec.model || '';
+    var steps = run.steps_taken || 0;
+    var tokenUsage = formatAgentTokenUsage(run.usage);
+    var runId = spec.run_id || spec.worker_id || '';
+    var parentId = run.parent_run_id || '';
+    var createdAt = run.created_at_ms ? new Date(run.created_at_ms).toLocaleString() : '-';
+    var updatedAt = run.updated_at_ms ? new Date(run.updated_at_ms).toLocaleString() : '-';
+
+    var html = '<div class="task-detail-panel">';
+    html += '<button class="close-btn" type="button">\\u2715</button>';
+    html += '<h3>' + statusIcon + ' ' + __wvEscapeHtml(__i18n.agents) + '</h3>';
+
+    // Status
+    html += '<div class="detail-section"><div class="detail-label">' + __wvEscapeHtml(__i18n.agentStatusRunning) + '</div>';
+    html += '<div class="detail-value" style="color:' + statusColor + '">' + __wvEscapeHtml(statusLabel) + '</div></div>';
+
+    // Run ID
+    if (runId) {
+      html += '<div class="detail-section"><div class="detail-label">Run ID</div>';
+      html += '<div class="detail-value" style="font-family:monospace;font-size:0.85em">' + __wvEscapeHtml(runId) + '</div></div>';
+    }
+
+    // Objective
+    if (objective) {
+      html += '<div class="detail-section"><div class="detail-label">' + __wvEscapeHtml(__i18n.agentObjective) + '</div>';
+      html += '<div class="detail-value">' + __wvEscapeHtml(objective) + '</div></div>';
+    }
+
+    // Role & Model
+    if (role || model) {
+      html += '<div class="detail-section"><div class="detail-label">' + __wvEscapeHtml(__i18n.agentRole) + ' / ' + __wvEscapeHtml(__i18n.agentModel) + '</div>';
+      html += '<div class="detail-value">';
+      if (role) html += __wvEscapeHtml(role);
+      if (role && model) html += ' \\u00B7 ';
+      if (model) html += __wvEscapeHtml(model);
+      html += '</div></div>';
+    }
+
+    // Steps & tokens
+    html += '<div class="detail-section"><div class="detail-label">' + __wvEscapeHtml(__i18n.agentSteps) + ' / ' + __wvEscapeHtml(__i18n.agentUsage) + '</div>';
+    html += '<div class="detail-value">' + steps;
+    if (tokenUsage) html += ' \\u00B7 ' + __wvEscapeHtml(tokenUsage);
+    html += '</div></div>';
+
+    // Parent run
+    if (parentId) {
+      html += '<div class="detail-section"><div class="detail-label">Parent Run</div>';
+      html += '<div class="detail-value" style="font-family:monospace;font-size:0.85em">' + __wvEscapeHtml(parentId) + '</div></div>';
+    }
+
+    // Timestamps
+    html += '<div class="detail-section"><div class="detail-label">Created</div>';
+    html += '<div class="detail-value">' + __wvEscapeHtml(createdAt) + '</div></div>';
+    html += '<div class="detail-section"><div class="detail-label">Updated</div>';
+    html += '<div class="detail-value">' + __wvEscapeHtml(updatedAt) + '</div></div>';
+
+    // Result
+    if (run.result_summary) {
+      html += '<div class="detail-section"><div class="detail-label">' + __wvEscapeHtml(__i18n.agentResult) + '</div>';
+      html += '<div class="detail-value result">' + __wvEscapeHtml(run.result_summary) + '</div></div>';
+    }
+
+    // Error
+    if (run.error) {
+      html += '<div class="detail-section"><div class="detail-label">' + __wvEscapeHtml(__i18n.agentError) + '</div>';
+      html += '<div class="detail-value error">' + __wvEscapeHtml(run.error) + '</div></div>';
+    }
+
+    // Artifacts
+    if (run.artifacts && run.artifacts.length > 0) {
+      html += '<div class="detail-section"><div class="detail-label">' + __wvEscapeHtml(__i18n.agentArtifacts) + ' (' + run.artifacts.length + ')</div>';
+      for (var ai = 0; ai < run.artifacts.length; ai++) {
+        var art = run.artifacts[ai];
+        var artPath = art.path || '';
+        var artKind = art.kind || '';
+        html += '<div class="tool-call-item">\\u00B7 ' + __wvEscapeHtml(artPath);
+        if (artKind) html += ' <span style="color:var(--muted)">(' + __wvEscapeHtml(artKind) + ')</span>';
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+
+    html += '</div>';
+    overlay.innerHTML = html;
+    overlay.style.display = 'flex';
+    var closeBtn = overlay.querySelector('.close-btn');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        closeAgentDetail();
+      });
+    }
+    overlay.onclick = function(e) { if (e.target === overlay) closeAgentDetail(); };
+  }
+
   // ── Sidebar toggle ──
   function toggleThreadsPanel() {
     var threadsPanel = document.getElementById('threads-panel');
@@ -553,11 +803,14 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     renderSessions: renderSessions,
     renderThreads: renderThreads,
     renderTasks: renderTasks,
+    renderAgents: renderAgents,
     renderWork: renderWork,
     renderChanges: renderChanges,
     switchSidebarTab: switchSidebarTab,
     closeTaskDetail: closeTaskDetail,
     showTaskDetail: showTaskDetail,
+    closeAgentDetail: closeAgentDetail,
+    showAgentDetail: showAgentDetail,
     getSessions: function() { return sessions; },
     setSessions: function(v) { sessions = v; },
     getActiveSessionId: function() { return activeSessionId; },
@@ -572,10 +825,13 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     setWorkState: function(v) { workState = v; },
     getChangesState: function() { return changesState; },
     setChangesState: function(v) { changesState = v; },
+    getAgentRuns: function() { return agentRuns; },
+    setAgentRuns: function(v) { agentRuns = v; },
     getSessionSearchQuery: function() { return sessionSearchQuery; },
     setSessionSearchQuery: function(v) { sessionSearchQuery = v; },
   };
 
   closeTaskDetail();
+  closeAgentDetail();
   })();`;
 }

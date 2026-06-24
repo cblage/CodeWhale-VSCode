@@ -1202,6 +1202,191 @@ export function getWebviewCss(): string {
       border-color: var(--fg);
     }
 
+    /* ── Agent Card (sidebar) ── */
+
+    .agent-card {
+      padding: 6px 10px;
+      border-bottom: 1px solid rgba(128,128,128,0.1);
+      cursor: pointer;
+    }
+    .agent-card:hover { background: var(--card-bg); }
+    .agent-card.agent-active {
+      border-left: 3px solid #ff9800;
+    }
+    .agent-card .agent-header {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.85em;
+    }
+    .agent-card .agent-status-icon {
+      font-size: 0.9em;
+      flex-shrink: 0;
+    }
+    .agent-card .agent-objective {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 500;
+    }
+    .agent-card .agent-meta {
+      font-size: 0.75em;
+      color: var(--muted);
+      margin-top: 2px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .agent-card .agent-status-badge {
+      font-weight: 500;
+    }
+    .agent-card .agent-role-badge {
+      background: rgba(156, 39, 176, 0.12);
+      color: #9c27b0;
+      padding: 0 4px;
+      border-radius: 3px;
+      font-size: 0.9em;
+    }
+    .agent-card .agent-model-badge {
+      background: rgba(33, 150, 243, 0.1);
+      color: #2196f3;
+      padding: 0 4px;
+      border-radius: 3px;
+      font-size: 0.9em;
+    }
+    .agent-card .agent-detail {
+      font-size: 0.75em;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .agent-card .agent-result {
+      font-size: 0.78em;
+      color: #4caf50;
+      margin-top: 3px;
+      padding: 2px 6px;
+      background: rgba(76, 175, 80, 0.06);
+      border-radius: 3px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .agent-card .agent-error-text {
+      font-size: 0.78em;
+      color: #f44336;
+      margin-top: 3px;
+      padding: 2px 6px;
+      background: rgba(244, 67, 54, 0.06);
+      border-radius: 3px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .agent-card .agent-artifacts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3px;
+      margin-top: 3px;
+    }
+    .agent-card .agent-artifact-chip {
+      font-size: 0.7em;
+      padding: 0 4px;
+      border-radius: 3px;
+      background: rgba(128,128,128,0.08);
+      color: var(--muted);
+      font-family: var(--vscode-editor-font-family, monospace);
+    }
+    .agent-card .agent-artifact-more {
+      font-size: 0.7em;
+      color: var(--muted);
+    }
+
+    /* ── Delegate Card (in-message tool call) ── */
+
+    .delegate-card {
+      margin-top: 8px;
+      padding: 8px 12px;
+      border: 1px solid rgba(156, 39, 176, 0.25);
+      border-left: 3px solid #9c27b0;
+      border-radius: 6px;
+      background: rgba(156, 39, 176, 0.04);
+      font-size: 0.85em;
+    }
+    .delegate-card.delegate-running {
+      border-left-color: #ff9800;
+      border-color: rgba(255, 152, 0, 0.25);
+      background: rgba(255, 152, 0, 0.04);
+    }
+    .delegate-card.delegate-completed {
+      border-left-color: #4caf50;
+      border-color: rgba(76, 175, 80, 0.2);
+      background: rgba(76, 175, 80, 0.03);
+    }
+    .delegate-card.delegate-failed {
+      border-left-color: #f44336;
+      border-color: rgba(244, 67, 54, 0.2);
+      background: rgba(244, 67, 54, 0.03);
+    }
+    .delegate-card .delegate-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .delegate-card .delegate-icon {
+      font-size: 1.1em;
+    }
+    .delegate-card .delegate-title {
+      font-weight: 600;
+      color: var(--fg);
+    }
+    .delegate-card .delegate-status {
+      font-size: 0.85em;
+    }
+    .delegate-card .delegate-objective {
+      margin-top: 4px;
+      color: var(--fg);
+      font-size: 0.9em;
+      line-height: 1.4;
+    }
+    .delegate-card .delegate-meta {
+      margin-top: 3px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .delegate-card .delegate-role-badge {
+      background: rgba(156, 39, 176, 0.12);
+      color: #9c27b0;
+      padding: 0 4px;
+      border-radius: 3px;
+      font-size: 0.85em;
+    }
+    .delegate-card .delegate-model-badge {
+      background: rgba(33, 150, 243, 0.1);
+      color: #2196f3;
+      padding: 0 4px;
+      border-radius: 3px;
+      font-size: 0.85em;
+    }
+    .delegate-card .delegate-result {
+      margin-top: 4px;
+      padding: 4px 8px;
+      background: rgba(76, 175, 80, 0.08);
+      border-radius: 4px;
+      font-size: 0.85em;
+      color: #4caf50;
+    }
+    .delegate-card .delegate-error-text {
+      margin-top: 4px;
+      padding: 4px 8px;
+      background: rgba(244, 67, 54, 0.08);
+      border-radius: 4px;
+      font-size: 0.85em;
+      color: #f44336;
+    }
+
     /* ── Work Section ── */
 
     .work-section {

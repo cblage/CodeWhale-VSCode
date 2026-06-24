@@ -168,6 +168,30 @@ export interface WebviewTranslations {
   deleteSessionSuccess: string;
   deleteSessionFailed: string;
   noSearchResults: string;
+  // Agent panel
+  agents: string;
+  noAgentRuns: string;
+  agentStatusQueued: string;
+  agentStatusStarting: string;
+  agentStatusRunning: string;
+  agentStatusWaitingForUser: string;
+  agentStatusModelWait: string;
+  agentStatusRunningTool: string;
+  agentStatusCompleted: string;
+  agentStatusFailed: string;
+  agentStatusCancelled: string;
+  agentStatusInterrupted: string;
+  agentObjective: string;
+  agentModel: string;
+  agentSteps: string;
+  agentResult: string;
+  agentError: string;
+  agentRole: string;
+  agentArtifacts: string;
+  agentUsage: string;
+  agentSpawned: string;
+  agentDelegating: string;
+  agentFanout: string;
 }
 
 export function getWebviewHtml(
@@ -192,6 +216,7 @@ ${css}
 </head>
 <body>
   <div id="task-detail-overlay" class="task-detail-overlay" style="display:none"></div>
+  <div id="agent-detail-overlay" class="task-detail-overlay" style="display:none"></div>
   <div id="layout">
     <div id="threads-panel">
       <div class="sidebar-section" id="sidebar-threads" data-active-tab="sessions">
@@ -216,6 +241,13 @@ ${css}
           <span class="sidebar-section-arrow">▼</span>
         </div>
         <div class="sidebar-section-body" id="tab-tasks"></div>
+      </div>
+      <div class="sidebar-section" id="sidebar-agents">
+        <div class="sidebar-section-header" id="agents-section-toggle">
+          <span class="sidebar-section-title">🤖 ${tr.agents}</span>
+          <span class="sidebar-section-arrow">▼</span>
+        </div>
+        <div class="sidebar-section-body" id="tab-agents"></div>
       </div>
       <div class="sidebar-section" id="sidebar-changes">
         <div class="sidebar-section-header" id="changes-section-toggle">

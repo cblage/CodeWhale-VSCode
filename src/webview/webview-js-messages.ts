@@ -74,8 +74,118 @@ export function getMessagesScript(tr: WebviewTranslations): string {
     });
   }
 
+  // ── Render Delegate Card (for agent_open / agent_spawn / agent_close / agent_cancel) ──
+  function renderDelegateCard(msgId, tc, tcIdx) {
+    var toolName = tc.name || '';
+    var isSpawn = (toolName === 'agent_open' || toolName === 'agent_spawn');
+    var isClose = (toolName === 'agent_close');
+    var isCancel = (toolName === 'agent_cancel');
+    var statusIcon = '';
+    var statusText = '';
+    var cardClass = 'delegate-card';
+
+    if (tc.status === 'running') {
+      statusIcon = '\\u27F3';
+      statusText = isSpawn ? __i18n.agentDelegating : 'running...';
+      cardClass += ' delegate-running';
+    } else if (tc.status === 'complete') {
+      statusIcon = '\\u2713';
+      statusText = __i18n.agentStatusCompleted;
+      cardClass += ' delegate-completed';
+    } else if (tc.status === 'error') {
+      statusIcon = '\\u2717';
+      statusText = __i18n.agentStatusFailed;
+      cardClass += ' delegate-failed';
+    } else {
+      statusIcon = '\\u25EF';
+      statusText = tc.status || '';
+    }
+
+    // Parse input for objective, role, model
+    var objective = '';
+    var role = '';
+    var model = '';
+    var inputStr = '';
+    if (typeof tc.input === 'string') {
+      inputStr = tc.input;
+    } else if (tc.input && typeof tc.input === 'object') {
+      try { inputStr = JSON.stringify(tc.input); } catch(e) { inputStr = ''; }
+    }
+    if (inputStr) {
+      try {
+        var parsed = JSON.parse(inputStr);
+        objective = parsed.objective || parsed.prompt || '';
+        role = parsed.role || '';
+        model = parsed.model || '';
+      } catch(e) {
+        objective = inputStr.slice(0, 80);
+      }
+    }
+
+    // Parse output for result summary
+    var resultSummary = '';
+    var outputStr = '';
+    if (typeof tc.output === 'string') {
+      outputStr = tc.output;
+    }
+    if (outputStr && isClose && tc.status === 'complete') {
+      resultSummary = outputStr.slice(0, 150);
+    }
+
+    var html = '<div class="' + cardClass + '" id="tc-' + msgId + '-' + tcIdx + '">';
+    // Header
+    html += '<div class="delegate-header">';
+    if (isSpawn) {
+      html += '<span class="delegate-icon">\\uD83E\\uDDE0</span>';
+      html += '<span class="delegate-title">' + __wvEscapeHtml(__i18n.agentSpawned) + '</span>';
+    } else if (isCancel) {
+      html += '<span class="delegate-icon">\\u2298</span>';
+      html += '<span class="delegate-title">' + __wvEscapeHtml(__i18n.agentStatusCancelled) + '</span>';
+    } else if (isClose) {
+      html += '<span class="delegate-icon">\\u2713</span>';
+      html += '<span class="delegate-title">' + __wvEscapeHtml(__i18n.agentStatusCompleted) + '</span>';
+    } else {
+      html += '<span class="delegate-icon">\\uD83E\\uDDE0</span>';
+      html += '<span class="delegate-title">' + __wvEscapeHtml(toolName) + '</span>';
+    }
+    html += ' <span class="delegate-status" style="color:var(--muted)">' + statusIcon + ' ' + statusText + '</span>';
+    html += '</div>';
+
+    // Objective
+    if (objective) {
+      html += '<div class="delegate-objective">' + __wvEscapeHtml(objective.slice(0, 120)) + '</div>';
+    }
+
+    // Meta: role + model
+    if (role || model) {
+      html += '<div class="delegate-meta">';
+      if (role) html += '<span class="delegate-role-badge">' + __wvEscapeHtml(role) + '</span>';
+      if (model) html += '<span class="delegate-model-badge">' + __wvEscapeHtml(model) + '</span>';
+      html += '</div>';
+    }
+
+    // Result summary
+    if (resultSummary) {
+      html += '<div class="delegate-result">' + __wvEscapeHtml(resultSummary) + '</div>';
+    }
+
+    // Error output
+    if (tc.status === 'error' && outputStr) {
+      html += '<div class="delegate-error-text">' + __wvEscapeHtml(outputStr.slice(0, 150)) + '</div>';
+    }
+
+    html += '</div>';
+    return html;
+  }
+
   // ── Render Tool Call ──
   function renderToolCall(msgId, tc, tcIdx) {
+    // Delegate card for agent tools
+    var toolName = tc.name || '';
+    if (toolName === 'agent_open' || toolName === 'agent_spawn' || toolName === 'agent_close' || toolName === 'agent_cancel') {
+      return renderDelegateCard(msgId, tc, tcIdx);
+    }
+
     var statusIcon = '';
     var statusText = tc.status;
 

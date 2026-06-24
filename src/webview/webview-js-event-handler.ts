@@ -19,6 +19,7 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
   var currentModelEl = document.getElementById('current-model');
   var currentReasoningEl = document.getElementById('current-reasoning');
   var _diffStore = window.__wvDiffStore;
+  var _diffIdCounter = window.__wvDiffIdCounter;
 
   var apiCapabilities = window.__wvApiCapabilities || {};
   var runtimeVersion = '';
@@ -144,6 +145,11 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
         window.__wvSidebar.renderTasks(msg.tasks || []);
         break;
 
+      case 'agentRunList':
+        window.__wvSidebar.setAgentRuns(msg.runs || []);
+        window.__wvSidebar.renderAgents(msg.runs || []);
+        break;
+
       case 'workState':
         window.__wvSidebar.setWorkState({
           goal: msg.goal || null,
@@ -175,6 +181,10 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
 
       case 'loadHistory':
         window.__wvSidebar.closeTaskDetail();
+        // Clear shared diff store when switching sessions so stale entries
+        // from the previous session don't leak into the new one.
+        _diffStore.clear();
+        _diffIdCounter.value = 0;
         messagesEl.innerHTML = '';
         for (var i = 0; i < msg.messages.length; i++) {
           var m = msg.messages[i];
@@ -563,6 +573,9 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
 
       case 'clearChat':
         window.__wvSidebar.closeTaskDetail();
+        // Clear shared diff store when starting a new chat.
+        _diffStore.clear();
+        _diffIdCounter.value = 0;
         messagesEl.innerHTML = '';
         window.__wvMessages.setStreaming(false);
         var st = window.__wvMessages.getStreamingTimeout();

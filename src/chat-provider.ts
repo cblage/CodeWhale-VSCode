@@ -263,6 +263,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
           this.refreshThreadList();
           this.refreshTaskList();
           this.refreshWorkPanel();
+          this.refreshAgentRuns();
         }
         break;
       case "openDiff":
@@ -306,6 +307,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     this.refreshThreadList();
     this.refreshTaskList();
     this.refreshWorkPanel();
+    this.refreshAgentRuns();
 
     if (this.currentThread?.id) {
       await this.loadHistory(this.currentThread.id);
@@ -1326,6 +1328,16 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       this.postMessage({ type: "taskList", tasks: result.tasks });
     } catch {
       // best-effort
+    }
+  }
+
+  /** Refresh the agent runs list shown in the sidebar */
+  public async refreshAgentRuns(): Promise<void> {
+    try {
+      const result = await this.api.listAgentRuns();
+      this.postMessage({ type: "agentRunList", runs: result.runs });
+    } catch {
+      // best-effort — endpoint may not exist on older TUI versions
     }
   }
 
@@ -2383,6 +2395,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
             "task_shell_start", "exec_shell",
           ].includes(toolName)) {
             this.refreshTaskList();
+            this.refreshAgentRuns();
           }
         }
         break;
