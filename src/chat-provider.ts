@@ -563,7 +563,10 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
         for (const tc of toolCalls) {
           if (tc.fileChange) {
             const normPath = normalizePath(tc.fileChange.filePath);
-            if (!this.turnFileChanges.some(existing => normalizePath(existing.filePath) === normPath)) {
+            const existingIdx = this.turnFileChanges.findIndex(existing => normalizePath(existing.filePath) === normPath);
+            if (existingIdx >= 0) {
+              this.turnFileChanges[existingIdx] = tc.fileChange;
+            } else {
               this.turnFileChanges.push(tc.fileChange);
             }
           }
@@ -853,7 +856,10 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     for (const tc of globalToolCalls) {
       if (tc.fileChange) {
         const normPath = normalizePath(tc.fileChange.filePath);
-        if (!this.turnFileChanges.some(existing => normalizePath(existing.filePath) === normPath)) {
+        const existingIdx = this.turnFileChanges.findIndex(existing => normalizePath(existing.filePath) === normPath);
+        if (existingIdx >= 0) {
+          this.turnFileChanges[existingIdx] = tc.fileChange;
+        } else {
           this.turnFileChanges.push(tc.fileChange);
         }
       }
@@ -2251,7 +2257,10 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
                 tc.fileChange = fc;
               }
               const normPath = normalizePath(fc.filePath);
-              if (!this.turnFileChanges.some(existing => normalizePath(existing.filePath) === normPath)) {
+              const existingIdx = this.turnFileChanges.findIndex(existing => normalizePath(existing.filePath) === normPath);
+              if (existingIdx >= 0) {
+                this.turnFileChanges[existingIdx] = fc;
+              } else {
                 this.turnFileChanges.push(fc);
               }
               if (tcIdx !== undefined) {
