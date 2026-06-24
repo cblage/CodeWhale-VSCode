@@ -61,6 +61,17 @@ export function getUtilitiesScript(tr: WebviewTranslations): string {
     revertFileTooltip: '${tr.revertFileTooltip || "Revert file"}',
     fileChanges: '${tr.fileChanges || "File Changes"}',
     userInputAwaiting: '${tr.userInputAwaiting || "Awaiting user input"}',
+    showAllWorkspaces: '${tr.showAllWorkspaces || "Show all workspaces"}',
+    filterCurrentWorkspace: '${tr.filterCurrentWorkspace || "Current workspace"}',
+    searchSessions: '${tr.searchSessions || "Search"}',
+    searchPlaceholder: '${tr.searchPlaceholder || "Search sessions..."}',
+    deleteSession: '${tr.deleteSession || "Delete"}',
+    deleteSessionConfirmTitle: '${tr.deleteSessionConfirmTitle || "Delete session?"}',
+    deleteSessionConfirmMessage: '${(tr.deleteSessionConfirmMessage || "").replace(/'/g, "\\'")}',
+    deleteSessionConfirmButton: '${tr.deleteSessionConfirmButton || "Delete"}',
+    deleteSessionSuccess: '${tr.deleteSessionSuccess || "Session deleted"}',
+    deleteSessionFailed: '${tr.deleteSessionFailed || "Failed to delete session"}',
+    noSearchResults: '${tr.noSearchResults || "No matching sessions"}',
   };
 
   // ── Utility functions ──

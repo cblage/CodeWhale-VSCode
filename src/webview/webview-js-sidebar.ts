@@ -21,6 +21,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
   var showAllWorkspaces = false;
   var sidebarTab = 'sessions';
   var threadCountEl = document.getElementById('thread-count');
+  var sessionSearchQuery = '';
 
   // ── Work state ──
   var workState = { goal: null, checklist: [], checklistCompletionPct: 0, strategy: [], cycleCount: 0, coherenceState: 'healthy', coherenceLabel: '' };
@@ -31,6 +32,35 @@ export function getSidebarScript(tr: WebviewTranslations): string {
   var _diffIdCounter = window.__wvDiffIdCounter;
 
   // ── Render Sessions ──
+  var _sessionSearchInited = false;
+  var _searchDebounce = null;
+
+  function initSessionSearch() {
+    if (_sessionSearchInited) return;
+    var container = document.getElementById('tab-sessions');
+    if (!container) return;
+    // Insert search bar as the first child, before any session items
+    var searchBar = document.createElement('div');
+    searchBar.className = 'session-search-bar';
+    searchBar.id = 'session-search-bar';
+    var searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.className = 'session-search-input';
+    searchInput.id = 'session-search-input';
+    searchInput.placeholder = __i18n.searchPlaceholder;
+    searchInput.value = sessionSearchQuery;
+    searchInput.addEventListener('input', function() {
+      sessionSearchQuery = searchInput.value;
+      if (_searchDebounce) clearTimeout(_searchDebounce);
+      _searchDebounce = setTimeout(function() {
+        vscode.postMessage({ type: 'searchSessions', query: sessionSearchQuery });
+      }, 300);
+    });
+    searchBar.appendChild(searchInput);
+    container.insertBefore(searchBar, container.firstChild);
+    _sessionSearchInited = true;
+  }
+
   function renderSessions() {
     var container = document.getElementById('tab-sessions');
     if (!container) return;
@@ -44,12 +74,19 @@ export function getSidebarScript(tr: WebviewTranslations): string {
       filterToggle.style.opacity = showAllWorkspaces ? '1' : '0.5';
     }
 
-    container.innerHTML = '';
+    // Ensure search bar exists (only created once)
+    initSessionSearch();
+
+    // Remove only session items, keep the search bar
+    var existing = container.querySelectorAll('.thread-item, .session-empty-msg');
+    for (var r = 0; r < existing.length; r++) {
+      existing[r].remove();
+    }
 
     if (count === 0) {
       var el = document.createElement('div');
-      el.className = 'thread-item';
-      el.textContent = __i18n.noConversations;
+      el.className = 'thread-item session-empty-msg';
+      el.textContent = sessionSearchQuery ? __i18n.noSearchResults : __i18n.noConversations;
       el.style.cssText = 'color:var(--muted);font-style:italic;text-align:center;padding:20px 10px';
       container.appendChild(el);
       return;
@@ -94,6 +131,19 @@ export function getSidebarScript(tr: WebviewTranslations): string {
       }
 
       el.appendChild(metaEl);
+
+      // Delete button
+      var deleteBtn = document.createElement('button');
+      deleteBtn.className = 'session-delete-btn';
+      deleteBtn.textContent = '\\u2715';
+      deleteBtn.title = __i18n.deleteSession;
+      (function(sessionId, sessionTitle) {
+        deleteBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          vscode.postMessage({ type: 'deleteSession', sessionId: sessionId, sessionTitle: sessionTitle });
+        });
+      })(s.id, s.title || s.id.slice(0, 8));
+      el.appendChild(deleteBtn);
 
       (function(sessionId) {
         el.addEventListener('click', function() {
@@ -522,6 +572,8 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     setWorkState: function(v) { workState = v; },
     getChangesState: function() { return changesState; },
     setChangesState: function(v) { changesState = v; },
+    getSessionSearchQuery: function() { return sessionSearchQuery; },
+    setSessionSearchQuery: function(v) { sessionSearchQuery = v; },
   };
 
   closeTaskDetail();

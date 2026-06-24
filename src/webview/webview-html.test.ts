@@ -160,6 +160,15 @@ function makeTr(): WebviewTranslations {
     revertFileTooltip: "Revert file changes",
     fileChanges: "File Changes",
     userInputAwaiting: "Input required",
+    searchSessions: "Search",
+    searchPlaceholder: "Search sessions...",
+    deleteSession: "Delete",
+    deleteSessionConfirmTitle: "Delete session?",
+    deleteSessionConfirmMessage: 'This will permanently delete the session "{title}". This cannot be undone.',
+    deleteSessionConfirmButton: "Delete",
+    deleteSessionSuccess: "Session deleted",
+    deleteSessionFailed: "Failed to delete session",
+    noSearchResults: "No matching sessions",
   };
 }
 

@@ -203,6 +203,16 @@ interface Translations {
   lastTurnNoPrevious: string;
   // Revert for newly created files
   revertWillDelete: string;
+  // Session search & delete
+  searchSessions: string;
+  searchPlaceholder: string;
+  deleteSession: string;
+  deleteSessionConfirmTitle: string;
+  deleteSessionConfirmMessage: string;
+  deleteSessionConfirmButton: string;
+  deleteSessionSuccess: string;
+  deleteSessionFailed: string;
+  noSearchResults: string;
 }
 
 const en: Translations = {
@@ -381,6 +391,16 @@ const en: Translations = {
   lastTurnNoPrevious: "No previous turn found.",
   // Revert for newly created files
   revertWillDelete: "(will be deleted)",
+  // Session search & delete
+  searchSessions: "Search",
+  searchPlaceholder: "Search sessions...",
+  deleteSession: "Delete",
+  deleteSessionConfirmTitle: "Delete session?",
+  deleteSessionConfirmMessage: 'This will permanently delete the session "{title}". This cannot be undone.',
+  deleteSessionConfirmButton: "Delete",
+  deleteSessionSuccess: "Session deleted",
+  deleteSessionFailed: "Failed to delete session",
+  noSearchResults: "No matching sessions",
 };
 
 const zhCn: Translations = {
@@ -559,6 +579,16 @@ const zhCn: Translations = {
   lastTurnNoPrevious: "没有可用的上一轮。",
   // 针对新建文件的回滚
   revertWillDelete: "(将删除该文件)",
+  // 会话搜索与删除
+  searchSessions: "搜索",
+  searchPlaceholder: "搜索会话...",
+  deleteSession: "删除",
+  deleteSessionConfirmTitle: "确认删除会话?",
+  deleteSessionConfirmMessage: "将永久删除会话「{title}」，此操作不可撤销。",
+  deleteSessionConfirmButton: "删除",
+  deleteSessionSuccess: "会话已删除",
+  deleteSessionFailed: "删除会话失败",
+  noSearchResults: "没有匹配的会话",
 };
 
 const translations: Record<string, Translations> = {
@@ -778,5 +808,15 @@ export function webviewTranslations(tr: Translations) {
     lastTurnLabel: tr.lastTurnLabel,
     lastTurnNoPrevious: tr.lastTurnNoPrevious,
     revertWillDelete: tr.revertWillDelete,
+    // Session search & delete
+    searchSessions: tr.searchSessions,
+    searchPlaceholder: tr.searchPlaceholder,
+    deleteSession: tr.deleteSession,
+    deleteSessionConfirmTitle: tr.deleteSessionConfirmTitle,
+    deleteSessionConfirmMessage: tr.deleteSessionConfirmMessage,
+    deleteSessionConfirmButton: tr.deleteSessionConfirmButton,
+    deleteSessionSuccess: tr.deleteSessionSuccess,
+    deleteSessionFailed: tr.deleteSessionFailed,
+    noSearchResults: tr.noSearchResults,
   };
 }

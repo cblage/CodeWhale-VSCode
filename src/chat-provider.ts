@@ -285,6 +285,12 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
           msg.diff as string | undefined
         );
         break;
+      case "deleteSession":
+        await this.handleDeleteSession(msg.sessionId as string, msg.sessionTitle as string);
+        break;
+      case "searchSessions":
+        await this.handleSearchSessions(msg.query as string);
+        break;
     }
   }
 
@@ -1243,6 +1249,49 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       this.postMessage({ type: "threadList", threads, showAllWorkspaces: this.showAllWorkspaces });
     } catch {
       // best-effort, silent fail
+    }
+  }
+
+  /** Delete a session with confirmation dialog */
+  private async handleDeleteSession(sessionId: string, sessionTitle: string): Promise<void> {
+    const confirmMsg = t().deleteSessionConfirmMessage.replace("{title}", sessionTitle || sessionId.slice(0, 8));
+    const confirm = await vscode.window.showWarningMessage(
+      t().deleteSessionConfirmTitle,
+      { modal: true },
+      confirmMsg,
+    );
+    if (confirm !== confirmMsg) return;
+    try {
+      await this.api.deleteSession(sessionId);
+      // If the deleted session was the current one, clear the view
+      if (this.viewingSessionId === sessionId) {
+        this.viewingSessionId = null;
+        this.messages = [];
+        this.postMessage({ type: "clearChat" });
+        this.postMessage({ type: "status", text: "Ready" });
+      }
+      if (this.currentSessionId === sessionId) {
+        this.currentSessionId = null;
+      }
+      await this.refreshSessionList();
+      vscode.window.setStatusBarMessage(t().deleteSessionSuccess, 3000);
+    } catch (err) {
+      vscode.window.showErrorMessage(`${t().deleteSessionFailed}: ${getErrorMessage(err)}`);
+    }
+  }
+
+  /** Search sessions by query and update the sidebar */
+  private async handleSearchSessions(query: string): Promise<void> {
+    try {
+      const result = await this.api.listSessions({ limit: 100, search: query || undefined });
+      let sessions = result.sessions || [];
+      const currentWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!this.showAllWorkspaces && currentWorkspace) {
+        sessions = sessions.filter(s => s.workspace === currentWorkspace);
+      }
+      this.postMessage({ type: "sessionList", sessions, showAllWorkspaces: this.showAllWorkspaces });
+    } catch {
+      // best-effort
     }
   }
 

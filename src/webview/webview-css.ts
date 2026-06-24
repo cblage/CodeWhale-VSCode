@@ -167,6 +167,7 @@ export function getWebviewCss(): string {
       cursor: pointer;
       font-size: 0.85em;
       color: var(--muted);
+      position: relative;
     }
     .thread-item + .thread-item { border-top: 1px solid rgba(128,128,128,0.1); }
     .thread-item:hover { background: var(--card-bg); color: var(--fg); }
@@ -209,6 +210,63 @@ export function getWebviewCss(): string {
       color: var(--accent);
       font-size: 0.9em;
       opacity: 0.7;
+    }
+
+    /* Session search bar */
+    .session-search-bar {
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .session-search-input {
+      width: 100%;
+      padding: 5px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--input-bg, var(--bg));
+      color: var(--fg);
+      font-size: 12px;
+      outline: none;
+      box-sizing: border-box;
+    }
+    .session-search-input:focus {
+      border-color: var(--accent);
+    }
+    .session-search-input::placeholder {
+      color: var(--muted);
+    }
+
+    /* Session delete button */
+    .session-delete-btn {
+      position: absolute;
+      right: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 11px;
+      padding: 2px 5px;
+      border-radius: 3px;
+      opacity: 0.3;
+      transition: opacity 0.15s, color 0.15s;
+      line-height: 1;
+      z-index: 1;
+    }
+    .thread-item:hover .session-delete-btn {
+      opacity: 0.7;
+    }
+    .session-delete-btn:hover {
+      opacity: 1 !important;
+      color: #e55;
+      background: rgba(255,0,0,0.08);
+    }
+    .thread-item.active .session-delete-btn {
+      color: rgba(255,255,255,0.6);
+    }
+    .thread-item.active .session-delete-btn:hover {
+      color: #ff6b6b;
+      background: rgba(255,255,255,0.15);
     }
 
     /* ── Chat Area ── */

@@ -158,6 +158,16 @@ export interface WebviewTranslations {
   revertFileTooltip: string;
   fileChanges: string;
   userInputAwaiting: string;
+  // Session search & delete
+  searchSessions: string;
+  searchPlaceholder: string;
+  deleteSession: string;
+  deleteSessionConfirmTitle: string;
+  deleteSessionConfirmMessage: string;
+  deleteSessionConfirmButton: string;
+  deleteSessionSuccess: string;
+  deleteSessionFailed: string;
+  noSearchResults: string;
 }
 
 export function getWebviewHtml(
