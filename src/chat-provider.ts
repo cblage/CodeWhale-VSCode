@@ -631,32 +631,24 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       this.sessionState.reset();
       this.viewingSessionId = sessionId;
 
-      // Sync VSCode config to the session's model/mode so that startTurn
-      // (which reads getCurrentModel/getCurrentMode from config) sends the
-      // same values the session was created with. If the config's default
-      // differs from the session's model/mode, the first post-resume turn
-      // would switch model/mode → system prompt and tool catalog change →
-      // prefix cache completely busted. Mirrors TUI's
-      // apply_loaded_session → set_model_selection (ui.rs:9548).
+      // Tell the webview which model/mode this session uses so the status
+      // bar reflects the loaded session (not the user's global default).
+      // We deliberately do NOT update the global VSCode config — that would
+      // permanently change defaultModel/defaultMode and cause every new
+      // conversation to inherit the session's mode, even after the user
+      // moves on to a different task (e.g. a plan-mode session would lock
+      // the extension into plan mode forever).
       const sessionModel = session.metadata.model;
       const sessionMode = session.metadata.mode || "agent";
       const cfg = vscode.workspace.getConfiguration("brotherwhale");
       const currentModel = cfg.get<string>("defaultModel", "deepseek-v4-pro");
       const currentMode = cfg.get<string>("defaultMode", "agent");
-      if (sessionModel && sessionModel !== currentModel) {
-        await cfg.update("defaultModel", sessionModel, vscode.ConfigurationTarget.Global);
-      }
-      if (sessionMode !== currentMode) {
-        await cfg.update("defaultMode", sessionMode, vscode.ConfigurationTarget.Global);
-      }
-      if (sessionModel !== currentModel || sessionMode !== currentMode) {
-        this.postMessage({
-          type: "settingsUpdated",
-          model: sessionModel || currentModel,
-          mode: sessionMode,
-          reasoningEffort: cfg.get<string>("reasoningEffort", "auto"),
-        });
-      }
+      this.postMessage({
+        type: "settingsUpdated",
+        model: sessionModel || currentModel,
+        mode: sessionMode,
+        reasoningEffort: cfg.get<string>("reasoningEffort", "auto"),
+      });
 
       // Stash the session's persisted cost so it can be restored after
       // resumeSessionThread + loadThread (which zero stats because seeded
@@ -1173,16 +1165,23 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
 
       const cfg = vscode.workspace.getConfiguration("brotherwhale");
       const reasoningEffort = cfg.get<string>("reasoningEffort", "auto");
-      const mode = cfg.get<string>("defaultMode", "agent");
-      const model = this.getCurrentModel();
-      const isYolo = mode === "yolo";
-      const autoApprove = isYolo || cfg.get<boolean>("autoApprove", false);
+      const mode = this.currentThread.mode;
+      const model = this.currentThread.model;
+      // Use the thread's persisted auto_approve / trust_mode instead of the
+      // config defaults.  When the user approves with "remember", the TUI
+      // flips thread.auto_approve to true (remember_thread_auto_approve) and
+      // the GUI mirrors that in handleApprovalDecision.  Sending the config
+      // value (typically false) here would override the thread's persisted
+      // state on every new turn, causing "remember" to silently revert and
+      // re-prompting for approvals the user already granted — which then
+      // surface as "Request cancelled while awaiting approval" when the turn
+      // is interrupted.
       const result = await this.api.startTurn(this.currentThread.id, fullText, {
         mode,
         model,
         reasoning_effort: reasoningEffort,
-        auto_approve: autoApprove,
-        trust_mode: isYolo,
+        auto_approve: this.currentThread.auto_approve,
+        trust_mode: this.currentThread.trust_mode,
       });
       this.currentTurnId = result.turn.id;
       this.postMessage({ type: "turnStarted", turnId: result.turn.id });
@@ -1448,6 +1447,12 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
         }
 
         this.currentTurnId = null;
+        // Clear pending approvals immediately so the UI doesn't leave
+        // approval bars visible while waiting for the turn.completed
+        // event (which may be delayed or missed if the SSE stream
+        // reconnects).  The turn.completed handler also clears these,
+        // but this ensures the UI is responsive right away.
+        this.pendingApprovals.clear();
         this.postMessage({ type: "turnInterrupted" });
       } catch {
         // ignore
@@ -1475,6 +1480,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
         // ignore
       }
       this.currentTurnId = null;
+      this.pendingApprovals.clear();
       this.postMessage({ type: "turnInterrupted" });
     }
     return true;
@@ -1985,9 +1991,53 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
           }
           this.sendSessionStats();
         }
+
+        // TUI emits turn.completed for ALL terminal turn states
+        // (completed / interrupted / failed) — it never emits
+        // "turn.failed" or "turn.interrupted" (see runtime_threads.rs:3492).
+        // Determine the effective status from the turn record.
+        const turnStatus = pl.turn?.status || "completed";
+        const isTerminalError = turnStatus === "failed" || turnStatus === "interrupted";
+
+        // Safety net: finalize any toolCalls still "running" or
+        // "awaiting_approval".  If their item.completed/item.failed/
+        // item.interrupted events were missed (or never sent because the
+        // turn was interrupted mid-execution), the toolCall would stay
+        // "running" forever and the UI would freeze on "⟳ running...".
+        // This mirrors the TUI's own cleanup in runtime_threads.rs:3395.
         const lastMsg = this.messages[this.messages.length - 1];
+        if (lastMsg?.toolCalls) {
+          for (let i = 0; i < lastMsg.toolCalls.length; i++) {
+            const tc = lastMsg.toolCalls[i];
+            if (tc.status === "running" || tc.status === "awaiting_approval") {
+              tc.status = isTerminalError ? "error" : "complete";
+              tc.approvalId = undefined;
+              if (isTerminalError && !tc.output) {
+                tc.output = turnStatus === "interrupted"
+                  ? "Interrupted"
+                  : (pl.turn?.error || "Turn failed");
+              }
+              this.postMessage({
+                type: "updateToolCall",
+                messageId: lastMsg.id,
+                toolCallIdx: i,
+                toolName: tc.name,
+                status: tc.status,
+                output: tc.output,
+              });
+            }
+          }
+        }
+        // Clear pending approvals and active items for this turn.
+        this.pendingApprovals.clear();
+        this.activeItems.clear();
+
         if (lastMsg?.role === "assistant") {
-          const payload = finalizeAssistantMessage(lastMsg, "complete", { usage: pl.turn?.usage });
+          const payload = finalizeAssistantMessage(
+            lastMsg,
+            isTerminalError ? "error" : "complete",
+            { usage: pl.turn?.usage },
+          );
           this.postMessage(payload);
         }
         // Auto-save session after each completed turn (mirrors TUI's
@@ -1998,17 +2048,6 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
         this.stopPeriodicTaskRefresh();
         this.refreshTaskList();
         this.refreshWorkPanel();
-        break;
-      }
-
-      case "turn.failed": {
-        this.currentTurnId = null;
-        const lastMsg = this.messages[this.messages.length - 1];
-        if (lastMsg?.role === "assistant") {
-          const payload = finalizeAssistantMessage(lastMsg, "error");
-          this.postMessage(payload);
-        }
-        this.stopPeriodicTaskRefresh();
         break;
       }
 
@@ -2140,6 +2179,26 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
         this.postMessage({
           type: "error",
           message: `Approval timed out after ${pl.timeout_secs || 30}s — tool call was denied automatically`,
+        });
+        break;
+      }
+
+      case "sandbox.denied": {
+        // Informational: TUI denied a tool call due to sandbox policy
+        // (see runtime_threads.rs:3274).  The engine subsequently calls
+        // deny_tool_call which produces item.completed/item.failed —
+        // here we just surface the denial reason to the user so they
+        // understand why the tool was rejected.
+        const pl = event.payload as {
+          tool_id?: string;
+          tool_name?: string;
+          reason?: string;
+        };
+        const toolName = pl.tool_name || "unknown";
+        const reason = pl.reason || "sandbox policy";
+        this.postMessage({
+          type: "status",
+          text: `${toolName} denied by sandbox: ${reason}`,
         });
         break;
       }
@@ -2396,6 +2455,84 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
           ].includes(toolName)) {
             this.refreshTaskList();
             this.refreshAgentRuns();
+          }
+        }
+        break;
+      }
+
+      case "item.failed": {
+        // TUI emits item.failed (not item.completed) when a tool execution
+        // fails (e.g. edit_file search-not-found, non-unique match, stale
+        // prior read).  Without this handler the toolCall status stays
+        // "running" forever and the UI freezes on "⟳ running...".
+        const pl = event.payload as {
+          item?: {
+            kind?: string;
+            id?: string;
+            summary?: string;
+            detail?: string;
+            status?: string;
+            metadata?: Record<string, unknown>;
+          };
+        };
+        const kind = pl.item?.kind;
+        const active = this.activeItems.get(itemId);
+        this.activeItems.delete(itemId);
+
+        if (kind === "tool_call" || kind === "file_change" || kind === "command_execution") {
+          const tcIdx = active?.toolCallIdx;
+          const tc = tcIdx !== undefined ? lastMsg.toolCalls?.[tcIdx] : undefined;
+
+          if (tc) {
+            tc.status = "error";
+            tc.output = pl.item?.detail || pl.item?.summary;
+            this.postMessage({
+              type: "updateToolCall",
+              messageId: lastMsg.id,
+              toolCallIdx: tcIdx!,
+              toolName: tc.name,
+              status: "error",
+              output: tc.output,
+            });
+          }
+        }
+        break;
+      }
+
+      case "item.interrupted": {
+        // TUI emits item.interrupted when a turn is interrupted (user
+        // clicks stop, or a new turn supersedes the current one) for all
+        // in-progress items (see runtime_threads.rs:3412,3437).  Without
+        // this handler the toolCall status stays "running" forever.
+        const pl = event.payload as {
+          item?: {
+            kind?: string;
+            id?: string;
+            summary?: string;
+            detail?: string;
+            status?: string;
+          };
+        };
+        const kind = pl.item?.kind;
+        const active = this.activeItems.get(itemId);
+        this.activeItems.delete(itemId);
+
+        if (kind === "tool_call" || kind === "file_change" || kind === "command_execution") {
+          const tcIdx = active?.toolCallIdx;
+          const tc = tcIdx !== undefined ? lastMsg.toolCalls?.[tcIdx] : undefined;
+
+          if (tc) {
+            tc.status = "error";
+            tc.approvalId = undefined;
+            tc.output = pl.item?.detail || pl.item?.summary || "Interrupted";
+            this.postMessage({
+              type: "updateToolCall",
+              messageId: lastMsg.id,
+              toolCallIdx: tcIdx!,
+              toolName: tc.name,
+              status: "error",
+              output: tc.output,
+            });
           }
         }
         break;
