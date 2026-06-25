@@ -926,10 +926,6 @@ export function getWebviewCss(): string {
       align-items: flex-end;
       min-height: 0;
     }
-    #input-row textarea {
-      height: 100%;
-      min-height: 100%;
-    }
     #btn-attach {
       background: transparent !important;
       color: var(--fg) !important;
@@ -944,6 +940,7 @@ export function getWebviewCss(): string {
     #btn-attach:hover { opacity: 0.8; }
     #input-area textarea {
       flex: 1;
+      align-self: stretch;
       background: var(--input-bg);
       color: var(--input-fg);
       border: 1px solid var(--input-border);
@@ -1060,6 +1057,50 @@ export function getWebviewCss(): string {
       padding: 1px 4px;
       border-radius: 2px;
     }
+    #settings-bar .setting-value::after {
+      content: ' ▾';
+      font-size: 0.7em;
+      opacity: 0.5;
+    }
+    #settings-bar .setting-value:hover {
+      background: var(--brand-primary);
+      color: var(--brand-primary-foreground);
+    }
+
+    /* ── Settings Dropdown ── */
+    #settings-bar .setting-dropdown {
+      position: relative;
+    }
+    #settings-bar .dropdown-menu {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      margin-top: 2px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      min-width: 100%;
+      z-index: 1000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+      overflow: hidden;
+    }
+    #settings-bar .dropdown-menu.open {
+      display: block;
+    }
+    #settings-bar .dropdown-item {
+      padding: 4px 12px;
+      white-space: nowrap;
+      cursor: pointer;
+      font-size: 0.95em;
+      color: var(--fg);
+    }
+    #settings-bar .dropdown-item:hover,
+    #settings-bar .dropdown-item.selected {
+      background: var(--brand-primary);
+      color: var(--brand-primary-foreground);
+    }
+
     #settings-bar #btn-threads {
       background: transparent;
       border: none;
@@ -1074,11 +1115,6 @@ export function getWebviewCss(): string {
     #settings-bar #btn-threads:hover {
       color: var(--fg);
       background: var(--brand-primary);
-    }
-
-    #settings-bar .setting-value:hover {
-      background: var(--brand-primary);
-      color: var(--brand-primary-foreground);
     }
 
     /* ── Slash Menu ── */
@@ -1242,11 +1278,14 @@ export function getWebviewCss(): string {
     /* ── Task Cards ── */
 
     .task-card {
-      padding: 6px 10px;
-      border-bottom: 1px solid rgba(128,128,128,0.1);
+      padding: 7px 10px;
+      border-bottom: 1px solid rgba(128,128,128,0.07);
       cursor: pointer;
+      transition: background 0.15s;
     }
+    .task-card:last-child { border-bottom: none; }
     .task-card:hover { background: var(--card-bg); }
+    .task-card:active { opacity: 0.9; }
     .task-card .task-header {
       display: flex;
       align-items: center;
@@ -1262,11 +1301,15 @@ export function getWebviewCss(): string {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      font-weight: 500;
     }
     .task-card .task-meta {
       font-size: 0.75em;
       color: var(--muted);
-      margin-top: 2px;
+      margin-top: 3px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
     }
     .task-card .task-actions {
       display: flex;
@@ -1277,26 +1320,35 @@ export function getWebviewCss(): string {
       background: none;
       border: 1px solid var(--border);
       color: var(--muted);
-      padding: 1px 6px;
+      padding: 2px 6px;
       font-size: 0.7em;
       cursor: pointer;
       border-radius: 3px;
+      transition: all 0.12s;
     }
     .task-card .task-actions button:hover {
       color: var(--fg);
       border-color: var(--fg);
+      background: rgba(128,128,128,0.04);
+    }
+    .task-card .task-actions button:active {
+      background: rgba(128,128,128,0.1);
     }
 
     /* ── Agent Card (sidebar) ── */
 
     .agent-card {
-      padding: 6px 10px;
-      border-bottom: 1px solid rgba(128,128,128,0.1);
+      padding: 7px 10px;
+      border-bottom: 1px solid rgba(128,128,128,0.07);
       cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
     }
+    .agent-card:last-child { border-bottom: none; }
     .agent-card:hover { background: var(--card-bg); }
+    .agent-card:active { opacity: 0.9; }
     .agent-card.agent-active {
       border-left: 3px solid #ff9800;
+      background: rgba(255, 152, 0, 0.02);
     }
     .agent-card .agent-header {
       display: flex;
@@ -1474,39 +1526,206 @@ export function getWebviewCss(): string {
 
     /* ── Work Section ── */
 
-    .work-section {
-      padding: 6px 10px;
-      border-bottom: 1px solid rgba(128,128,128,0.1);
+    @keyframes workFadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
     }
+    @keyframes workPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+    @keyframes workProgressFill {
+      from { width: 0%; }
+    }
+
+    .work-section {
+      padding: 8px 10px;
+      border-bottom: 1px solid rgba(128,128,128,0.08);
+      animation: workFadeIn 300ms ease-out both;
+    }
+    .work-section:last-child {
+      border-bottom: none;
+    }
+
     .work-section-title {
-      font-size: 0.75em;
+      font-size: 0.72em;
       font-weight: 600;
       color: var(--muted);
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 4px;
+      letter-spacing: 0.6px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
-    .work-goal {
-      font-size: 0.85em;
-      color: #f0a030;
-      font-weight: 600;
+    .work-section-title-icon {
+      font-size: 0.9em;
+      opacity: 0.7;
     }
-    .work-checklist-item {
-      font-size: 0.8em;
-      padding: 1px 0;
-    }
-    .work-checklist-item .check { margin-right: 4px; }
-    .work-strategy-step {
-      font-size: 0.8em;
-      padding: 1px 0;
-    }
-    .work-strategy-step .step-icon { margin-right: 4px; }
-    .work-empty {
+    .work-section-subtitle {
+      font-weight: 400;
       color: var(--muted);
-      font-style: italic;
-      text-align: center;
-      padding: 20px 10px;
+      font-size: 0.9em;
+      margin-left: auto;
+    }
+
+    /* ── Goal Card ── */
+    .work-goal-card {
+      margin: 2px 0 4px;
+      padding: 8px 10px;
+      background: rgba(240, 160, 48, 0.06);
+      border-left: 3px solid #f0a030;
+      border-radius: 0 6px 6px 0;
+    }
+    body[data-vscode-theme-kind="vscode-dark"] .work-goal-card {
+      background: rgba(240, 160, 48, 0.1);
+    }
+    .work-goal-label {
+      font-size: 0.65em;
+      font-weight: 600;
+      color: #f0a030;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
+    }
+    .work-goal-text {
       font-size: 0.85em;
+      font-weight: 500;
+      color: var(--fg);
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    /* ── Progress Bar ── */
+    .work-progress-bar-bg {
+      height: 3px;
+      background: rgba(128,128,128,0.12);
+      border-radius: 2px;
+      margin: 2px 0 6px;
+      overflow: hidden;
+    }
+    .work-progress-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      animation: workProgressFill 500ms ease-out;
+    }
+    .work-progress-bar-fill.completed { background: #4caf50; }
+    .work-progress-bar-fill.in-progress { background: var(--brand-primary); }
+    .work-progress-bar-fill.partial { background: #f0a030; }
+
+    /* ── Checklist / Strategy Items ── */
+    .work-checklist-item,
+    .work-strategy-step {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      padding: 3px 6px;
+      font-size: 0.8em;
+      line-height: 1.4;
+      border-radius: 4px;
+      transition: background 0.15s, transform 0.15s;
+    }
+    .work-checklist-item:hover,
+    .work-strategy-step:hover {
+      background: rgba(128,128,128,0.04);
+    }
+    .work-checklist-item:active,
+    .work-strategy-step:active {
+      transform: scale(0.98);
+    }
+    .work-checklist-icon,
+    .work-strategy-icon {
+      flex-shrink: 0;
+      width: 16px;
+      text-align: center;
+      font-size: 0.9em;
+      margin-top: 1px;
+    }
+    .work-checklist-text,
+    .work-strategy-text {
+      flex: 1;
+      min-width: 0;
+      word-break: break-word;
+    }
+    .work-checklist-item.completed .work-checklist-text,
+    .work-strategy-step.completed .work-strategy-text {
+      text-decoration: line-through;
+      opacity: 0.65;
+    }
+    .work-checklist-item.in-progress {
+      background: rgba(255, 152, 0, 0.04);
+    }
+    .work-strategy-step.in-progress {
+      background: rgba(255, 152, 0, 0.04);
+    }
+
+    /* ── Coherence Banner ── */
+    .work-coherence {
+      padding: 6px 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8em;
+      line-height: 1.3;
+      border-radius: 4px;
+      margin: 4px 8px 0;
+    }
+    .work-coherence-icon {
+      flex-shrink: 0;
+      font-size: 0.9em;
+    }
+    .work-coherence.warning {
+      background: rgba(255, 152, 0, 0.1);
+      border-left: 3px solid #ff9800;
+      color: #ff9800;
+    }
+    .work-coherence.info {
+      background: rgba(33, 150, 243, 0.08);
+      border-left: 3px solid #2196f3;
+      color: #2196f3;
+    }
+    .work-coherence.error {
+      background: rgba(244, 67, 54, 0.08);
+      border-left: 3px solid #f44336;
+      color: #f44336;
+    }
+
+    /* ── Cycle Count ── */
+    .work-cycle-count {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.75em;
+      color: var(--muted);
+      padding: 2px 0;
+    }
+    .work-cycle-icon {
+      font-size: 0.85em;
+      opacity: 0.6;
+    }
+
+    /* ── Empty State ── */
+    .work-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      color: var(--muted);
+      text-align: center;
+      padding: 24px 10px;
+      font-size: 0.82em;
+      opacity: 0.7;
+    }
+    .work-empty-icon {
+      font-size: 1.6em;
+      opacity: 0.4;
+      margin-bottom: 2px;
+    }
+    .work-empty-text {
+      font-style: italic;
+      line-height: 1.4;
     }
 
     /* ── Changes Section ── */
@@ -1515,29 +1734,54 @@ export function getWebviewCss(): string {
       display: flex;
       gap: 8px;
       font-size: 0.8em;
-      padding-bottom: 4px;
+      padding: 0 0 6px;
+      flex-wrap: wrap;
     }
-    .change-summary-created { color: #4caf50; }
-    .change-summary-modified { color: #2196f3; }
-    .change-summary-deleted { color: #f44336; }
-    .change-list { padding: 2px 10px; }
+    .change-summary-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+    .change-summary-created {
+      background: rgba(76,175,80,0.1);
+      color: #4caf50;
+    }
+    .change-summary-modified {
+      background: rgba(33,150,243,0.1);
+      color: #2196f3;
+    }
+    .change-summary-deleted {
+      background: rgba(244,67,54,0.1);
+      color: #f44336;
+    }
+    .change-list {
+      padding: 0 10px 2px;
+    }
     .change-item {
       display: flex;
       align-items: center;
       gap: 6px;
-      padding: 3px 0;
-      border-bottom: 1px solid rgba(128,128,128,0.06);
+      padding: 4px 6px;
+      border-bottom: 1px solid rgba(128,128,128,0.05);
+      border-radius: 4px;
+      transition: background 0.15s;
     }
     .change-item:last-child { border-bottom: none; }
+    .change-item:hover {
+      background: rgba(128,128,128,0.03);
+    }
     .change-badge {
       flex-shrink: 0;
-      width: 16px;
-      height: 16px;
+      width: 18px;
+      height: 18px;
       display: flex;
       align-items: center;
       justify-content: center;
-      border-radius: 2px;
-      font-size: 0.7em;
+      border-radius: 3px;
+      font-size: 0.68em;
       font-weight: 700;
       font-family: var(--vscode-editor-font-family, monospace);
       letter-spacing: -0.5px;
@@ -1558,6 +1802,8 @@ export function getWebviewCss(): string {
       font-family: var(--vscode-editor-font-family, monospace);
       font-size: 0.8em;
       flex-shrink: 0;
+      display: flex;
+      gap: 2px;
     }
     .change-added { color: #4caf50; }
     .change-removed { color: #f44336; }
@@ -1567,16 +1813,16 @@ export function getWebviewCss(): string {
       gap: 3px;
     }
     .change-btn {
-      padding: 1px 5px;
+      padding: 1px 6px;
       border: 1px solid var(--border);
-      border-radius: 2px;
+      border-radius: 3px;
       background: transparent;
       color: var(--muted);
       cursor: pointer;
-      font-size: 0.7em;
+      font-size: 0.68em;
       font-family: var(--vscode-editor-font-family, monospace);
-      line-height: 1.4;
-      transition: all 0.1s ease;
+      line-height: 1.5;
+      transition: all 0.12s ease;
     }
     .change-btn:hover {
       color: var(--fg);
@@ -1585,6 +1831,7 @@ export function getWebviewCss(): string {
     }
     .change-btn:active {
       background: rgba(128,128,128,0.12);
+      transform: scale(0.96);
     }
 
     /* ── Task Detail Overlay ── */

@@ -307,12 +307,24 @@ describe("SlashCommandHandler - Dispatcher Pattern", () => {
   // ── /mode ──
 
   describe("/mode", () => {
-    it("switches to yolo mode and updates thread", async () => {
-      const updateThread = vi.fn(async () => undefined);
+    it("switches to yolo mode and updates the active thread state", async () => {
+      const currentThread = {
+        id: "thread-1",
+        mode: "agent",
+        model: "deepseek-v4-pro",
+        trust_mode: false,
+        auto_approve: false,
+      } as any;
+      const updateThread = vi.fn(async () => ({
+        ...currentThread,
+        mode: "yolo",
+        trust_mode: true,
+        auto_approve: true,
+      }));
       const postMessage = vi.fn();
       const ctx = createContext({
         api: { ...createContext().api, updateThread } as any,
-        currentThread: { id: "thread-1" } as any,
+        currentThread,
         postMessage,
       });
       const handler = new SlashCommandHandler(ctx);
@@ -331,6 +343,9 @@ describe("SlashCommandHandler - Dispatcher Pattern", () => {
         model: "deepseek-v4-pro",
         reasoningEffort: "auto",
       });
+      expect(currentThread.mode).toBe("yolo");
+      expect(currentThread.trust_mode).toBe(true);
+      expect(currentThread.auto_approve).toBe(true);
     });
 
     it("switches to plan mode", async () => {
@@ -373,20 +388,35 @@ describe("SlashCommandHandler - Dispatcher Pattern", () => {
   // ── /model ──
 
   describe("/model", () => {
-    it("switches model and posts settings update", async () => {
+    it("switches model, updates the active thread, and posts settings update", async () => {
+      const currentThread = {
+        id: "thread-1",
+        mode: "agent",
+        model: "deepseek-v4-pro",
+      } as any;
+      const updateThread = vi.fn(async () => ({
+        ...currentThread,
+        model: "deepseek-v4-flash",
+      }));
       const postMessage = vi.fn();
-      const ctx = createContext({ postMessage });
+      const ctx = createContext({
+        api: { ...createContext().api, updateThread } as any,
+        currentThread,
+        postMessage,
+      });
       const handler = new SlashCommandHandler(ctx);
 
       await handler.handle("/model", "deepseek-v4-flash");
 
       expect(vscodeState.updateMock).toHaveBeenCalledWith("defaultModel", "deepseek-v4-flash", "global");
+      expect(updateThread).toHaveBeenCalledWith("thread-1", { model: "deepseek-v4-flash" });
       expect(postMessage).toHaveBeenCalledWith({
         type: "settingsUpdated",
         mode: "agent",
         model: "deepseek-v4-flash",
         reasoningEffort: "auto",
       });
+      expect(currentThread.model).toBe("deepseek-v4-flash");
     });
 
     it("shows current model when no arg given", async () => {

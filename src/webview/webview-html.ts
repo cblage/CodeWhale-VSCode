@@ -263,15 +263,40 @@ ${css}
         <button id="btn-threads" title="${tr.toggleHistory}">📋</button>
         <div class="setting-item">
           <span class="setting-label">${tr.modeLabel}:</span>
-          <span class="setting-value" id="current-mode">agent</span>
+          <div class="setting-dropdown" data-setting="mode">
+            <span class="setting-value" id="current-mode">agent</span>
+            <div class="dropdown-menu" id="dropdown-mode">
+              <div class="dropdown-item" data-value="agent">agent</div>
+              <div class="dropdown-item" data-value="plan">plan</div>
+              <div class="dropdown-item" data-value="yolo">yolo</div>
+            </div>
+          </div>
         </div>
         <div class="setting-item">
           <span class="setting-label">${tr.modelLabel}:</span>
-          <span class="setting-value" id="current-model">deepseek-v4-pro</span>
+          <div class="setting-dropdown" data-setting="model">
+            <span class="setting-value" id="current-model">deepseek-v4-pro</span>
+            <div class="dropdown-menu" id="dropdown-model">
+              <div class="dropdown-item" data-value="deepseek-v4-pro">deepseek-v4-pro</div>
+              <div class="dropdown-item" data-value="deepseek-v4-flash">deepseek-v4-flash</div>
+              <div class="dropdown-item" data-value="deepseek-chat">deepseek-chat</div>
+              <div class="dropdown-item" data-value="deepseek-reasoner">deepseek-reasoner</div>
+            </div>
+          </div>
         </div>
         <div class="setting-item">
           <span class="setting-label">${tr.reasoningEffortLabel}:</span>
-          <span class="setting-value" id="current-reasoning">auto</span>
+          <div class="setting-dropdown" data-setting="reasoning">
+            <span class="setting-value" id="current-reasoning">auto</span>
+            <div class="dropdown-menu" id="dropdown-reasoning">
+              <div class="dropdown-item" data-value="auto">auto</div>
+              <div class="dropdown-item" data-value="off">off</div>
+              <div class="dropdown-item" data-value="low">low</div>
+              <div class="dropdown-item" data-value="medium">medium</div>
+              <div class="dropdown-item" data-value="high">high</div>
+              <div class="dropdown-item" data-value="max">max</div>
+            </div>
+          </div>
         </div>
       </div>
       <div id="messages"></div>

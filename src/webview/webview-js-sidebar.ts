@@ -136,9 +136,9 @@ export function getSidebarScript(tr: WebviewTranslations): string {
 
     if (count === 0) {
       var el = document.createElement('div');
-      el.className = 'thread-item session-empty-msg';
-      el.textContent = sessionSearchQuery ? __i18n.noSearchResults : __i18n.noConversations;
-      el.style.cssText = 'color:var(--muted);font-style:italic;text-align:center;padding:20px 10px';
+      el.className = 'work-empty';
+      var msg = sessionSearchQuery ? __i18n.noSearchResults : __i18n.noConversations;
+      el.innerHTML = '<div class="work-empty-icon">\\uD83D\\uDCCB</div><div class="work-empty-text">' + __wvEscapeHtml(msg) + '</div>';
       container.appendChild(el);
       return;
     }
@@ -219,9 +219,8 @@ export function getSidebarScript(tr: WebviewTranslations): string {
 
     if (count === 0) {
       var el = document.createElement('div');
-      el.className = 'thread-item';
-      el.textContent = __i18n.noConversations;
-      el.style.cssText = 'color:var(--muted);font-style:italic;text-align:center;padding:20px 10px';
+      el.className = 'work-empty';
+      el.innerHTML = '<div class="work-empty-icon">\\uD83D\\uDCCB</div><div class="work-empty-text">' + __wvEscapeHtml(__i18n.noConversations) + '</div>';
       container.appendChild(el);
       return;
     }
@@ -309,7 +308,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     if (!tasks || tasks.length === 0) {
       var el = document.createElement('div');
       el.className = 'work-empty';
-      el.textContent = __i18n.noTasks;
+      el.innerHTML = '<div class="work-empty-icon">\\u2699</div><div class="work-empty-text">' + __wvEscapeHtml(__i18n.noTasks) + '</div>';
       container.appendChild(el);
       return;
     }
@@ -355,7 +354,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     if (!runs || runs.length === 0) {
       var el = document.createElement('div');
       el.className = 'work-empty';
-      el.textContent = __i18n.noAgentRuns;
+      el.innerHTML = '<div class="work-empty-icon">\\uD83E\\uDD16</div><div class="work-empty-text">' + __wvEscapeHtml(__i18n.noAgentRuns) + '</div>';
       container.appendChild(el);
       return;
     }
@@ -438,64 +437,79 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     if (!hasContent) {
       var el = document.createElement('div');
       el.className = 'work-empty';
-      el.textContent = __i18n.noActiveWork;
+      el.innerHTML = '<div class="work-empty-icon">&#9668;&#65039;</div><div class="work-empty-text">' + __wvEscapeHtml(__i18n.noActiveWork) + '</div>';
       container.appendChild(el);
       return;
     }
+    // ── Coherence Banner ──
     if (workState.coherenceState && workState.coherenceState !== 'healthy') {
       var section = document.createElement('div');
       section.className = 'work-section';
       var stateKey = 'coherence' + workState.coherenceState.charAt(0).toUpperCase() + workState.coherenceState.slice(1).replace(/_([a-z])/g, function(_, c) { return c.toUpperCase(); });
       var stateLabel = __i18n[stateKey] || workState.coherenceLabel || workState.coherenceState;
       var isWarning = workState.coherenceState === 'refreshing_context' || workState.coherenceState === 'getting_crowded';
-      var barColor = isWarning ? '#ff9800' : '#2196f3';
-      section.innerHTML = '<div class="work-coherence" style="padding:4px 8px;border-radius:4px;background:' + barColor + '22;border-left:3px solid ' + barColor + ';font-size:0.82em;color:' + barColor + '">' + __wvEscapeHtml(stateLabel) + '</div>';
+      var severity = isWarning ? 'warning' : 'info';
+      var icon = isWarning ? '\\u26A0' : '\\u2139';
+      section.innerHTML = '<div class="work-coherence ' + severity + '"><span class="work-coherence-icon">' + icon + '</span>' + __wvEscapeHtml(stateLabel) + '</div>';
       container.appendChild(section);
     }
+    // ── Goal ──
     if (workState.goal) {
       var section = document.createElement('div');
       section.className = 'work-section';
-      section.innerHTML = '<div class="work-section-title">' + __wvEscapeHtml(__i18n.goal) + '</div><div class="work-goal">' + __wvEscapeHtml(workState.goal) + '</div>';
+      section.innerHTML =
+        '<div class="work-section-title"><span class="work-section-title-icon">\\uD83C\\uDFAF</span>' + __wvEscapeHtml(__i18n.goal) + '</div>' +
+        '<div class="work-goal-card">' +
+          '<div class="work-goal-label">' + __wvEscapeHtml(__i18n.goal) + '</div>' +
+          '<div class="work-goal-text">' + __wvEscapeHtml(workState.goal) + '</div>' +
+        '</div>';
       container.appendChild(section);
     }
+    // ── Checklist ──
     if (workState.checklist.length > 0) {
       var section = document.createElement('div');
       section.className = 'work-section';
-      var html = '<div class="work-section-title">' + __wvEscapeHtml(__i18n.checklist);
+      var html = '<div class="work-section-title"><span class="work-section-title-icon">\\u2611</span>' + __wvEscapeHtml(__i18n.checklist);
       if (workState.checklistCompletionPct > 0) {
-        var pctStr = __i18n.completionPct.replace('{n}', String(workState.checklistCompletionPct));
-        html += ' <span style="font-weight:400;color:var(--muted);font-size:0.9em">' + __wvEscapeHtml(pctStr) + '</span>';
+        var pct = Number(workState.checklistCompletionPct);
+        var pctStr = __i18n.completionPct.replace('{n}', String(pct));
+        html += ' <span class="work-section-subtitle">' + __wvEscapeHtml(pctStr) + '</span>';
       }
       html += '</div>';
+      // Progress bar
       if (workState.checklistCompletionPct > 0) {
-        html += '<div class="work-progress-bar" style="height:4px;background:var(--border);border-radius:2px;margin:4px 0 8px;overflow:hidden"><div style="height:100%;width:' + workState.checklistCompletionPct + '%;background:var(--brand-primary);border-radius:2px;transition:width 0.3s ease"></div></div>';
+        var pct = Number(workState.checklistCompletionPct);
+        var fillClass = pct >= 100 ? 'completed' : pct >= 40 ? 'in-progress' : 'partial';
+        html += '<div class="work-progress-bar-bg"><div class="work-progress-bar-fill ' + fillClass + '" style="width:' + pct + '%"></div></div>';
       }
       for (var ci = 0; ci < workState.checklist.length; ci++) {
         var item = workState.checklist[ci];
-        var check = item.status === 'completed' ? '\\u2713' : item.status === 'in_progress' ? '\\u27F3' : '\\u25CB';
-        var color = item.status === 'completed' ? '#4caf50' : item.status === 'in_progress' ? '#ff9800' : '#888';
-        html += '<div class="work-checklist-item" style="color:' + color + ';display:flex;align-items:baseline;gap:6px;padding:2px 0"><span style="flex-shrink:0;width:16px;text-align:center">' + check + '</span><span>' + __wvEscapeHtml(item.content) + '</span></div>';
+        var icon = item.status === 'completed' ? '\\u2713' : item.status === 'in_progress' ? '\\u27F3' : '\\u25CB';
+        var itemClass = 'work-checklist-item' + (item.status === 'completed' ? ' completed' : '') + (item.status === 'in_progress' ? ' in-progress' : '');
+        html += '<div class="' + itemClass + '"><span class="work-checklist-icon">' + icon + '</span><span class="work-checklist-text">' + __wvEscapeHtml(item.content) + '</span></div>';
       }
       section.innerHTML = html;
       container.appendChild(section);
     }
+    // ── Strategy Steps ──
     if (workState.strategy.length > 0) {
       var section = document.createElement('div');
       section.className = 'work-section';
-      var html = '<div class="work-section-title">' + __wvEscapeHtml(__i18n.strategy) + '</div>';
+      var html = '<div class="work-section-title"><span class="work-section-title-icon">\\uD83D\\uDCD0</span>' + __wvEscapeHtml(__i18n.strategy) + '</div>';
       for (var si = 0; si < workState.strategy.length; si++) {
         var step = workState.strategy[si];
         var icon = step.status === 'completed' ? '\\u2713' : step.status === 'in_progress' ? '\\u27F3' : '\\u25CB';
-        var color = step.status === 'completed' ? '#4caf50' : step.status === 'in_progress' ? '#ff9800' : '#888';
-        html += '<div class="work-strategy-step" style="color:' + color + ';display:flex;align-items:baseline;gap:6px;padding:2px 0"><span style="flex-shrink:0;width:16px;text-align:center">' + icon + '</span><span>' + __wvEscapeHtml(step.text) + '</span></div>';
+        var stepClass = 'work-strategy-step' + (step.status === 'completed' ? ' completed' : '') + (step.status === 'in_progress' ? ' in-progress' : '');
+        html += '<div class="' + stepClass + '"><span class="work-strategy-icon">' + icon + '</span><span class="work-strategy-text">' + __wvEscapeHtml(step.text) + '</span></div>';
       }
       section.innerHTML = html;
       container.appendChild(section);
     }
+    // ── Cycle Count ──
     if (workState.cycleCount > 0) {
       var section = document.createElement('div');
       section.className = 'work-section';
-      section.innerHTML = '<div style="font-size:0.8em;color:var(--muted)">' + __wvEscapeHtml(__i18n.cycles) + ': ' + workState.cycleCount + '</div>';
+      section.innerHTML = '<div class="work-cycle-count"><span class="work-cycle-icon">\\uD83D\\uDD04</span>' + __wvEscapeHtml(__i18n.cycles) + ': ' + workState.cycleCount + '</div>';
       container.appendChild(section);
     }
   }
@@ -513,7 +527,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     if (!changesState || changesState.length === 0) {
       var el = document.createElement('div');
       el.className = 'work-empty';
-      el.textContent = __i18n.noFileChanges;
+      el.innerHTML = '<div class="work-empty-icon">\\uD83D\\uDCC4</div><div class="work-empty-text">' + __wvEscapeHtml(__i18n.noFileChanges) + '</div>';
       container.appendChild(el);
       return;
     }
@@ -527,10 +541,10 @@ export function getSidebarScript(tr: WebviewTranslations): string {
       else modifiedCount++;
     }
     var summaryParts = [];
-    if (createdCount > 0) summaryParts.push('<span class="change-summary-created">' + createdCount + ' ' + __wvEscapeHtml(__i18n.fileCreated) + '</span>');
-    if (modifiedCount > 0) summaryParts.push('<span class="change-summary-modified">' + modifiedCount + ' ' + __wvEscapeHtml(__i18n.fileModified) + '</span>');
-    if (deletedCount > 0) summaryParts.push('<span class="change-summary-deleted">' + deletedCount + ' ' + __wvEscapeHtml(__i18n.fileDeleted) + '</span>');
-    header.innerHTML = '<div class="work-section-title">' + __wvEscapeHtml(__i18n.fileChanges) + ' <span style="font-weight:400;color:var(--muted);font-size:0.9em">(' + changesState.length + ')</span></div><div class="change-summary-row">' + summaryParts.join(' ') + '</div>';
+    if (createdCount > 0) summaryParts.push('<span class="change-summary-item change-summary-created">' + createdCount + ' ' + __wvEscapeHtml(__i18n.fileCreated) + '</span>');
+    if (modifiedCount > 0) summaryParts.push('<span class="change-summary-item change-summary-modified">' + modifiedCount + ' ' + __wvEscapeHtml(__i18n.fileModified) + '</span>');
+    if (deletedCount > 0) summaryParts.push('<span class="change-summary-item change-summary-deleted">' + deletedCount + ' ' + __wvEscapeHtml(__i18n.fileDeleted) + '</span>');
+    header.innerHTML = '<div class="work-section-title"><span class="work-section-title-icon">\\uD83D\\uDCC1</span>' + __wvEscapeHtml(__i18n.fileChanges) + ' <span class="work-section-subtitle">(' + changesState.length + ')</span></div><div class="change-summary-row">' + summaryParts.join(' ') + '</div>';
     container.appendChild(header);
 
     // File list

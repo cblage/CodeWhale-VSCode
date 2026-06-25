@@ -364,8 +364,8 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       this.debugLog("initializeThread SUCCESS, posting ready");
       this.postMessage({ 
         type: "ready", 
-        model: this.getCurrentModel(),
-        mode: this.getCurrentMode(),
+        model: this.currentThread?.model || this.getCurrentModel(),
+        mode: this.currentThread?.mode || this.getCurrentMode(),
         reasoningEffort: this.getCurrentReasoningEffort(),
         runtimeVersion: this.runtimeVersion,
       });
@@ -377,8 +377,8 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       });
       this.postMessage({
         type: "ready",
-        model: this.getCurrentModel(),
-        mode: this.getCurrentMode(),
+        model: this.currentThread?.model || this.getCurrentModel(),
+        mode: this.currentThread?.mode || this.getCurrentMode(),
         reasoningEffort: this.getCurrentReasoningEffort(),
         runtimeVersion: this.runtimeVersion,
       });

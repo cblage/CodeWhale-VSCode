@@ -103,6 +103,69 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
   // ── Tell extension we're ready ──
   vscode.postMessage({ type: 'webviewReady' });
 
+  // ── Settings dropdown handlers ──
+  (function(){
+    var settingsBar = document.getElementById('settings-bar');
+    if (!settingsBar) return;
+
+    function closeAllDropdowns() {
+      var menus = settingsBar.querySelectorAll('.dropdown-menu');
+      for (var i = 0; i < menus.length; i++) { menus[i].classList.remove('open'); }
+    }
+
+    function highlightCurrent(dropdown) {
+      var currentVal = dropdown.parentElement.querySelector('.setting-value').textContent.trim();
+      var items = dropdown.querySelectorAll('.dropdown-item');
+      for (var i = 0; i < items.length; i++) {
+        items[i].classList.toggle('selected', items[i].getAttribute('data-value') === currentVal);
+      }
+    }
+
+    settingsBar.addEventListener('click', function(e) {
+      var target = e.target;
+
+      // Toggle dropdown on setting-value click
+      if (target.classList.contains('setting-value')) {
+        var dropdown = target.parentElement.querySelector('.dropdown-menu');
+        if (!dropdown) return;
+        var isOpen = dropdown.classList.contains('open');
+        closeAllDropdowns();
+        if (!isOpen) {
+          highlightCurrent(dropdown);
+          dropdown.classList.add('open');
+        }
+        e.stopPropagation();
+        return;
+      }
+
+      // Select item from dropdown
+      if (target.classList.contains('dropdown-item')) {
+        var val = target.getAttribute('data-value');
+        var dropdown = target.parentElement;
+        var setting = dropdown.parentElement.getAttribute('data-setting');
+        closeAllDropdowns();
+        if (val && setting) {
+          // Map setting to slash command
+          if (setting === 'mode') {
+            vscode.postMessage({ type: 'slashCommand', command: '/mode', args: val });
+          } else if (setting === 'model') {
+            vscode.postMessage({ type: 'slashCommand', command: '/model', args: val });
+          } else if (setting === 'reasoning') {
+            vscode.postMessage({ type: 'slashCommand', command: '/reasoning', args: val });
+          }
+        }
+      }
+    });
+  })();
+
+  // Close dropdowns when clicking elsewhere
+  document.addEventListener('click', function() {
+    var settingsBar = document.getElementById('settings-bar');
+    if (!settingsBar) return;
+    var menus = settingsBar.querySelectorAll('.dropdown-menu');
+    for (var i = 0; i < menus.length; i++) { menus[i].classList.remove('open'); }
+  });
+
   // ── Main message handler ──
   window.addEventListener('message', function(event) {
     var msg = event.data;

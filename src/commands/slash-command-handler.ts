@@ -68,6 +68,19 @@ function cfg() {
   return vscode.workspace.getConfiguration("brotherwhale");
 }
 
+function mergeThreadUpdate(
+  ctx: SlashCommandContext,
+  updatedThread: ThreadRecord | undefined,
+  fallback: Partial<ThreadRecord>
+): void {
+  if (!ctx.currentThread) return;
+  if (updatedThread) {
+    Object.assign(ctx.currentThread, updatedThread);
+    return;
+  }
+  Object.assign(ctx.currentThread, fallback);
+}
+
 // ── Individual command handlers ──
 
 async function handleMode(ctx: SlashCommandContext, args: string): Promise<void> {
@@ -76,18 +89,39 @@ async function handleMode(ctx: SlashCommandContext, args: string): Promise<void>
     const modeMap: Record<string, string> = { "1": "agent", "2": "plan", "3": "yolo" };
     const actualMode = modeMap[mode] || mode;
     const isYolo = actualMode === "yolo";
+    const defaultModel = cfg().get<string>("defaultModel", "deepseek-v4-pro");
+    const reasoningEffort = cfg().get<string>("reasoningEffort", "auto");
+    const autoApprove = isYolo || cfg().get<boolean>("autoApprove", false);
     await cfg().update("defaultMode", actualMode, vscode.ConfigurationTarget.Global);
+    let modeForUi = actualMode;
+    let modelForUi = defaultModel;
+    let infoMessage = `Mode changed to ${actualMode}`;
     if (ctx.currentThread) {
       try {
-        await ctx.api.updateThread(ctx.currentThread.id, {
+        const updatedThread = await ctx.api.updateThread(ctx.currentThread.id, {
           mode: actualMode,
           trust_mode: isYolo,
-          auto_approve: isYolo || cfg().get<boolean>("autoApprove", false),
+          auto_approve: autoApprove,
         });
-      } catch { /* non-critical */ }
+        mergeThreadUpdate(ctx, updatedThread, {
+          mode: actualMode,
+          trust_mode: isYolo,
+          auto_approve: autoApprove,
+        });
+        modeForUi = ctx.currentThread.mode;
+        modelForUi = ctx.currentThread.model;
+      } catch (err) {
+        ctx.postMessage({
+          type: "error",
+          message: `Mode changed in settings but failed to update current thread: ${getErrorMessage(err)}`,
+        });
+        modeForUi = ctx.currentThread.mode;
+        modelForUi = ctx.currentThread.model;
+        infoMessage = `Default mode changed to ${actualMode}; current thread remains ${ctx.currentThread.mode}`;
+      }
     }
-    ctx.postMessage({ type: "settingsUpdated", mode: actualMode, model: cfg().get<string>("defaultModel", "deepseek-v4-pro"), reasoningEffort: cfg().get<string>("reasoningEffort", "auto") });
-    ctx.postMessage({ type: "info", message: `Mode changed to ${actualMode}` });
+    ctx.postMessage({ type: "settingsUpdated", mode: modeForUi, model: modelForUi, reasoningEffort });
+    ctx.postMessage({ type: "info", message: infoMessage });
   } else {
     ctx.postMessage({ type: "info", message: `Current mode: ${cfg().get<string>("defaultMode", "agent")}\nUsage: /mode [agent|plan|yolo|1|2|3]` });
   }
@@ -97,8 +131,29 @@ async function handleModel(ctx: SlashCommandContext, args: string): Promise<void
   const model = args.trim();
   if (model) {
     await cfg().update("defaultModel", model, vscode.ConfigurationTarget.Global);
-    ctx.postMessage({ type: "settingsUpdated", mode: cfg().get<string>("defaultMode", "agent"), model, reasoningEffort: cfg().get<string>("reasoningEffort", "auto") });
-    ctx.postMessage({ type: "info", message: `Model changed to ${model}` });
+    const defaultMode = cfg().get<string>("defaultMode", "agent");
+    const reasoningEffort = cfg().get<string>("reasoningEffort", "auto");
+    let modeForUi = defaultMode;
+    let modelForUi = model;
+    let infoMessage = `Model changed to ${model}`;
+    if (ctx.currentThread) {
+      try {
+        const updatedThread = await ctx.api.updateThread(ctx.currentThread.id, { model });
+        mergeThreadUpdate(ctx, updatedThread, { model });
+        modeForUi = ctx.currentThread.mode;
+        modelForUi = ctx.currentThread.model;
+      } catch (err) {
+        ctx.postMessage({
+          type: "error",
+          message: `Model changed in settings but failed to update current thread: ${getErrorMessage(err)}`,
+        });
+        modeForUi = ctx.currentThread.mode;
+        modelForUi = ctx.currentThread.model;
+        infoMessage = `Default model changed to ${model}; current thread remains ${ctx.currentThread.model}`;
+      }
+    }
+    ctx.postMessage({ type: "settingsUpdated", mode: modeForUi, model: modelForUi, reasoningEffort });
+    ctx.postMessage({ type: "info", message: infoMessage });
   } else {
     ctx.postMessage({ type: "info", message: `Current model: ${cfg().get<string>("defaultModel", "deepseek-v4-pro")}` });
   }
