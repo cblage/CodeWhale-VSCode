@@ -11,13 +11,12 @@ export function getInputScript(tr: WebviewTranslations): string {
   var __wvEscapeHtml = window.__wvEscapeHtml;
   var vscode = window.__wvVscode;
   var inputEl = document.getElementById('input');
-  var sendBtn = document.getElementById('btn-send');
+  var sendStopBtn = document.getElementById('btn-send-stop');
   var attachBtn = document.getElementById('btn-attach');
   var attachmentsArea = document.getElementById('attachments-area');
   var slashMenuEl = document.getElementById('slash-menu');
   var newThreadBtn = document.getElementById('btn-new-thread');
   var compactBtn = document.getElementById('btn-compact');
-  var interruptBtn = document.getElementById('btn-interrupt');
   var undoBtn = document.getElementById('btn-undo');
   var retryBtn = document.getElementById('btn-retry');
   var undoDefaultTitle = undoBtn ? (undoBtn.getAttribute('title') || '') : '';
@@ -210,8 +209,24 @@ export function getInputScript(tr: WebviewTranslations): string {
     setButtonCapabilityState(retryBtn, !!apiCapabilities.retryLastTurn, retryDefaultTitle, __i18n.retryUnsupportedTooltip);
   }
 
+  // ── Send/Stop button toggle ──
+  function updateSendStopButton(isStreaming) {
+    if (!sendStopBtn) return;
+    if (isStreaming) {
+      sendStopBtn.classList.add('streaming');
+    } else {
+      sendStopBtn.classList.remove('streaming');
+    }
+  }
+
   // ── Event listeners ──
-  sendBtn.addEventListener('click', function() { sendMessage(); });
+  sendStopBtn.addEventListener('click', function() {
+    if (window.__wvMessages && window.__wvMessages.isStreaming()) {
+      vscode.postMessage({ type: 'interrupt' });
+    } else {
+      sendMessage();
+    }
+  });
   attachBtn.addEventListener('click', function() { vscode.postMessage({ type: 'attachFile' }); });
 
   var isComposing = false;
@@ -290,7 +305,6 @@ export function getInputScript(tr: WebviewTranslations): string {
 
   newThreadBtn.addEventListener('click', function() { vscode.postMessage({ type: 'newThread' }); });
   compactBtn.addEventListener('click', function() { vscode.postMessage({ type: 'compact' }); });
-  interruptBtn.addEventListener('click', function() { vscode.postMessage({ type: 'interrupt' }); });
   undoBtn.addEventListener('click', function() {
     if (undoBtn.getAttribute('aria-disabled') === 'true') return;
     vscode.postMessage({ type: 'undoLastTurn' });
@@ -306,6 +320,7 @@ export function getInputScript(tr: WebviewTranslations): string {
     renderAttachments: renderAttachments,
     getCurrentAttachments: function() { return currentAttachments; },
     setCurrentAttachments: function(v) { currentAttachments = v; },
+    updateSendStopButton: updateSendStopButton,
   };
 
   applyApiCapabilities();

@@ -70,7 +70,7 @@ describe("webview-js-debug.ts", () => {
     expect(script).toContain("messages");
     expect(script).toContain("toolbar");
     expect(script).toContain("input-area");
-    expect(script).toContain("btn-send");
+    expect(script).toContain("btn-send-stop");
   });
 
   it("has debug event budget", () => {

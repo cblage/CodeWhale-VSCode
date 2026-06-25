@@ -61,6 +61,7 @@ export function getWebviewCss(): string {
     #threads-panel {
       width: 220px;
       min-width: 160px;
+      max-width: 600px;
       border-right: 1px solid var(--border);
       overflow: hidden;
       padding: 0;
@@ -68,6 +69,54 @@ export function getWebviewCss(): string {
       flex-direction: column;
     }
     #threads-panel.open { display: flex; }
+
+    /* ── Sidebar Resize Handle ── */
+
+    #sidebar-resize-handle {
+      width: 4px;
+      cursor: col-resize;
+      flex-shrink: 0;
+      background: transparent;
+      position: relative;
+      z-index: 10;
+      transition: background 0.15s;
+    }
+    #sidebar-resize-handle:hover,
+    #sidebar-resize-handle.active {
+      background: var(--vscode-panel-border, var(--border));
+    }
+    #sidebar-resize-handle::after {
+      content: '';
+      position: absolute;
+      left: -3px;
+      right: -3px;
+      top: 0;
+      bottom: 0;
+    }
+
+    /* ── Input Resize Handle ── */
+
+    #input-resize-handle {
+      height: 4px;
+      cursor: row-resize;
+      flex-shrink: 0;
+      background: transparent;
+      position: relative;
+      z-index: 10;
+      transition: background 0.15s;
+    }
+    #input-resize-handle:hover,
+    #input-resize-handle.active {
+      background: var(--vscode-panel-border, var(--border));
+    }
+    #input-resize-handle::after {
+      content: '';
+      position: absolute;
+      top: -3px;
+      bottom: -3px;
+      left: 0;
+      right: 0;
+    }
 
     .sidebar-section {
       display: flex;
@@ -834,8 +883,12 @@ export function getWebviewCss(): string {
       flex-direction: column;
       gap: 6px;
       position: relative;
-      overflow: visible;
+      overflow-y: auto;
+      min-height: 56px;
+      max-height: 400px;
+      flex-shrink: 0;
     }
+    #input-area:not(.resizing) { transition: height 0.1s ease; }
     #attachments-area {
       display: flex;
       flex-wrap: wrap;
@@ -868,8 +921,14 @@ export function getWebviewCss(): string {
     .attachment-chip .attachment-remove:hover { opacity: 1; }
     #input-row {
       display: flex;
+      flex: 1;
       gap: 6px;
       align-items: flex-end;
+      min-height: 0;
+    }
+    #input-row textarea {
+      height: 100%;
+      min-height: 100%;
     }
     #btn-attach {
       background: transparent !important;
@@ -894,7 +953,7 @@ export function getWebviewCss(): string {
       font-size: inherit;
       resize: none;
       min-height: 36px;
-      max-height: 120px;
+      max-height: none;
       outline: none;
     }
     #input-area textarea:focus { border-color: var(--brand-primary); }
@@ -910,6 +969,16 @@ export function getWebviewCss(): string {
     }
     #input-area button:hover { background: var(--brand-primary-light); }
     #input-area button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Merged Send/Stop button ── */
+    .btn-send-stop .btn-text-stop { display: none; }
+    .btn-send-stop.streaming .btn-text-send { display: none; }
+    .btn-send-stop.streaming .btn-text-stop { display: inline; }
+    .btn-send-stop.streaming {
+      background: #d32f2f;
+    }
+    .btn-send-stop.streaming:hover { background: #e53935; }
+    .btn-send-stop.streaming:active { background: #b71c1c; }
 
     #toolbar {
       padding: 4px 8px;
@@ -991,6 +1060,22 @@ export function getWebviewCss(): string {
       padding: 1px 4px;
       border-radius: 2px;
     }
+    #settings-bar #btn-threads {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 1em;
+      padding: 2px 4px;
+      border-radius: 3px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    #settings-bar #btn-threads:hover {
+      color: var(--fg);
+      background: var(--brand-primary);
+    }
+
     #settings-bar .setting-value:hover {
       background: var(--brand-primary);
       color: var(--brand-primary-foreground);

@@ -233,6 +233,8 @@ describe("webview-html.ts assembler", () => {
     const html = getWebviewHtml(makeMockWebview(), makeMockExtensionUri(), makeTr());
     expect(html).toContain('id="layout"');
     expect(html).toContain('id="threads-panel"');
+    expect(html).toContain('id="sidebar-resize-handle"');
+    expect(html).toContain('id="input-resize-handle"');
     expect(html).toContain('id="chat-area"');
     expect(html).toContain('id="messages"');
     expect(html).toContain('id="input-area"');
@@ -259,7 +261,7 @@ describe("webview-html.ts assembler", () => {
   it("contains input area with all controls", () => {
     const html = getWebviewHtml(makeMockWebview(), makeMockExtensionUri(), makeTr());
     expect(html).toContain('id="input"');
-    expect(html).toContain('id="btn-send"');
+    expect(html).toContain('id="btn-send-stop"');
     expect(html).toContain('id="btn-attach"');
     expect(html).toContain('id="slash-menu"');
     expect(html).toContain('id="attachments-area"');
@@ -272,7 +274,6 @@ describe("webview-html.ts assembler", () => {
     expect(html).toContain('id="btn-compact"');
     expect(html).toContain('id="btn-undo"');
     expect(html).toContain('id="btn-retry"');
-    expect(html).toContain('id="btn-interrupt"');
   });
 
   it("injects translation strings into HTML", () => {
@@ -298,10 +299,10 @@ describe("webview-html.ts assembler", () => {
     expect(html).toContain("window.__wvSidebar");
   });
 
-  it("includes all module scripts (shared state + 7 modules = 8)", () => {
+  it("includes all module scripts (shared state + 9 modules = 10)", () => {
     const html = getWebviewHtml(makeMockWebview(), makeMockExtensionUri(), makeTr());
     const scriptCount = (html.match(/<script nonce=/g) || []).length;
-    expect(scriptCount).toBe(8);
+    expect(scriptCount).toBe(10);
   });
 
   it("contains utilities module output", () => {

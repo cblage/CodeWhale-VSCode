@@ -91,9 +91,9 @@ describe("webview-js-input.ts", () => {
     expect(script).toContain("retryLastTurn");
   });
 
-  it("handles interrupt button click", () => {
+  it("handles send/stop button click", () => {
     const script = getInputScript(makeTr());
-    expect(script).toContain("btn-interrupt");
+    expect(script).toContain("btn-send-stop");
     expect(script).toContain("interrupt");
   });
 

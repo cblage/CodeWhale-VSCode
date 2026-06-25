@@ -39,6 +39,10 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
     if (statusTextEl) {
       statusTextEl.textContent = label || (streaming ? __i18n.thinking : __i18n.ready);
     }
+    // Sync send/stop button state
+    if (window.__wvInput && window.__wvInput.updateSendStopButton) {
+      window.__wvInput.updateSendStopButton(streaming);
+    }
   }
 
   function showThinkingActivity(messageId, label) {
