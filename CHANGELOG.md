@@ -1,5 +1,15 @@
 # Change Log
 
+## 0.3.1
+
+### New Features
+
+- **Thread List Visibility Setting** — Add a config option to control whether the Threads tab is shown in the sidebar (hidden by default since Sessions are the user-facing conversation list)
+
+- **Settings Dropdowns and Panel Polish** — Clickable dropdown menus for mode, model, and reasoning effort in the settings bar; refactored work and changes panels with CSS classes; added icons to empty-state messages; improved task card styling
+
+- **Resizable Panels and Unified Send/Stop Button** — Drag handles for sidebar width and input area height resizing; unified send/stop button that toggles based on streaming state; improved input area layout
+
 ## 0.3.0
 
 ### New Features
