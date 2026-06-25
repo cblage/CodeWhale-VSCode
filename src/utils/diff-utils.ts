@@ -116,3 +116,73 @@ export function stripTurnMeta(text: string): string {
   }
   return trimmed;
 }
+
+/**
+ * Reconstructs the old file content by reverse-applying a unified diff to the current file.
+ * This ensures line numbers in the diff view match the actual file.
+ *
+ * @param currentContent - The current file content (new side)
+ * @param diff - The unified diff string
+ * @returns The reconstructed old content, or null if reconstruction fails
+ */
+export function reconstructOldContent(currentContent: string, diff: string): string | null {
+  const currentLines = currentContent === "" ? [] : currentContent.split("\n");
+  const result = [...currentLines];
+  const hunkRegex = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
+
+  // Parse all hunks from the diff
+  const hunks: Array<{
+    newStart: number;
+    newCount: number;
+    /** Lines in the hunk: each entry is [type, content] where type is ' '/'+ '/'-' */
+    lines: Array<{ type: string; content: string }>;
+  }> = [];
+
+  let currentHunk: typeof hunks[0] | null = null;
+  for (const line of diff.split("\n")) {
+    const match = line.match(hunkRegex);
+    if (match) {
+      if (currentHunk) hunks.push(currentHunk);
+      currentHunk = {
+        newStart: parseInt(match[3], 10),
+        newCount: match[4] !== undefined ? parseInt(match[4], 10) : 1,
+        lines: [],
+      };
+    } else if (currentHunk) {
+      if (line.startsWith("---") || line.startsWith("+++") || line.startsWith("diff ") || line.startsWith("index ")) {
+        continue;
+      }
+      if (line.startsWith("+")) {
+        currentHunk.lines.push({ type: "+", content: line.slice(1) });
+      } else if (line.startsWith("-")) {
+        currentHunk.lines.push({ type: "-", content: line.slice(1) });
+      } else if (line.startsWith(" ")) {
+        currentHunk.lines.push({ type: " ", content: line.slice(1) });
+      }
+      // Skip "\\" lines (no newline at end of file) and other non-content lines
+    }
+  }
+  if (currentHunk) hunks.push(currentHunk);
+
+  // Apply hunks in reverse order (from bottom to top) to preserve line numbers
+  hunks.sort((a, b) => b.newStart - a.newStart);
+
+  for (const hunk of hunks) {
+    // In the new file, this hunk occupies lines [newStart-1, newStart-1 + newCount)
+    const newStartIdx = hunk.newStart - 1;
+
+    // Build the old version of this hunk: context lines + removed lines (in order)
+    const oldHunkLines: string[] = [];
+    for (const h of hunk.lines) {
+      if (h.type === " " || h.type === "-") {
+        oldHunkLines.push(h.content);
+      }
+      // Skip "+" lines — they don't exist in the old version
+    }
+
+    // Replace the new-side lines with old-side lines
+    result.splice(newStartIdx, hunk.newCount, ...oldHunkLines);
+  }
+
+  return result.join("\n");
+}

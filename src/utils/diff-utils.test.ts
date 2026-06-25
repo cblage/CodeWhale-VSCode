@@ -7,6 +7,7 @@ import {
   shortPath,
   truncate,
   stripTurnMeta,
+  reconstructOldContent,
 } from "./diff-utils";
 
 describe("parseDiffStats", () => {
@@ -239,5 +240,127 @@ describe("stripTurnMeta", () => {
   it("handles unclosed turn_meta tag", () => {
     const text = "<turn_meta>unclosed content";
     expect(stripTurnMeta(text)).toBe("<turn_meta>unclosed content");
+  });
+});
+
+describe("reconstructOldContent", () => {
+  it("reconstructs old content from simple diff", () => {
+    const currentContent = "line1\nnew line\nline3";
+    const diff = `diff --git a/file.ts b/file.ts
+--- a/file.ts
++++ b/file.ts
+@@ -1,3 +1,3 @@
+ line1
+-old line
++new line
+ line3`;
+    const result = reconstructOldContent(currentContent, diff);
+    expect(result).toBe("line1\nold line\nline3");
+  });
+
+  it("handles multiple hunks", () => {
+    const currentContent = "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10";
+    const diff = `diff --git a/file.ts b/file.ts
+--- a/file.ts
++++ b/file.ts
+@@ -1,3 +1,3 @@
+ line1
+-line2
++line2_modified
+ line3
+@@ -8,3 +8,3 @@
+ line8
+-line9
++line9_modified
+ line10`;
+    const result = reconstructOldContent(currentContent, diff);
+    expect(result).toBe("line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10");
+  });
+
+  it("handles additions", () => {
+    // Diff adds a line between line1 and line2
+    // New side: line1, added_line, line2
+    const currentContent = "line1\nadded_line\nline2";
+    const diff = `diff --git a/file.ts b/file.ts
+--- a/file.ts
++++ b/file.ts
+@@ -1,2 +1,3 @@
+ line1
++added_line
+ line2`;
+    const result = reconstructOldContent(currentContent, diff);
+    expect(result).toBe("line1\nline2");
+  });
+
+  it("handles deletions", () => {
+    // Diff removes deleted_line between line1 and line2
+    // New side: line1, line2
+    const currentContent = "line1\nline2";
+    const diff = `diff --git a/file.ts b/file.ts
+--- a/file.ts
++++ b/file.ts
+@@ -1,3 +1,2 @@
+ line1
+-deleted_line
+ line2`;
+    const result = reconstructOldContent(currentContent, diff);
+    expect(result).toBe("line1\ndeleted_line\nline2");
+  });
+
+  it("preserves lines outside hunk range", () => {
+    // File has 5 lines, hunk only modifies lines 2-3
+    const currentContent = "line1\nmodified\nline3\nline4\nline5";
+    const diff = `diff --git a/file.ts b/file.ts
+--- a/file.ts
++++ b/file.ts
+@@ -2,2 +2,2 @@
+-original
++modified
+ line3`;
+    const result = reconstructOldContent(currentContent, diff);
+    expect(result).toBe("line1\noriginal\nline3\nline4\nline5");
+  });
+
+  it("handles new file diff (old side is empty)", () => {
+    // New file with 3 lines
+    const currentContent = "line1\nline2\nline3";
+    const diff = `diff --git a/newfile.ts b/newfile.ts
+--- /dev/null
++++ b/newfile.ts
+@@ -0,0 +1,3 @@
++line1
++line2
++line3`;
+    const result = reconstructOldContent(currentContent, diff);
+    expect(result).toBe("");
+  });
+
+  it("handles deleted file diff (new side is empty)", () => {
+    // File was deleted entirely
+    const currentContent = "";
+    const diff = `diff --git a/oldfile.ts b/oldfile.ts
+--- a/oldfile.ts
++++ /dev/null
+@@ -1,3 +0,0 @@
+-line1
+-line2
+-line3`;
+    const result = reconstructOldContent(currentContent, diff);
+    expect(result).toBe("line1\nline2\nline3");
+  });
+
+  it("handles diff with no newline at end of file marker", () => {
+    const currentContent = "line1\nnew line";
+    const diff = `diff --git a/file.ts b/file.ts
+--- a/file.ts
++++ b/file.ts
+@@ -1,2 +1,2 @@
+ line1
+-old line
+\\ No newline at end of file
++new line
+\\ No newline at end of file`;
+    const result = reconstructOldContent(currentContent, diff);
+    expect(result).toBe("line1\nold line");
   });
 });

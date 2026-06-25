@@ -23,6 +23,7 @@ import {
   extractFilePathFromDiff,
   parseDiffToSides,
   stripTurnMeta,
+  reconstructOldContent,
 } from "./utils/diff-utils";
 import { t, webviewTranslations } from "./i18n";
 import {
@@ -1881,7 +1882,29 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       if (diff) {
         this.ensureDiffProvider();
 
-        const { oldContent, newContent } = parseDiffToSides(diff);
+        // Read the current file content for the "new" side
+        let newContent: string;
+        try {
+          const currentUri = vscode.Uri.file(absPath);
+          const doc = await vscode.workspace.openTextDocument(currentUri);
+          newContent = doc.getText();
+        } catch (err) {
+          // File doesn't exist or can't be read, fall back to parsing diff
+          const parsed = parseDiffToSides(diff);
+          newContent = parsed.newContent;
+        }
+
+        // Reconstruct the old content by reverse-applying the diff
+        let oldContent: string;
+        const reconstructed = reconstructOldContent(newContent, diff);
+        if (reconstructed !== null) {
+          oldContent = reconstructed;
+        } else {
+          // Reconstruction failed, fall back to parsing diff
+          const parsed = parseDiffToSides(diff);
+          oldContent = parsed.oldContent;
+        }
+
         const diffId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         const oldUri = vscode.Uri.parse(`brotherwhale-diff:${absPath}?old&id=${diffId}`);
         const newUri = vscode.Uri.parse(`brotherwhale-diff:${absPath}?new&id=${diffId}`);
