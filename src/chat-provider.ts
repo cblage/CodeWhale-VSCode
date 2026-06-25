@@ -318,12 +318,14 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       this.postMessage({ type: "clearChat" });
     }
 
+    const cfg = vscode.workspace.getConfiguration("brotherwhale");
     this.postMessage({
       type: "ready",
       model: this.getCurrentModel(),
       mode: this.getCurrentMode(),
       reasoningEffort: this.getCurrentReasoningEffort(),
       runtimeVersion: this.runtimeVersion,
+      showThreadList: cfg.get<boolean>("showThreadList", false),
     });
   }
 
@@ -362,15 +364,18 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       }
 
       this.debugLog("initializeThread SUCCESS, posting ready");
+      var initCfg = vscode.workspace.getConfiguration("brotherwhale");
       this.postMessage({ 
         type: "ready", 
         model: this.currentThread?.model || this.getCurrentModel(),
         mode: this.currentThread?.mode || this.getCurrentMode(),
         reasoningEffort: this.getCurrentReasoningEffort(),
         runtimeVersion: this.runtimeVersion,
+        showThreadList: initCfg.get<boolean>("showThreadList", false),
       });
     } catch (err) {
       this.debugLog(`initializeThread ERROR: ${getErrorMessage(err)}\n${(err as Error).stack}`);
+      var errCfg = vscode.workspace.getConfiguration("brotherwhale");
       this.postMessage({
         type: "error",
         message: formatError("Failed to initialize", err),
@@ -381,6 +386,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
         mode: this.currentThread?.mode || this.getCurrentMode(),
         reasoningEffort: this.getCurrentReasoningEffort(),
         runtimeVersion: this.runtimeVersion,
+        showThreadList: errCfg.get<boolean>("showThreadList", false),
       });
     }
   }

@@ -13,5 +13,6 @@
   "config.defaultMode.description": "新会话的默认模式（agent、plan 或 yolo）",
   "config.reasoningEffort.description": "思考深度级别（auto、off、low、medium、high、max）",
   "config.autoStartEngine.description": "扩展激活时自动启动 CodeWhale 引擎",
-  "config.autoApprove.description": "自动批准 agent 模式下的工具调用（等同于信任模式 / YOLO 审批行为）"
+  "config.autoApprove.description": "自动批准 agent 模式下的工具调用（等同于信任模式 / YOLO 审批行为）",
+  "config.showThreadList.description": "在侧边栏显示 Threads 标签页。遗留功能 — threads 已被 sessions 取代。"
 }

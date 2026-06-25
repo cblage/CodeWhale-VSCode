@@ -13,5 +13,6 @@
   "config.defaultMode.description": "Default mode for new threads (agent, plan, or yolo)",
   "config.reasoningEffort.description": "Reasoning effort level (auto, off, low, medium, high, max)",
   "config.autoStartEngine.description": "Automatically start the CodeWhale engine when the extension activates",
-  "config.autoApprove.description": "Auto-approve tool calls in agent mode (equivalent to trust mode / YOLO approval behavior)"
+  "config.autoApprove.description": "Auto-approve tool calls in agent mode (equivalent to trust mode / YOLO approval behavior)",
+  "config.showThreadList.description": "Show the Threads tab in the sidebar. Legacy feature — threads are superseded by sessions."
 }

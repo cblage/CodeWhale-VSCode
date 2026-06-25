@@ -20,6 +20,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
   var activeThreadId = null;
   var showAllWorkspaces = false;
   var sidebarTab = 'sessions';
+  var showThreadList = false;
   var threadCountEl = document.getElementById('thread-count');
   var sessionSearchQuery = '';
 
@@ -297,6 +298,19 @@ export function getSidebarScript(tr: WebviewTranslations): string {
       sessionsContainer.style.display = '';
       threadsContainer.style.display = '';
       if (threadCountEl) threadCountEl.textContent = __wvFormatThreadsCount(threads.length, 'threads');
+    }
+  }
+
+  // ── Apply showThreadList setting ──
+  function applyShowThreadList(show) {
+    showThreadList = show;
+    var threadsBtn = document.getElementById('tab-threads-btn');
+    if (threadsBtn) {
+      threadsBtn.style.display = show ? '' : 'none';
+    }
+    // If threads are hidden and currently on the threads tab, switch to sessions
+    if (!show && sidebarTab === 'threads') {
+      switchSidebarTab('sessions');
     }
   }
 
@@ -821,6 +835,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     renderWork: renderWork,
     renderChanges: renderChanges,
     switchSidebarTab: switchSidebarTab,
+    applyShowThreadList: applyShowThreadList,
     closeTaskDetail: closeTaskDetail,
     showTaskDetail: showTaskDetail,
     closeAgentDetail: closeAgentDetail,

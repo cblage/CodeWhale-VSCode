@@ -178,6 +178,7 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
         if (msg.reasoningEffort) currentReasoningEl.textContent = msg.reasoningEffort;
         runtimeVersion = msg.runtimeVersion || runtimeVersion || '';
         renderStatusStats();
+        window.__wvSidebar.applyShowThreadList(!!msg.showThreadList);
         break;
 
       case 'settingsUpdated':

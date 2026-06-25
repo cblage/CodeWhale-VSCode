@@ -123,6 +123,11 @@
           "type": "boolean",
           "default": false,
           "description": "%config.autoApprove.description%"
+        },
+        "brotherwhale.showThreadList": {
+          "type": "boolean",
+          "default": false,
+          "description": "%config.showThreadList.description%"
         }
       }
     }
