@@ -1,6 +1,6 @@
 # CodeWhale for VS Code — GUI Frontend for the CodeWhale AI Agent
 
-[![Version](https://img.shields.io/badge/version-0.1.1-blue)](https://github.com/HengQuWorld/CodeWhale-VSCode)
+[![Version](https://img.shields.io/badge/version-0.3.0-blue)](https://github.com/HengQuWorld/CodeWhale-VSCode)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.85+-informational)](https://code.visualstudio.com/)
 
@@ -184,12 +184,12 @@ CodeWhale is configurable via VS Code settings (`Cmd+,` → search "brotherwhale
 
 ### Installing the VSIX
 ```bash
-code --install-extension /path/to/brotherwhale-vscode-0.1.0.vsix --force
+code --install-extension /path/to/brotherwhale-vscode-0.3.0.vsix --force
 ```
 
 > **Trae CN users**: if `code` is not available, use the full path:
 > ```bash
-> "/Applications/Trae CN.app/Contents/Resources/app/bin/code" --install-extension /path/to/brotherwhale-vscode-0.1.0.vsix --force
+> "/Applications/Trae CN.app/Contents/Resources/app/bin/code" --install-extension /path/to/brotherwhale-vscode-0.3.0.vsix --force
 > ```
 
 ---

@@ -1,5 +1,27 @@
 # Change Log
 
+## 0.3.0
+
+### New Features
+
+- **Agent Runs Sidebar** — Added an Agent Runs panel with delegate cards so background agent activity and delegated work are easier to inspect from the GUI.
+
+- **Session Search And Delete** — The sidebar now supports searching saved sessions and removing sessions you no longer need.
+
+### Improvements
+
+- **Streaming Status Animation** — Replaced the old blinking cursor with pulse and bounce dot animations for a clearer streaming-state indicator.
+
+### Bug Fixes
+
+- **Tool Call Terminal Events** — Fixed tool call terminal event handling to prevent GUI freezes while TUI commands are running.
+
+- **Approval Freeze And Session Duplication** — Resolved approval-flow freezes and stopped concurrent turns from creating duplicate sessions.
+
+- **Multi-Turn Event Isolation** — Prevented stale turn events from corrupting later multi-turn conversations.
+
+- **Changes Panel Consistency** — Fixed repeated edits to the same file so every modification appears in the Changes panel instead of only the first one.
+
 ## 0.2.0
 
 ### New Features
