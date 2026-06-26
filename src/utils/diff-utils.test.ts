@@ -8,6 +8,9 @@ import {
   truncate,
   stripTurnMeta,
   reconstructOldContent,
+  reconstructOriginalContent,
+  getDiffStateForIndex,
+  mergeFileChanges,
 } from "./diff-utils";
 
 describe("parseDiffStats", () => {
@@ -243,6 +246,144 @@ describe("stripTurnMeta", () => {
   });
 });
 
+describe("mergeFileChanges", () => {
+  it("handles single file change", () => {
+    const changes = [
+      {
+        filePath: "src/file.ts",
+        changeType: "modified" as const,
+        addedLines: 10,
+        removedLines: 5,
+        diff: "diff content",
+        toolName: "edit_file",
+      },
+    ];
+    const result = mergeFileChanges(changes);
+    expect(result).toEqual({
+      filePath: "src/file.ts",
+      changeType: "modified",
+      addedLines: 10,
+      removedLines: 5,
+      diff: "diff content",
+      toolName: "edit_file",
+    });
+  });
+
+  it("sums addedLines and removedLines for multiple changes", () => {
+    const changes = [
+      {
+        filePath: "src/file.ts",
+        changeType: "modified" as const,
+        addedLines: 10,
+        removedLines: 5,
+        diff: "first diff",
+        toolName: "edit_file",
+      },
+      {
+        filePath: "src/file.ts",
+        changeType: "modified" as const,
+        addedLines: 8,
+        removedLines: 3,
+        diff: "second diff",
+        toolName: "edit_file",
+      },
+    ];
+    const result = mergeFileChanges(changes);
+    expect(result.addedLines).toBe(18);
+    expect(result.removedLines).toBe(8);
+  });
+
+  it("prioritizes created over deleted and modified", () => {
+    const changes = [
+      {
+        filePath: "src/file.ts",
+        changeType: "modified" as const,
+        addedLines: 5,
+        removedLines: 2,
+      },
+      {
+        filePath: "src/file.ts",
+        changeType: "deleted" as const,
+        addedLines: 0,
+        removedLines: 10,
+      },
+      {
+        filePath: "src/file.ts",
+        changeType: "created" as const,
+        addedLines: 20,
+        removedLines: 0,
+      },
+    ];
+    const result = mergeFileChanges(changes);
+    expect(result.changeType).toBe("created");
+  });
+
+  it("prioritizes deleted over modified", () => {
+    const changes = [
+      {
+        filePath: "src/file.ts",
+        changeType: "modified" as const,
+        addedLines: 5,
+        removedLines: 2,
+      },
+      {
+        filePath: "src/file.ts",
+        changeType: "deleted" as const,
+        addedLines: 0,
+        removedLines: 10,
+      },
+    ];
+    const result = mergeFileChanges(changes);
+    expect(result.changeType).toBe("deleted");
+  });
+
+  it("keeps the latest diff and toolName", () => {
+    const changes = [
+      {
+        filePath: "src/file.ts",
+        changeType: "modified" as const,
+        addedLines: 5,
+        removedLines: 2,
+        diff: "first diff",
+        toolName: "write_file",
+      },
+      {
+        filePath: "src/file.ts",
+        changeType: "modified" as const,
+        addedLines: 8,
+        removedLines: 3,
+        diff: "second diff",
+        toolName: "edit_file",
+      },
+    ];
+    const result = mergeFileChanges(changes);
+    expect(result.diff).toBe("second diff");
+    expect(result.toolName).toBe("edit_file");
+  });
+
+  it("handles undefined diff and toolName gracefully", () => {
+    const changes = [
+      {
+        filePath: "src/file.ts",
+        changeType: "modified" as const,
+        addedLines: 5,
+        removedLines: 2,
+      },
+      {
+        filePath: "src/file.ts",
+        changeType: "modified" as const,
+        addedLines: 8,
+        removedLines: 3,
+        diff: "has diff",
+        toolName: "edit_file",
+      },
+    ];
+    const result = mergeFileChanges(changes);
+    expect(result.diff).toBe("has diff");
+    expect(result.toolName).toBe("edit_file");
+  });
+});
+
 describe("reconstructOldContent", () => {
   it("reconstructs old content from simple diff", () => {
     const currentContent = "line1\nnew line\nline3";
@@ -362,5 +503,271 @@ describe("reconstructOldContent", () => {
 \\ No newline at end of file`;
     const result = reconstructOldContent(currentContent, diff);
     expect(result).toBe("line1\nold line");
+  });
+});
+
+describe("reconstructOriginalContent", () => {
+  it("returns current content when diffs array is empty", () => {
+    const current = "line1\nline2\nline3";
+    expect(reconstructOriginalContent([], current)).toBe(current);
+  });
+
+  it("reconstructs original from a single diff (equivalent to reconstructOldContent)", () => {
+    // Original: line1, old, line3 → after diff: line1, new, line3
+    const currentContent = "line1\nnew\nline3";
+    const diff = `--- a/file.ts
++++ b/file.ts
+@@ -1,3 +1,3 @@
+ line1
+-old
++new
+ line3`;
+    expect(reconstructOriginalContent([diff], currentContent)).toBe("line1\nold\nline3");
+  });
+
+  it("reconstructs original by reverse-applying two sequential diffs", () => {
+    // State A (original): a, b, c
+    // diff1: change b→x  → State B: a, x, c
+    // diff2: add line d  → State C (current): a, x, c, d
+    // Reconstructing should give: a, b, c
+    const currentContent = "a\nx\nc\nd";
+    const diff1 = `--- a/f
++++ b/f
+@@ -1,3 +1,3 @@
+ a
+-b
++x
+ c`;
+    const diff2 = `--- a/f
++++ b/f
+@@ -1,3 +1,4 @@
+ a
+ x
+ c
++d`;
+    const result = reconstructOriginalContent([diff1, diff2], currentContent);
+    expect(result).toBe("a\nb\nc");
+  });
+
+  it("reconstructs original by reverse-applying three sequential diffs", () => {
+    // State A: 1, 2, 3
+    // diff1: add 0 at top   → B: 0, 1, 2, 3
+    // diff2: change 2→two   → C: 0, 1, two, 3
+    // diff3: remove 1       → D (current): 0, two, 3
+    // Reconstruct should give: 1, 2, 3
+    const currentContent = "0\ntwo\n3";
+    const diff1 = `--- a/f
++++ b/f
+@@ -1,3 +1,4 @@
++0
+ 1
+ 2
+ 3`;
+    const diff2 = `--- a/f
++++ b/f
+@@ -1,4 +1,4 @@
+ 0
+ 1
+-2
++two
+ 3`;
+    const diff3 = `--- a/f
++++ b/f
+@@ -1,4 +1,3 @@
+ 0
+-1
+ two
+ 3`;
+    const result = reconstructOriginalContent([diff1, diff2, diff3], currentContent);
+    expect(result).toBe("1\n2\n3");
+  });
+});
+
+describe("getDiffStateForIndex", () => {
+  it("returns null for out-of-range index", () => {
+    const diffs = [`--- a/f\n+++ b/f\n@@ -1,1 +1,2 @@\n a\n+b`];
+    expect(getDiffStateForIndex(diffs, "a\nb", -1)).toBeNull();
+    expect(getDiffStateForIndex(diffs, "a\nb", 1)).toBeNull();
+    expect(getDiffStateForIndex([], "a", 0)).toBeNull();
+  });
+
+  it("single diff (index 0): returns oldContent and newContent as full files", () => {
+    // Original: line1, old, line3 → diff changes old→new → Current: line1, new, line3
+    const currentContent = "line1\nnew\nline3";
+    const diff = `--- a/file.ts
++++ b/file.ts
+@@ -1,3 +1,3 @@
+ line1
+-old
++new
+ line3`;
+    const result = getDiffStateForIndex([diff], currentContent, 0);
+    expect(result).not.toBeNull();
+    expect(result!.oldContent).toBe("line1\nold\nline3");
+    expect(result!.newContent).toBe("line1\nnew\nline3");
+    // Verify both are full files, not just hunk lines
+    expect(result!.oldContent.split("\n").length).toBe(3);
+    expect(result!.newContent.split("\n").length).toBe(3);
+  });
+
+  it("last of two diffs: same as reconstructOldContent on current file", () => {
+    // D1: change b→x  → State B: a, x, c
+    // D2: add d      → State C (current): a, x, c, d
+    const currentContent = "a\nx\nc\nd";
+    const diff1 = `--- a/f
++++ b/f
+@@ -1,3 +1,3 @@
+ a
+-b
++x
+ c`;
+    const diff2 = `--- a/f
++++ b/f
+@@ -1,3 +1,4 @@
+ a
+ x
+ c
++d`;
+    const result = getDiffStateForIndex([diff1, diff2], currentContent, 1);
+    expect(result).not.toBeNull();
+    // oldContent should be state after D1 only: a, x, c
+    expect(result!.oldContent).toBe("a\nx\nc");
+    // newContent should be current: a, x, c, d
+    expect(result!.newContent).toBe("a\nx\nc\nd");
+    // Verify full file: oldContent has 3 lines, newContent has 4 lines
+    expect(result!.oldContent.split("\n").length).toBe(3);
+    expect(result!.newContent.split("\n").length).toBe(4);
+  });
+
+  it("first of two diffs: reverse-applies later diff to get intermediate state", () => {
+    // D1: change b→x  → State B: a, x, c
+    // D2: add d      → State C (current): a, x, c, d
+    const currentContent = "a\nx\nc\nd";
+    const diff1 = `--- a/f
++++ b/f
+@@ -1,3 +1,3 @@
+ a
+-b
++x
+ c`;
+    const diff2 = `--- a/f
++++ b/f
+@@ -1,3 +1,4 @@
+ a
+ x
+ c
++d`;
+    const result = getDiffStateForIndex([diff1, diff2], currentContent, 0);
+    expect(result).not.toBeNull();
+    // oldContent should be original: a, b, c
+    expect(result!.oldContent).toBe("a\nb\nc");
+    // newContent should be state after D1: a, x, c
+    expect(result!.newContent).toBe("a\nx\nc");
+    // Verify full files
+    expect(result!.oldContent.split("\n").length).toBe(3);
+    expect(result!.newContent.split("\n").length).toBe(3);
+  });
+
+  it("middle of three diffs: correct intermediate state reconstruction", () => {
+    // D1: add 0 at top  → B: 0, 1, 2, 3
+    // D2: change 2→two  → C: 0, 1, two, 3
+    // D3: remove 1      → D (current): 0, two, 3
+    const currentContent = "0\ntwo\n3";
+    const diff1 = `--- a/f
++++ b/f
+@@ -1,3 +1,4 @@
++0
+ 1
+ 2
+ 3`;
+    const diff2 = `--- a/f
++++ b/f
+@@ -1,4 +1,4 @@
+ 0
+ 1
+-2
++two
+ 3`;
+    const diff3 = `--- a/f
++++ b/f
+@@ -1,4 +1,3 @@
+ 0
+-1
+ two
+ 3`;
+    // diffIndex=1 means we want D2:
+    // oldContent = state after D1: 0, 1, 2, 3
+    // newContent = state after D2: 0, 1, two, 3
+    const result = getDiffStateForIndex([diff1, diff2, diff3], currentContent, 1);
+    expect(result).not.toBeNull();
+    expect(result!.oldContent).toBe("0\n1\n2\n3");
+    expect(result!.newContent).toBe("0\n1\ntwo\n3");
+    expect(result!.oldContent.split("\n").length).toBe(4);
+    expect(result!.newContent.split("\n").length).toBe(4);
+  });
+
+  it("first of three diffs: full reconstruction from current", () => {
+    // Same as above
+    const currentContent = "0\ntwo\n3";
+    const diff1 = `--- a/f
++++ b/f
+@@ -1,3 +1,4 @@
++0
+ 1
+ 2
+ 3`;
+    const diff2 = `--- a/f
++++ b/f
+@@ -1,4 +1,4 @@
+ 0
+ 1
+-2
++two
+ 3`;
+    const diff3 = `--- a/f
++++ b/f
+@@ -1,4 +1,3 @@
+ 0
+-1
+ two
+ 3`;
+    // diffIndex=0: D1 adds 0 at top of [1,2,3]
+    const result = getDiffStateForIndex([diff1, diff2, diff3], currentContent, 0);
+    expect(result).not.toBeNull();
+    expect(result!.oldContent).toBe("1\n2\n3");
+    expect(result!.newContent).toBe("0\n1\n2\n3");
+  });
+
+  it("result oldContent and newContent are full files for a large file with small diff", () => {
+    // Simulate a 100-line file where line 50 was changed
+    const originalLines: string[] = [];
+    for (let i = 1; i <= 100; i++) originalLines.push(`line ${i}`);
+    const modifiedLines = [...originalLines];
+    modifiedLines[49] = "modified line 50"; // line 50 changed
+    const currentContent = modifiedLines.join("\n");
+    const diff = `--- a/large.ts
++++ b/large.ts
+@@ -48,3 +48,3 @@
+ line 48
+ line 49
+-line 50
++modified line 50
+ line 51`;
+    const result = getDiffStateForIndex([diff], currentContent, 0);
+    expect(result).not.toBeNull();
+    // Both should have approximately 100 lines (full file, not just hunk)
+    const oldLines = result!.oldContent.split("\n").length;
+    const newLines = result!.newContent.split("\n").length;
+    expect(oldLines).toBeGreaterThanOrEqual(99);
+    expect(oldLines).toBeLessThanOrEqual(101);
+    expect(newLines).toBeGreaterThanOrEqual(99);
+    expect(newLines).toBeLessThanOrEqual(101);
+    // oldContent should NOT have the modification
+    expect(result!.oldContent).toContain("line 50");
+    expect(result!.oldContent).not.toContain("modified line 50");
+    // newContent should have the modification
+    expect(result!.newContent).toContain("modified line 50");
+    // newContent should NOT have the original line 50 as a standalone line
+    expect(result!.newContent).not.toMatch(/^line 50$/m);
   });
 });

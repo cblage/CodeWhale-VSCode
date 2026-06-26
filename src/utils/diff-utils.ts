@@ -118,6 +118,63 @@ export function stripTurnMeta(text: string): string {
 }
 
 /**
+ * Merges multiple FileChangeInfo entries for the same file into a single summary.
+ * - Sums addedLines and removedLines for cumulative stats
+ * - Prioritizes changeType: created > deleted > modified
+ * - Keeps the latest diff and toolName
+ */
+export function mergeFileChanges(changes: Array<{
+  filePath: string;
+  changeType: "created" | "modified" | "deleted";
+  addedLines: number;
+  removedLines: number;
+  diff?: string;
+  toolName?: string;
+}>): {
+  filePath: string;
+  changeType: "created" | "modified" | "deleted";
+  addedLines: number;
+  removedLines: number;
+  diff?: string;
+  toolName?: string;
+} {
+  if (changes.length === 0) {
+    throw new Error("Cannot merge empty file changes array");
+  }
+
+  let totalAdded = 0;
+  let totalRemoved = 0;
+  let mergedChangeType: "created" | "modified" | "deleted" = "modified";
+  let latestDiff: string | undefined;
+  let latestToolName: string | undefined;
+
+  for (const change of changes) {
+    totalAdded += change.addedLines;
+    totalRemoved += change.removedLines;
+
+    // Priority: created > deleted > modified
+    if (change.changeType === "created") {
+      mergedChangeType = "created";
+    } else if (change.changeType === "deleted" && mergedChangeType !== "created") {
+      mergedChangeType = "deleted";
+    }
+
+    // Keep the latest diff and toolName
+    if (change.diff) latestDiff = change.diff;
+    if (change.toolName) latestToolName = change.toolName;
+  }
+
+  return {
+    filePath: changes[0].filePath,
+    changeType: mergedChangeType,
+    addedLines: totalAdded,
+    removedLines: totalRemoved,
+    diff: latestDiff,
+    toolName: latestToolName,
+  };
+}
+
+/**
  * Reconstructs the old file content by reverse-applying a unified diff to the current file.
  * This ensures line numbers in the diff view match the actual file.
  *
@@ -185,4 +242,64 @@ export function reconstructOldContent(currentContent: string, diff: string): str
   }
 
   return result.join("\n");
+}
+
+/**
+ * Reconstructs the original file content (before any modifications) by
+ * reverse-applying multiple diffs in reverse chronological order.
+ *
+ * Given diffs [d1, d2, d3] that transform A→B→C→D, and currentContent=D,
+ * this reverse-applies d3 (D→C), then d2 (C→B), then d1 (B→A) to recover A.
+ *
+ * @param diffs - Array of unified diff strings in chronological order
+ * @param currentContent - The current file content
+ * @returns The original content before all modifications, or null if any reconstruction fails
+ */
+export function reconstructOriginalContent(diffs: string[], currentContent: string): string | null {
+  let content = currentContent;
+  // Reverse-apply diffs in reverse chronological order (last diff first)
+  for (let i = diffs.length - 1; i >= 0; i--) {
+    const reconstructed = reconstructOldContent(content, diffs[i]);
+    if (reconstructed === null) return null;
+    content = reconstructed;
+  }
+  return content;
+}
+
+/**
+ * Reconstructs the old and new content for a specific diff within a series.
+ *
+ * Given diffs [d1, d2, d3] that transform A→B→C→D, and currentContent=D:
+ * - diffIndex=0 (d1): reverse-applies d3,d2 to get B (state after d1),
+ *   then d1 to get A → returns { oldContent: A, newContent: B }
+ * - diffIndex=2 (d3): returns { oldContent: C, newContent: D }
+ *
+ * Both oldContent and newContent are FULL file content with correct line numbers.
+ *
+ * @param diffs - Array of unified diff strings in chronological order
+ * @param currentContent - The current file content (after ALL diffs applied)
+ * @param diffIndex - Which diff in the array to reconstruct state for
+ * @returns Old and new content for that diff, or null if reconstruction fails
+ */
+export function getDiffStateForIndex(
+  diffs: string[],
+  currentContent: string,
+  diffIndex: number
+): { oldContent: string; newContent: string } | null {
+  if (diffIndex < 0 || diffIndex >= diffs.length) return null;
+
+  // Reverse-apply diffs from end down to just after diffIndex
+  // to reach the state right AFTER diff[diffIndex] was applied
+  let stateAfter = currentContent;
+  for (let i = diffs.length - 1; i > diffIndex; i--) {
+    const reconstructed = reconstructOldContent(stateAfter, diffs[i]);
+    if (reconstructed === null) return null;
+    stateAfter = reconstructed;
+  }
+
+  // Reverse-apply diff[diffIndex] to reach the state BEFORE it
+  const stateBefore = reconstructOldContent(stateAfter, diffs[diffIndex]);
+  if (stateBefore === null) return null;
+
+  return { oldContent: stateBefore, newContent: stateAfter };
 }

@@ -549,15 +549,21 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     var header = document.createElement('div');
     header.className = 'work-section';
     var createdCount = 0, modifiedCount = 0, deletedCount = 0;
+    var totalAdded = 0, totalRemoved = 0;
     for (var si = 0; si < changesState.length; si++) {
       if (changesState[si].changeType === 'created') createdCount++;
       else if (changesState[si].changeType === 'deleted') deletedCount++;
       else modifiedCount++;
+      totalAdded += changesState[si].addedLines || 0;
+      totalRemoved += changesState[si].removedLines || 0;
     }
     var summaryParts = [];
     if (createdCount > 0) summaryParts.push('<span class="change-summary-item change-summary-created">' + createdCount + ' ' + __wvEscapeHtml(__i18n.fileCreated) + '</span>');
     if (modifiedCount > 0) summaryParts.push('<span class="change-summary-item change-summary-modified">' + modifiedCount + ' ' + __wvEscapeHtml(__i18n.fileModified) + '</span>');
     if (deletedCount > 0) summaryParts.push('<span class="change-summary-item change-summary-deleted">' + deletedCount + ' ' + __wvEscapeHtml(__i18n.fileDeleted) + '</span>');
+    if (totalAdded > 0 || totalRemoved > 0) {
+      summaryParts.push('<span class="change-summary-item change-summary-lines"><span class="change-added">+' + totalAdded + '</span> <span class="change-removed">-' + totalRemoved + '</span></span>');
+    }
     header.innerHTML = '<div class="work-section-title"><span class="work-section-title-icon">\\uD83D\\uDCC1</span>' + __wvEscapeHtml(__i18n.fileChanges) + ' <span class="work-section-subtitle">(' + changesState.length + ')</span></div><div class="change-summary-row">' + summaryParts.join(' ') + '</div>';
     container.appendChild(header);
 
@@ -601,7 +607,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
       if (target.classList.contains('change-view-diff')) {
         var filePath = target.getAttribute('data-file-path');
         var diffKey = target.getAttribute('data-diff-key');
-        vscode.postMessage({ type: 'openDiff', filePath: filePath, diff: (diffKey ? _diffStore.get(diffKey) : undefined) || undefined });
+        vscode.postMessage({ type: 'openDiff', filePath: filePath, diff: (diffKey ? _diffStore.get(diffKey) : undefined) || undefined, useCumulative: true });
       } else if (target.classList.contains('change-open-file')) {
         var filePath = target.getAttribute('data-file-path');
         vscode.postMessage({ type: 'openFile', filePath: filePath });

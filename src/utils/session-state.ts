@@ -33,6 +33,10 @@ export interface FileChangeInfo {
   addedLines: number;
   removedLines: number;
   diff?: string;
+  /** All diffs for this file across the session, in chronological order */
+  diffs?: string[];
+  /** Index of this diff in the diffs array, used to reconstruct state for per-card diff */
+  diffIndex?: number;
   oldContent?: string;
   newContent?: string;
   toolName?: string;

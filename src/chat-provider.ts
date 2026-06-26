@@ -24,6 +24,8 @@ import {
   parseDiffToSides,
   stripTurnMeta,
   reconstructOldContent,
+  reconstructOriginalContent,
+  getDiffStateForIndex,
 } from "./utils/diff-utils";
 import { t, webviewTranslations } from "./i18n";
 import {
@@ -268,7 +270,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
         }
         break;
       case "openDiff":
-        this.handleOpenDiff(msg.filePath as string, msg.diff as string | undefined);
+        this.handleOpenDiff(msg.filePath as string, msg.diff as string | undefined, msg.useCumulative as boolean, msg.diffIndex as number | undefined);
         break;
       case "openFile":
         this.handleOpenFile(msg.filePath as string);
@@ -579,9 +581,26 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
             const normPath = normalizePath(tc.fileChange.filePath);
             const existingIdx = this.turnFileChanges.findIndex(existing => normalizePath(existing.filePath) === normPath);
             if (existingIdx >= 0) {
-              this.turnFileChanges[existingIdx] = tc.fileChange;
+              // Merge with existing change for cumulative stats
+              const existing = this.turnFileChanges[existingIdx];
+              const existingDiffs = existing.diffs ?? (existing.diff ? [existing.diff] : []);
+              const newDiffs = tc.fileChange.diff ? [...existingDiffs, tc.fileChange.diff] : existingDiffs;
+              this.turnFileChanges[existingIdx] = {
+                ...tc.fileChange,
+                addedLines: existing.addedLines + tc.fileChange.addedLines,
+                removedLines: existing.removedLines + tc.fileChange.removedLines,
+                changeType: tc.fileChange.changeType === "created" ? "created" :
+                           tc.fileChange.changeType === "deleted" && existing.changeType !== "created" ? "deleted" :
+                           existing.changeType,
+                diff: tc.fileChange.diff ?? existing.diff,
+                diffs: newDiffs,
+                toolName: tc.fileChange.toolName ?? existing.toolName,
+              };
             } else {
-              this.turnFileChanges.push(tc.fileChange);
+              this.turnFileChanges.push({
+                ...tc.fileChange,
+                diffs: tc.fileChange.diff ? [tc.fileChange.diff] : [],
+              });
             }
           }
         }
@@ -865,9 +884,26 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
         const normPath = normalizePath(tc.fileChange.filePath);
         const existingIdx = this.turnFileChanges.findIndex(existing => normalizePath(existing.filePath) === normPath);
         if (existingIdx >= 0) {
-          this.turnFileChanges[existingIdx] = tc.fileChange;
+          // Merge with existing change for cumulative stats
+          const existing = this.turnFileChanges[existingIdx];
+          const existingDiffs = existing.diffs ?? (existing.diff ? [existing.diff] : []);
+          const newDiffs = tc.fileChange.diff ? [...existingDiffs, tc.fileChange.diff] : existingDiffs;
+          this.turnFileChanges[existingIdx] = {
+            ...tc.fileChange,
+            addedLines: existing.addedLines + tc.fileChange.addedLines,
+            removedLines: existing.removedLines + tc.fileChange.removedLines,
+            changeType: tc.fileChange.changeType === "created" ? "created" :
+                       tc.fileChange.changeType === "deleted" && existing.changeType !== "created" ? "deleted" :
+                       existing.changeType,
+            diff: tc.fileChange.diff ?? existing.diff,
+            diffs: newDiffs,
+            toolName: tc.fileChange.toolName ?? existing.toolName,
+          };
         } else {
-          this.turnFileChanges.push(tc.fileChange);
+          this.turnFileChanges.push({
+            ...tc.fileChange,
+            diffs: tc.fileChange.diff ? [tc.fileChange.diff] : [],
+          });
         }
       }
     }
@@ -1872,37 +1908,78 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     this.diffProviderDisposable = vscode.workspace.registerTextDocumentContentProvider("brotherwhale-diff", provider);
   }
 
-  private async handleOpenDiff(filePath: string, diff?: string): Promise<void> {
+  private async handleOpenDiff(filePath: string, diff?: string, useCumulative?: boolean, diffIndex?: number): Promise<void> {
     try {
       const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       if (!workspace) return;
 
       const absPath = path.isAbsolute(filePath) ? filePath : path.join(workspace, filePath);
 
-      if (diff) {
+      // Look up the full diffs array from turnFileChanges for multi-edit files
+      const normPath = normalizePath(filePath);
+      const existing = this.turnFileChanges.find(fc => normalizePath(fc.filePath) === normPath);
+      const diffs = existing?.diffs;
+      // Use cumulative mode only when explicitly requested (changes sidebar)
+      const useCumulativeMode = useCumulative && diffs && diffs.length > 0;
+
+      if (useCumulativeMode || diff) {
         this.ensureDiffProvider();
 
-        // Read the current file content for the "new" side
-        let newContent: string;
-        try {
-          const currentUri = vscode.Uri.file(absPath);
-          const doc = await vscode.workspace.openTextDocument(currentUri);
-          newContent = doc.getText();
-        } catch (err) {
-          // File doesn't exist or can't be read, fall back to parsing diff
-          const parsed = parseDiffToSides(diff);
-          newContent = parsed.newContent;
-        }
-
-        // Reconstruct the old content by reverse-applying the diff
         let oldContent: string;
-        const reconstructed = reconstructOldContent(newContent, diff);
-        if (reconstructed !== null) {
-          oldContent = reconstructed;
+        let newContent: string;
+
+        if (useCumulativeMode) {
+          // Cumulative mode (changes sidebar): read current file, reverse-apply all diffs
+          try {
+            const currentUri = vscode.Uri.file(absPath);
+            const doc = await vscode.workspace.openTextDocument(currentUri);
+            newContent = doc.getText();
+          } catch (err) {
+            const parsed = parseDiffToSides(diffs![0]);
+            newContent = parsed.newContent;
+          }
+
+          const reconstructed = reconstructOriginalContent(diffs!, newContent);
+          if (reconstructed !== null) {
+            oldContent = reconstructed;
+          } else {
+            const fallbackDiff = diff || diffs![diffs!.length - 1];
+            const singleReconstructed = reconstructOldContent(newContent, fallbackDiff);
+            oldContent = singleReconstructed !== null ? singleReconstructed : parseDiffToSides(fallbackDiff).oldContent;
+          }
+        } else if (diffs && diffs.length > 0 && diffIndex !== undefined && diffIndex >= 0) {
+          // Single diff with precise indexing: reconstruct full-file old/new for this specific change
+          try {
+            const currentUri = vscode.Uri.file(absPath);
+            const doc = await vscode.workspace.openTextDocument(currentUri);
+            const state = getDiffStateForIndex(diffs, doc.getText(), diffIndex);
+            if (state) {
+              oldContent = state.oldContent;
+              newContent = state.newContent;
+            } else {
+              // Reconstruction failed, fall back to parsing diff
+              const parsed = parseDiffToSides(diff!);
+              oldContent = parsed.oldContent;
+              newContent = parsed.newContent;
+            }
+          } catch (err) {
+            const parsed = parseDiffToSides(diff!);
+            oldContent = parsed.oldContent;
+            newContent = parsed.newContent;
+          }
         } else {
-          // Reconstruction failed, fall back to parsing diff
-          const parsed = parseDiffToSides(diff);
-          oldContent = parsed.oldContent;
+          // Single diff without indexing (only one modification): read file, reverse-apply
+          try {
+            const currentUri = vscode.Uri.file(absPath);
+            const doc = await vscode.workspace.openTextDocument(currentUri);
+            newContent = doc.getText();
+            const reconstructed = reconstructOldContent(newContent, diff!);
+            oldContent = reconstructed !== null ? reconstructed : parseDiffToSides(diff!).oldContent;
+          } catch (err) {
+            const parsed = parseDiffToSides(diff!);
+            oldContent = parsed.oldContent;
+            newContent = parsed.newContent;
+          }
         }
 
         const diffId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -2447,10 +2524,34 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
               }
               const normPath = normalizePath(fc.filePath);
               const existingIdx = this.turnFileChanges.findIndex(existing => normalizePath(existing.filePath) === normPath);
+              // Set diffIndex on fc before merging (index in the diffs array this diff will occupy)
+              if (fc.diff) {
+                const prevDiffs = existingIdx >= 0
+                  ? (this.turnFileChanges[existingIdx].diffs ?? (this.turnFileChanges[existingIdx].diff ? [this.turnFileChanges[existingIdx].diff] : []))
+                  : [];
+                fc.diffIndex = prevDiffs.length;
+              }
               if (existingIdx >= 0) {
-                this.turnFileChanges[existingIdx] = fc;
+                // Merge with existing change for cumulative stats
+                const existing = this.turnFileChanges[existingIdx];
+                const existingDiffs = existing.diffs ?? (existing.diff ? [existing.diff] : []);
+                const newDiffs = fc.diff ? [...existingDiffs, fc.diff] : existingDiffs;
+                this.turnFileChanges[existingIdx] = {
+                  ...fc,
+                  addedLines: existing.addedLines + fc.addedLines,
+                  removedLines: existing.removedLines + fc.removedLines,
+                  changeType: fc.changeType === "created" ? "created" :
+                             fc.changeType === "deleted" && existing.changeType !== "created" ? "deleted" :
+                             existing.changeType,
+                  diff: fc.diff ?? existing.diff,
+                  diffs: newDiffs,
+                  toolName: fc.toolName ?? existing.toolName,
+                };
               } else {
-                this.turnFileChanges.push(fc);
+                this.turnFileChanges.push({
+                  ...fc,
+                  diffs: fc.diff ? [fc.diff] : [],
+                });
               }
               if (tcIdx !== undefined) {
                 this.postMessage({

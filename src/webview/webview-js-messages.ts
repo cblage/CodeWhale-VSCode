@@ -251,7 +251,7 @@ export function getMessagesScript(tr: WebviewTranslations): string {
     }
     html += '<div class="fc-actions">';
     if (fc.diff) {
-      html += '<button class="fc-view-diff" data-file-path="' + __wvEscapeHtml(fc.filePath) + '" data-diff-key="' + diffKey + '" title="' + __wvEscapeHtml(__i18n.viewDiffTooltip) + '">\\uD83D\\uDD0D ' + __wvEscapeHtml(__i18n.viewDiff) + '</button>';
+      html += '<button class="fc-view-diff" data-file-path="' + __wvEscapeHtml(fc.filePath) + '" data-diff-key="' + diffKey + '" data-diff-index="' + (fc.diffIndex !== undefined ? fc.diffIndex : '') + '" title="' + __wvEscapeHtml(__i18n.viewDiffTooltip) + '">\\uD83D\\uDD0D ' + __wvEscapeHtml(__i18n.viewDiff) + '</button>';
     }
     if (fc.changeType !== 'deleted') {
       html += '<button class="fc-open-file" data-file-path="' + __wvEscapeHtml(fc.filePath) + '" title="' + __wvEscapeHtml(__i18n.openFileTooltip) + '">\\uD83D\\uDCC4 ' + __wvEscapeHtml(__i18n.openFile) + '</button>';
@@ -386,8 +386,9 @@ export function getMessagesScript(tr: WebviewTranslations): string {
     if (target.classList.contains('fc-view-diff')) {
       var filePath = target.getAttribute('data-file-path');
       var diffKey = target.getAttribute('data-diff-key');
+      var diffIdx = target.getAttribute('data-diff-index');
       if (filePath) {
-        vscode.postMessage({ type: 'openDiff', filePath: filePath, diff: (diffKey ? _diffStore.get(diffKey) : undefined) || undefined });
+        vscode.postMessage({ type: 'openDiff', filePath: filePath, diff: (diffKey ? _diffStore.get(diffKey) : undefined) || undefined, diffIndex: diffIdx !== null && diffIdx !== '' ? parseInt(diffIdx) : undefined });
       }
       return;
     }
@@ -416,8 +417,9 @@ export function getMessagesScript(tr: WebviewTranslations): string {
     if (target.classList.contains('work-fc-view-diff')) {
       var filePath = target.getAttribute('data-file-path');
       var diffKey = target.getAttribute('data-diff-key');
+      var diffIdx = target.getAttribute('data-diff-index');
       if (filePath) {
-        vscode.postMessage({ type: 'openDiff', filePath: filePath, diff: (diffKey ? _diffStore.get(diffKey) : undefined) || undefined });
+        vscode.postMessage({ type: 'openDiff', filePath: filePath, diff: (diffKey ? _diffStore.get(diffKey) : undefined) || undefined, diffIndex: diffIdx !== null && diffIdx !== '' ? parseInt(diffIdx) : undefined });
       }
       return;
     }
