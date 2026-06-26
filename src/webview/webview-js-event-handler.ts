@@ -652,6 +652,12 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
         sessionStats = null;
         renderStatusStats();
         window.__wvMessages.renderWelcome();
+        // Clear sidebar Work panel state so stale data from the previous
+        // session doesn't persist into the new one.
+        window.__wvSidebar.setWorkState({ goal: null, checklist: [], checklistCompletionPct: 0, strategy: [], cycleCount: 0, coherenceState: 'healthy', coherenceLabel: '' });
+        window.__wvSidebar.setChangesState([]);
+        window.__wvSidebar.renderWork();
+        window.__wvSidebar.renderChanges();
         break;
 
       case 'error':
