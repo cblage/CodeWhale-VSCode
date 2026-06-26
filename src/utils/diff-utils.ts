@@ -14,6 +14,69 @@ export function parseDiffStats(diff: string): { added: number; removed: number }
   return { added, removed };
 }
 
+/**
+ * Format `apply_patch` `changes` array into a unified-diff string.
+ * Mirrors the TUI's `format_changes_preview` in tool_routing.rs.
+ */
+export function formatChangesAsDiff(changes: Array<{ path: string; content: string }>): string {
+  let out = "";
+  for (const change of changes) {
+    const path = change.path || "<file>";
+    const content = change.content || "";
+    out += `diff --git a/${path} b/${path}\n`;
+    out += `--- a/${path}\n+++ b/${path}\n`;
+    out += "@@ -0,0 +1,1 @@\n";
+    let count = 0;
+    for (const line of content.split("\n")) {
+      out += "+" + line + "\n";
+      count++;
+      if (count >= 20) {
+        out += "+... (truncated)\n";
+        break;
+      }
+    }
+    if (content === "") {
+      out += "+\n";
+    }
+  }
+  return out;
+}
+
+/**
+ * Extract a unified diff for a tool call, handling tools where the diff
+ * lives in the input rather than the output (e.g. `apply_patch`).
+ *
+ * @param toolName  - Name of the tool that produced the change
+ * @param input     - Tool input parameters (may contain `patch` or `changes`)
+ * @param output    - Tool result text
+ * @returns Unified diff string, or undefined if none could be extracted
+ */
+export function extractDiffForTool(
+  toolName: string,
+  input: Record<string, unknown> | undefined,
+  output: string,
+): string | undefined {
+  // Standard path: diff is in the tool output (edit_file, write_file, etc.)
+  let diff = extractDiffFromOutput(output);
+  if (diff) return diff;
+
+  // apply_patch: diff lives in the input, not the output
+  if (toolName === "apply_patch" && input) {
+    // `patch` parameter — a raw unified diff string
+    const patch = input.patch;
+    if (typeof patch === "string" && patch.trim()) {
+      return patch;
+    }
+    // `changes` parameter — array of { path, content } objects
+    const changes = input.changes;
+    if (Array.isArray(changes) && changes.length > 0) {
+      return formatChangesAsDiff(changes as Array<{ path: string; content: string }>);
+    }
+  }
+
+  return undefined;
+}
+
 export function extractDiffFromOutput(output: string): string | undefined {
   const lines = output.split("\n");
   let diffStart = -1;

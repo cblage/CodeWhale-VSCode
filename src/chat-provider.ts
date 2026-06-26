@@ -20,6 +20,7 @@ import { calculateTurnCost, formatCostAmount } from "./utils/cost-calculator";
 import {
   parseDiffStats,
   extractDiffFromOutput,
+  extractDiffForTool,
   extractFilePathFromDiff,
   parseDiffToSides,
   stripTurnMeta,
@@ -490,7 +491,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
                 const filePath = extractFilePath(tc.name, tc.input);
                 if (filePath) {
                   const output = tc.output || "";
-                  const diff = extractDiffFromOutput(output);
+                  const diff = extractDiffForTool(tc.name, tc.input as Record<string, unknown> | undefined, output);
                   const stats = diff ? parseDiffStats(diff) : { added: 0, removed: 0 };
                   const changeType: "created" | "modified" | "deleted" =
                     tc.name === "delete_file" ? "deleted" :
@@ -514,10 +515,10 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
               currentThinkingBlock = undefined;
               const tcIdx2 = toolCalls.length;
               const fcOutput = item.detail || "";
-              const fcDiff = extractDiffFromOutput(fcOutput);
-              const fcStats = fcDiff ? parseDiffStats(fcDiff) : { added: 0, removed: 0 };
               const fcMeta = (item.metadata as Record<string, unknown>) || {};
               const fcToolName = extractToolNameFromSummary(item.summary || "");
+              const fcDiff = extractDiffForTool(fcToolName, fcMeta as Record<string, unknown> | undefined, fcOutput);
+              const fcStats = fcDiff ? parseDiffStats(fcDiff) : { added: 0, removed: 0 };
               let fcFilePath = fcDiff ? extractFilePathFromDiff(fcDiff) : "";
               if (!fcFilePath && fcMeta.file_path) fcFilePath = fcMeta.file_path as string;
               if (!fcFilePath && fcMeta.path) fcFilePath = fcMeta.path as string;
@@ -731,7 +732,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       const filePath = extractFilePath(toolCall.name, toolCall.input);
       if (!filePath) return;
       const output = toolCall.output || "";
-      const diff = extractDiffFromOutput(output);
+      const diff = extractDiffForTool(toolCall.name, toolCall.input as Record<string, unknown> | undefined, output);
       const stats = diff ? parseDiffStats(diff) : { added: 0, removed: 0 };
       const changeType: "created" | "modified" | "deleted" =
         toolCall.name === "delete_file" ? "deleted" :
@@ -2498,7 +2499,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
               filePath = extractFilePath(toolName, tc.input);
             }
             const output = pl.item?.detail || tc?.output || "";
-            diff = extractDiffFromOutput(output);
+            diff = extractDiffForTool(toolName, tc?.input as Record<string, unknown> | undefined, output);
             if (!filePath && diff) {
               filePath = extractFilePathFromDiff(diff);
             }
