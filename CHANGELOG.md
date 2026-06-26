@@ -1,5 +1,17 @@
 # Change Log
 
+## 0.3.2
+
+### Bug Fixes
+
+- **Apply Patch Diff Preview** — Support diff preview for apply_patch tool outputs from input patch/changes
+
+- **Session Reset State Cleanup** — Clear stale sidebar work and changes state when resetting the webview session, so old session data does not persist into new sessions
+
+- **Accurate Diff Line Numbers** — Separate single-diff and cumulative-diff modes: per-card diffs in reasoning sessions now show full files with correct line numbers instead of only hunk fragments
+
+- **Diff View Line Alignment** — Align diff view line numbers with actual file positions by reverse-applying diff hunks to current file content, making it easier to correlate hunks with their real positions
+
 ## 0.3.1
 
 ### New Features

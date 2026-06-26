@@ -1,6 +1,6 @@
 # CodeWhale for VS Code — CodeWhale AI 代理的图形化前端
 
-[![Version](https://img.shields.io/badge/version-0.3.1-blue)](https://github.com/HengQuWorld/CodeWhale-VSCode)
+[![Version](https://img.shields.io/badge/version-0.3.2-blue)](https://github.com/HengQuWorld/CodeWhale-VSCode)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.85+-informational)](https://code.visualstudio.com/)
 
