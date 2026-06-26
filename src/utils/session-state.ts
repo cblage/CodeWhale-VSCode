@@ -61,6 +61,12 @@ export interface ChecklistItem {
   status: string;
 }
 
+/** A single step in an update_plan strategy, restored from session tool calls */
+export interface StrategyStep {
+  text: string;
+  status: string;
+}
+
 export interface ActiveItem {
   kind: string;
   msgId: string;
@@ -118,6 +124,8 @@ export interface SessionStateData {
   cycleCount: number;
   checklistItems: ChecklistItem[];
   checklistCompletionPct: number;
+  /** Strategy steps from update_plan tool calls */
+  strategySteps: StrategyStep[];
   coherenceState: string;
   coherenceLabel: string;
   turnFileChanges: FileChangeInfo[];
@@ -157,6 +165,7 @@ function createEmptyState(): SessionStateData {
     cycleCount: 0,
     checklistItems: [],
     checklistCompletionPct: 0,
+    strategySteps: [],
     coherenceState: "healthy",
     coherenceLabel: "",
     turnFileChanges: [],

@@ -260,6 +260,22 @@ export function getWebviewCss(): string {
       font-size: 0.9em;
       opacity: 0.7;
     }
+    .session-mode-badge {
+      padding: 0 4px;
+      border-radius: 3px;
+      font-size: 0.85em;
+      font-weight: 600;
+      background: rgba(100, 149, 237, 0.15);
+      color: var(--accent);
+    }
+    .session-cost {
+      color: #4caf50;
+      font-size: 0.9em;
+    }
+    .session-tokens {
+      color: var(--muted);
+      font-size: 0.9em;
+    }
 
     /* Session search bar */
     .session-search-bar {
@@ -1625,21 +1641,6 @@ export function getWebviewCss(): string {
       transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
       animation: workProgressFill 600ms ease-out;
       position: relative;
-      overflow: hidden;
-    }
-    .work-progress-bar-fill::after {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-      animation: shimmer 2s infinite;
-    }
-    @keyframes shimmer {
-      0% { transform: translateX(-100%); }
-      100% { transform: translateX(100%); }
     }
     .work-progress-bar-fill.completed { background: linear-gradient(90deg, #4caf50, #66bb6a); }
     .work-progress-bar-fill.in-progress { background: linear-gradient(90deg, var(--brand-primary), var(--brand-primary-light)); }
@@ -1655,17 +1656,11 @@ export function getWebviewCss(): string {
       font-size: 0.82em;
       line-height: 1.45;
       border-radius: 5px;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
       margin: 2px 0;
     }
     .work-checklist-item:hover,
     .work-strategy-step:hover {
       background: rgba(128,128,128,0.06);
-      transform: translateX(3px);
-    }
-    .work-checklist-item:active,
-    .work-strategy-step:active {
-      transform: translateX(3px) scale(0.98);
     }
     .work-checklist-icon,
     .work-strategy-icon {
@@ -1678,7 +1673,6 @@ export function getWebviewCss(): string {
       font-size: 0.95em;
       margin-top: 0;
       border-radius: 50%;
-      transition: all 0.2s;
     }
     .work-checklist-text,
     .work-strategy-text {
@@ -1702,11 +1696,7 @@ export function getWebviewCss(): string {
     }
     .work-checklist-item.in-progress .work-checklist-icon,
     .work-strategy-step.in-progress .work-strategy-icon {
-      animation: pulse 1.5s ease-in-out infinite;
-    }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.7; transform: scale(1.1); }
+      opacity: 1;
     }
 
     /* ── Coherence Banner ── */

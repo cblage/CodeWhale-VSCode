@@ -35,6 +35,7 @@ import {
   type ContentBlock,
   type ToolCallInfo,
   type FileChangeInfo,
+  type StrategyStep,
   type SessionCostSnapshot,
 } from "./utils/session-state";
 import {
@@ -106,6 +107,8 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
   private set checklistItems(v: { id: string; content: string; status: string }[]) { this.sessionState.data.checklistItems = v; }
   private get checklistCompletionPct(): number { return this.sessionState.data.checklistCompletionPct; }
   private set checklistCompletionPct(v: number) { this.sessionState.data.checklistCompletionPct = v; }
+  private get strategySteps(): StrategyStep[] { return this.sessionState.data.strategySteps; }
+  private set strategySteps(v: StrategyStep[]) { this.sessionState.data.strategySteps = v; }
   private get coherenceState(): string { return this.sessionState.data.coherenceState; }
   private set coherenceState(v: string) { this.sessionState.data.coherenceState = v; }
   private get coherenceLabel(): string { return this.sessionState.data.coherenceLabel; }
@@ -910,6 +913,46 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     }
     this.refreshChangesPanel();
 
+    // ── Restore Work state from tool calls (checklist + strategy) ──
+    // When viewing a saved session, the SSE event stream is not replaying,
+    // so checklist / strategy must be reconstructed from the tool call inputs.
+    // The tool output is just a text confirmation; the real data is in tc.input.
+    let workRestored = false;
+    for (let ti = globalToolCalls.length - 1; ti >= 0; ti--) {
+      const tc = globalToolCalls[ti];
+      if (!tc.input || Object.keys(tc.input).length === 0) continue;
+      // Restore checklist from the last checklist_write (full state replacement)
+      if (!workRestored && tc.name === "checklist_write") {
+        const todos = tc.input.todos;
+        if (Array.isArray(todos)) {
+          const items = (todos as Array<Record<string, unknown>>).map((t, idx) => ({
+            id: String(idx + 1),
+            content: (t.content || "") as string,
+            status: (t.status || "pending") as string,
+          }));
+          if (items.length > 0) {
+            this.checklistItems = items;
+            const done = items.filter(it => it.status === "completed").length;
+            this.checklistCompletionPct = Math.round((done / items.length) * 100);
+            workRestored = true;
+          }
+        }
+      }
+      // Restore strategy from the last update_plan
+      if (tc.name === "update_plan") {
+        const plan = tc.input.plan;
+        if (Array.isArray(plan)) {
+          this.strategySteps = (plan as Array<Record<string, unknown>>)
+            .filter(s => typeof s.step === "string")
+            .map(s => ({
+              text: (s.step as string),
+              status: (s.status || "pending") as string,
+            }));
+        }
+      }
+    }
+    this.refreshWorkPanel();
+
     const msgCount = this.messages.length;
     const costUsd = session.metadata.cost?.session_cost_usd ?? 0;
     const costStr = costUsd > 0 ? ` | $${costUsd.toFixed(2)}` : "";
@@ -1393,7 +1436,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       goal,
       checklist: this.checklistItems,
       checklistCompletionPct: this.checklistCompletionPct,
-      strategy: [],
+      strategy: this.strategySteps,
       cycleCount: this.cycleCount,
       coherenceState: this.coherenceState,
       coherenceLabel: this.coherenceLabel,

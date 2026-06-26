@@ -158,7 +158,8 @@ export function getSidebarScript(tr: WebviewTranslations): string {
       metaEl.className = 'thread-meta';
 
       var modeEl = document.createElement('span');
-      modeEl.textContent = s.mode || '';
+      modeEl.className = 'session-mode-badge';
+      modeEl.textContent = s.mode || 'agent';
       metaEl.appendChild(modeEl);
 
       if (showAllWorkspaces && s.workspace) {
@@ -174,6 +175,26 @@ export function getSidebarScript(tr: WebviewTranslations): string {
         var msgEl = document.createElement('span');
         msgEl.textContent = s.message_count + ' msgs';
         metaEl.appendChild(msgEl);
+      }
+
+      // Cost (if available)
+      if (s.cost && typeof s.cost.session_cost_usd === 'number' && s.cost.session_cost_usd > 0) {
+        var costEl = document.createElement('span');
+        costEl.className = 'session-cost';
+        costEl.textContent = '$' + s.cost.session_cost_usd.toFixed(2);
+        metaEl.appendChild(costEl);
+      }
+
+      // Total tokens (if available)
+      if (typeof s.total_tokens === 'number' && s.total_tokens > 0) {
+        var tokEl = document.createElement('span');
+        tokEl.className = 'session-tokens';
+        if (s.total_tokens >= 1000) {
+          tokEl.textContent = (s.total_tokens / 1000).toFixed(1) + 'k';
+        } else {
+          tokEl.textContent = String(s.total_tokens);
+        }
+        metaEl.appendChild(tokEl);
       }
 
       if (s.updated_at) {
