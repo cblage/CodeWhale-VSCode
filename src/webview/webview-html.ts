@@ -453,6 +453,9 @@ ${css}
           var h = parseInt(savedHeight, 10);
           if (h >= 56 && h <= 400) {
             inputArea.style.height = h + 'px';
+            // Reset textarea height so it fills the restored container
+            var input = document.getElementById('input');
+            if (input) input.style.height = 'auto';
           }
         }
       } catch(e) { /* localStorage may not be available */ }
@@ -477,6 +480,9 @@ ${css}
         if (newHeight < 56) newHeight = 56;
         if (newHeight > 400) newHeight = 400;
         inputArea.style.height = newHeight + 'px';
+        // Keep textarea filling the container during resize
+        var input = document.getElementById('input');
+        if (input) input.style.height = 'auto';
       }
 
       function onMouseUp() {
@@ -491,6 +497,9 @@ ${css}
           var finalHeight = inputArea.getBoundingClientRect().height;
           localStorage.setItem('codewhale:inputAreaHeight', String(Math.round(finalHeight)));
         } catch(e) { /* ignore localStorage errors */ }
+        // Reset textarea height so it fills the resized container
+        var input = document.getElementById('input');
+        if (input) input.style.height = 'auto';
         startY = undefined;
         startHeight = undefined;
       }
