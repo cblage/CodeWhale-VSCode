@@ -348,6 +348,41 @@ describe("SlashCommandHandler - Dispatcher Pattern", () => {
       expect(currentThread.auto_approve).toBe(true);
     });
 
+    it("keeps the local thread mode in sync even when updateThread returns no body", async () => {
+      const currentThread = {
+        id: "thread-1",
+        mode: "plan",
+        model: "deepseek-v4-pro",
+        trust_mode: false,
+        auto_approve: false,
+      } as any;
+      const updateThread = vi.fn(async () => undefined);
+      const postMessage = vi.fn();
+      const ctx = createContext({
+        api: { ...createContext().api, updateThread } as any,
+        currentThread,
+        postMessage,
+      });
+      const handler = new SlashCommandHandler(ctx);
+
+      await handler.handle("/mode", "agent");
+
+      expect(updateThread).toHaveBeenCalledWith("thread-1", {
+        mode: "agent",
+        trust_mode: false,
+        auto_approve: false,
+      });
+      expect(currentThread.mode).toBe("agent");
+      expect(currentThread.trust_mode).toBe(false);
+      expect(currentThread.auto_approve).toBe(false);
+      expect(postMessage).toHaveBeenCalledWith({
+        type: "settingsUpdated",
+        mode: "agent",
+        model: "deepseek-v4-pro",
+        reasoningEffort: "auto",
+      });
+    });
+
     it("switches to plan mode", async () => {
       const postMessage = vi.fn();
       const ctx = createContext({ postMessage });

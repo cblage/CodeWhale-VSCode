@@ -51,6 +51,18 @@ function normalizePath(p: string): string {
   return p.replace(/\\/g, '/').replace(/\/+$/, '');
 }
 
+function mergeThreadRecord(
+  current: ThreadRecord,
+  updated: Partial<ThreadRecord> | undefined,
+  fallback: Partial<ThreadRecord> = {},
+): ThreadRecord {
+  return {
+    ...current,
+    ...fallback,
+    ...(updated || {}),
+  };
+}
+
 export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandContext {
   public static readonly viewType = "brotherwhale.chat";
 
@@ -672,7 +684,6 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       const sessionMode = session.metadata.mode || "agent";
       const cfg = vscode.workspace.getConfiguration("brotherwhale");
       const currentModel = cfg.get<string>("defaultModel", "deepseek-v4-pro");
-      const currentMode = cfg.get<string>("defaultMode", "agent");
       this.postMessage({
         type: "settingsUpdated",
         model: sessionModel || currentModel,
@@ -1013,7 +1024,10 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       if (currentWorkspace && this.currentThread.workspace !== currentWorkspace) {
         const oldWorkspace = this.currentThread.workspace;
         try {
-          this.currentThread = await this.api.updateThread(threadId, {
+          const updatedThread = await this.api.updateThread(threadId, {
+            workspace: currentWorkspace,
+          });
+          this.currentThread = mergeThreadRecord(this.currentThread, updatedThread, {
             workspace: currentWorkspace,
           });
           this.postMessage({
@@ -1244,7 +1258,10 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       const currentWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       if (currentWorkspace && this.currentThread.workspace !== currentWorkspace) {
         try {
-          this.currentThread = await this.api.updateThread(this.currentThread.id, {
+          const updatedThread = await this.api.updateThread(this.currentThread.id, {
+            workspace: currentWorkspace,
+          });
+          this.currentThread = mergeThreadRecord(this.currentThread, updatedThread, {
             workspace: currentWorkspace,
           });
         } catch { /* non-critical */ }

@@ -1,0 +1,170 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const vscodeState = vi.hoisted(() => {
+  const configValues = new Map<string, unknown>([
+    ["defaultMode", "plan"],
+    ["defaultModel", "deepseek-v4-pro"],
+    ["reasoningEffort", "auto"],
+    ["autoApprove", false],
+    ["showThreadList", false],
+  ]);
+
+  return {
+    configValues,
+    updateMock: vi.fn(async (key: string, value: unknown) => {
+      vscodeState.configValues.set(key, value);
+    }),
+    executeCommandMock: vi.fn(),
+    workspaceFolders: undefined as Array<{ uri: { fsPath: string } }> | undefined,
+  };
+});
+
+vi.mock("vscode", () => ({
+  workspace: {
+    getConfiguration: vi.fn(() => ({
+      get: (key: string, fallback?: unknown) =>
+        vscodeState.configValues.has(key)
+          ? vscodeState.configValues.get(key)
+          : fallback,
+      update: vscodeState.updateMock,
+    })),
+    get workspaceFolders() {
+      return vscodeState.workspaceFolders;
+    },
+  },
+  commands: {
+    executeCommand: vscodeState.executeCommandMock,
+  },
+  window: {
+    showWarningMessage: vi.fn(),
+    showErrorMessage: vi.fn(),
+    setStatusBarMessage: vi.fn(),
+    showTextDocument: vi.fn(),
+  },
+  env: {
+    language: "en",
+  },
+  Uri: {
+    file: (fsPath: string) => ({ fsPath }),
+    parse: (value: string) => ({ toString: () => value }),
+  },
+  ConfigurationTarget: {
+    Global: "global",
+  },
+}));
+
+import { ChatProvider } from "./chat-provider";
+
+function createProvider() {
+  const currentThread = {
+    id: "thread-1",
+    model: "deepseek-v4-pro",
+    mode: "plan",
+    workspace: "",
+    auto_approve: false,
+    trust_mode: false,
+  };
+
+  const updateThread = vi.fn(async (_threadId: string, updates: Record<string, unknown>) => ({
+    ...currentThread,
+    ...updates,
+  }));
+  const startTurn = vi.fn(async () => ({
+    thread: currentThread,
+    turn: { id: "turn-1" },
+  }));
+  const api = {
+    bindEngine: vi.fn(),
+    ensureReady: vi.fn(async () => undefined),
+    updateThread,
+    getThread: vi.fn(async () => currentThread),
+    startTurn,
+  };
+  const provider = new ChatProvider({} as any, {} as any, api as any);
+
+  provider.postMessage = vi.fn();
+  provider.refreshSessionList = vi.fn(async () => undefined);
+  provider.refreshTaskList = vi.fn(async () => undefined);
+  provider.refreshWorkPanel = vi.fn();
+  provider.currentThread = currentThread as any;
+
+  return { api, currentThread, provider, postMessage: provider.postMessage as any };
+}
+
+describe("ChatProvider mode regression", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vscodeState.configValues.clear();
+    vscodeState.configValues.set("defaultMode", "plan");
+    vscodeState.configValues.set("defaultModel", "deepseek-v4-pro");
+    vscodeState.configValues.set("reasoningEffort", "auto");
+    vscodeState.configValues.set("autoApprove", false);
+    vscodeState.configValues.set("showThreadList", false);
+    vscodeState.workspaceFolders = undefined;
+  });
+
+  it("keeps sending new turns in agent mode after /mode agent updates the active thread", async () => {
+    const { api, provider } = createProvider();
+
+    await (provider as any).handleWebviewMessage({
+      type: "slashCommand",
+      command: "/mode",
+      args: "agent",
+    });
+    await (provider as any).handleWebviewMessage({
+      type: "sendMessage",
+      text: "use write_file",
+    });
+
+    expect(api.updateThread).toHaveBeenCalledWith("thread-1", {
+      mode: "agent",
+      trust_mode: false,
+      auto_approve: false,
+    });
+    expect(provider.currentThread?.mode).toBe("agent");
+    expect(api.startTurn).toHaveBeenCalledWith("thread-1", "use write_file", {
+      mode: "agent",
+      model: "deepseek-v4-pro",
+      reasoning_effort: "auto",
+      auto_approve: false,
+      trust_mode: false,
+    });
+  });
+
+  it("preserves mode and model when workspace sync PATCH returns only partial thread fields", async () => {
+    vscodeState.workspaceFolders = [{ uri: { fsPath: "/workspace" } }];
+    const { api, provider } = createProvider();
+    api.updateThread = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: "thread-1",
+        model: "deepseek-v4-pro",
+        mode: "agent",
+        workspace: "",
+        auto_approve: false,
+        trust_mode: false,
+      })
+      .mockResolvedValueOnce({
+        id: "thread-1",
+        workspace: "/workspace",
+      });
+
+    await (provider as any).handleWebviewMessage({
+      type: "slashCommand",
+      command: "/mode",
+      args: "agent",
+    });
+    await (provider as any).handleWebviewMessage({
+      type: "sendMessage",
+      text: "write through tool",
+    });
+
+    expect(api.startTurn).toHaveBeenCalledWith("thread-1", "write through tool", {
+      mode: "agent",
+      model: "deepseek-v4-pro",
+      reasoning_effort: "auto",
+      auto_approve: false,
+      trust_mode: false,
+    });
+  });
+});
