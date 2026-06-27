@@ -1,5 +1,19 @@
 # Change Log
 
+## 0.3.3
+
+### Bug Fixes
+
+- **Textarea Height on Resize** — Reset textarea inline height when the input area is manually resized via drag handle, so the textarea fills the new container height instead of staying at its auto-grown height
+
+- **Workspace Thread Filtering** — Filter threads by current workspace on initialization, preventing the GUI from loading the most recent thread from a different project when creating a new session
+
+- **Thread Update Field Preservation** — Merge partial API responses with existing thread data instead of overwriting, fixing a bug where `/mode agent` would silently revert to the config default after sending a message
+
+### Improvements
+
+- **Work Panel Animation Simplification** — Remove interactive-style animations (shimmer, pulse, hover translate) from read-only checklist and strategy items to match the static display style of session/thread lists
+
 ## 0.3.2
 
 ### Bug Fixes
