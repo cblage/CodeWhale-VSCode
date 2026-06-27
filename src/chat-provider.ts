@@ -360,9 +360,17 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       await this.refreshApiCapabilities();
 
       this.debugLog("calling listThreads...");
-      const threads = await this.api.listThreads({ limit: 20 });
-      this.debugLog(`listThreads returned ${threads.length} threads`);
+      const allThreads = await this.api.listThreads({ limit: 100 });
+      this.debugLog(`listThreads returned ${allThreads.length} threads`);
       await this.refreshSessionList();
+
+      // Filter threads to the current workspace. The runtime thread store is
+      // global (not scoped by workspace), so listThreads may return stale
+      // threads from a previously-opened project.
+      const currentWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      const threads = currentWorkspace
+        ? allThreads.filter(t => t.workspace === currentWorkspace)
+        : allThreads;
 
       const threadWithContent = threads.find(t => t.latest_turn_id !== null);
       
