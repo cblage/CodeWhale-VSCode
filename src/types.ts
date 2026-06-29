@@ -445,6 +445,54 @@ export interface AgentRunsResponse {
   runs: AgentRunRecord[];
 }
 
+// ── Config ──
+
+export interface GuiConfigResponse {
+  model: string;
+  provider: string;
+  approval_mode: string;
+  reasoning_effort: string;
+  auto_compact: boolean;
+  cost_currency: string;
+  default_mode: string;
+  default_model: string;
+  base_url: string;
+  allow_shell: boolean;
+  mcp_config_path: string;
+  subagents_enabled: boolean;
+  subagents_max_depth: number;
+  show_thinking: boolean;
+  show_tool_details: boolean;
+  locale: string;
+  max_history: number;
+  prefer_external_pdftotext: boolean;
+  workspace_follow_symlinks: boolean;
+  calm_mode: boolean;
+  sandbox_mode: string;
+  strict_tool_mode: boolean;
+  memory_enabled: boolean;
+  search_provider: string;
+  prompt_suggestion: boolean;
+}
+
+export interface SetConfigRequest {
+  key: string;
+  value: string;
+  persist?: boolean;
+}
+
+export interface SetConfigResponse {
+  key: string;
+  value: string;
+  message: string;
+  persisted: boolean;
+  requires_reload: boolean;
+}
+
+export interface ReloadConfigResponse {
+  message: string;
+}
+
 // ── Re-exports from other modules ──
 
 export { CodeWhaleEngine } from "./api/engine";

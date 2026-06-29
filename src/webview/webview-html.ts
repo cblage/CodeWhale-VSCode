@@ -298,6 +298,7 @@ ${css}
             </div>
           </div>
         </div>
+        <button id="btn-config" title="Open Config Panel">⚙</button>
       </div>
       <div id="messages"></div>
       <div id="toolbar">

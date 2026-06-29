@@ -11,7 +11,7 @@ const COMMANDS: SlashCommand[] = [
   { name: "/model", desc: "Switch model", category: "config", availability: "full", helpText: "/model [name] - Switch model" },
   { name: "/models", desc: "List available models", category: "config", availability: "full", helpText: "/models - List available models" },
   { name: "/reasoning", desc: "Set reasoning effort", category: "config", availability: "full", helpText: "/reasoning [auto|off|low|medium|high|max] - Set reasoning effort" },
-  { name: "/config", desc: "Open settings", category: "config", availability: "full", helpText: "/config - Open VSCode settings" },
+  { name: "/config", desc: "Open config panel or set config", category: "config", availability: "full", helpText: "/config [key value] - Open config panel, or set a config key" },
   { name: "/settings", desc: "Show current settings", category: "config", availability: "full", helpText: "/settings - Show current settings" },
   { name: "/clear", desc: "Clear chat", category: "core", availability: "full", helpText: "/clear - Clear chat" },
   { name: "/help", desc: "Show help", category: "core", availability: "full", helpText: "/help - Show help" },

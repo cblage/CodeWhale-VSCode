@@ -155,6 +155,13 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
           }
         }
       }
+
+      // Config button
+      if (target.id === 'btn-config' || target.closest('#btn-config')) {
+        vscode.postMessage({ type: 'openConfigPanel' });
+        e.stopPropagation();
+        return;
+      }
     });
   })();
 

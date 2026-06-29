@@ -41,6 +41,10 @@ import type {
   UpdateAutomationRequest,
   AgentRunRecord,
   AgentRunsResponse,
+  GuiConfigResponse,
+  SetConfigRequest,
+  SetConfigResponse,
+  ReloadConfigResponse,
   EventListener,
   EngineRef,
 } from "../types";
@@ -544,6 +548,20 @@ export class CodeWhaleApiClient {
 
   async getAgentRun(runId: string): Promise<AgentRunRecord> {
     return (await this.get(`/v1/agent-runs/${runId}`)) as AgentRunRecord;
+  }
+
+  // ── Config ──
+
+  async getConfig(): Promise<GuiConfigResponse> {
+    return (await this.get("/v1/config")) as GuiConfigResponse;
+  }
+
+  async setConfig(req: SetConfigRequest): Promise<SetConfigResponse> {
+    return (await this.post("/v1/config", req)) as SetConfigResponse;
+  }
+
+  async reloadConfig(): Promise<ReloadConfigResponse> {
+    return (await this.post("/v1/config/reload", {})) as ReloadConfigResponse;
   }
 
   // ── SSE Event Stream ──

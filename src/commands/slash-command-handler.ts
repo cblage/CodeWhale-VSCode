@@ -174,8 +174,45 @@ async function handleReasoning(ctx: SlashCommandContext, args: string): Promise<
   }
 }
 
-async function handleConfig(_ctx: SlashCommandContext, _args: string): Promise<void> {
-  vscode.commands.executeCommand("workbench.action.openSettings", "brotherwhale");
+async function handleConfig(ctx: SlashCommandContext, args: string): Promise<void> {
+  const trimmed = args.trim();
+  if (!trimmed) {
+    // No args: open the config panel
+    ctx.postMessage({ type: "openConfigPanel" });
+    return;
+  }
+
+  // Parse "key value" or "key=value"
+  const parts = trimmed.split(/[\s=]+/, 2);
+  if (parts.length < 2) {
+    // Just a key: show current value
+    try {
+      const config = await ctx.api.getConfig();
+      const key = parts[0].toLowerCase();
+      const value = (config as unknown as Record<string, unknown>)[key];
+      if (value !== undefined) {
+        ctx.postMessage({ type: "info", message: `${key} = ${value}` });
+      } else {
+        ctx.postMessage({ type: "error", message: `Unknown config key '${key}'` });
+      }
+    } catch (err) {
+      ctx.postMessage({ type: "error", message: `Failed to read config: ${getErrorMessage(err)}` });
+    }
+    return;
+  }
+
+  const [key, value] = parts;
+  try {
+    const result = await ctx.api.setConfig({ key, value, persist: true });
+    if (result.requires_reload) {
+      await ctx.api.reloadConfig();
+      ctx.postMessage({ type: "info", message: `${result.key} = ${result.value} (saved & reloaded)` });
+    } else {
+      ctx.postMessage({ type: "info", message: `${result.key} = ${result.value} (saved)` });
+    }
+  } catch (err) {
+    ctx.postMessage({ type: "error", message: `Failed to set config: ${getErrorMessage(err)}` });
+  }
 }
 
 async function handleSettings(ctx: SlashCommandContext, _args: string): Promise<void> {

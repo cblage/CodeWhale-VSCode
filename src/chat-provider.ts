@@ -29,6 +29,7 @@ import {
   getDiffStateForIndex,
 } from "./utils/diff-utils";
 import { t, webviewTranslations } from "./i18n";
+import { ConfigPanel } from "./config-panel";
 import {
   SessionStateStore,
   type ChatMessage,
@@ -315,6 +316,9 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
         break;
       case "searchSessions":
         await this.handleSearchSessions(msg.query as string);
+        break;
+      case "openConfigPanel":
+        ConfigPanel.createOrShow(this.extensionUri, this.api);
         break;
     }
   }
