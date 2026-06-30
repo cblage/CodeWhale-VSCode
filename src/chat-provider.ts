@@ -1444,16 +1444,11 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     }
   }
 
-  /** Refresh the task list shown in the sidebar, scoped to the current thread */
+  /** Refresh the task list shown in the sidebar, scoped to the current workspace */
   public async refreshTaskList(): Promise<void> {
     try {
       const result = await this.api.listTasks({ limit: 50 });
-      let tasks = result.tasks;
-      // Filter to only show tasks belonging to the current thread
-      if (this.currentThread) {
-        const tid = this.currentThread.id;
-        tasks = tasks.filter(t => t.thread_id === tid);
-      }
+      const tasks = result.tasks;
       this.postMessage({ type: "taskList", tasks });
     } catch {
       // best-effort

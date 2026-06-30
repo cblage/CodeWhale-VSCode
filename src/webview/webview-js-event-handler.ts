@@ -684,6 +684,10 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
         window.__wvSidebar.renderAgents([]);
         break;
 
+      case 'openConfigPanel':
+        vscode.postMessage({ type: 'openConfigPanel' });
+        break;
+
       case 'error':
         setStreamingState(false, __i18n.error);
         var errEl = document.createElement('div');

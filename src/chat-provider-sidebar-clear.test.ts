@@ -118,13 +118,11 @@ describe("Sidebar clearing on thread switch", () => {
   });
 
   describe("loadThread()", () => {
-    it("emits threadLoaded then refreshes task and agent lists for the new thread", async () => {
+    it("emits threadLoaded then refreshes task and agent lists for the workspace", async () => {
       const { provider, api, postMessage } = createProvider();
       api.listTasks.mockResolvedValue({
         tasks: [
-          // Task matching the current thread — should appear
           { id: "t1", status: "running", model: "m", thread_id: "thread-2" },
-          // Task from a different thread — should be filtered out
           { id: "t2", status: "completed", model: "m", thread_id: "thread-9" },
         ],
         counts: { active: 1, completed: 0, failed: 0 },
@@ -145,15 +143,14 @@ describe("Sidebar clearing on thread switch", () => {
       expect(api.listTasks).toHaveBeenCalledWith({ limit: 50 });
       expect(api.listAgentRuns).toHaveBeenCalled();
 
-      // Only tasks for the current thread are pushed to the webview
+      // All workspace tasks are pushed to the webview (no thread filter)
       expect(byType.taskList).toBeDefined();
-      expect((byType.taskList[0] as { tasks: unknown[] }).tasks).toHaveLength(1);
-      expect((byType.taskList[0] as { tasks: { id: string }[] }).tasks[0].id).toBe("t1");
+      expect((byType.taskList[0] as { tasks: unknown[] }).tasks).toHaveLength(2);
       expect(byType.agentRunList).toBeDefined();
       expect((byType.agentRunList[0] as { runs: unknown[] }).runs).toHaveLength(1);
     });
 
-    it("filters out tasks from other threads", async () => {
+    it("shows tasks from all threads in the workspace", async () => {
       const { provider, api, postMessage } = createProvider();
       api.listTasks.mockResolvedValue({
         tasks: [
@@ -168,9 +165,8 @@ describe("Sidebar clearing on thread switch", () => {
       const byType = callsByType(postMessage);
       expect(byType.taskList).toBeDefined();
       const sent = (byType.taskList[0] as { tasks: { id: string; thread_id: string }[] }).tasks;
-      expect(sent).toHaveLength(1);
-      expect(sent[0].id).toBe("t-mine");
-      expect(sent[0].thread_id).toBe("thread-new");
+      expect(sent).toHaveLength(2);
+      expect(sent.map(t => t.id).sort()).toEqual(["t-mine", "t-other"]);
     });
 
     it("refreshes work and changes panels for the new thread", async () => {
