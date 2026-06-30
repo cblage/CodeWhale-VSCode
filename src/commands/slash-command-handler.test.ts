@@ -520,16 +520,14 @@ describe("SlashCommandHandler - Dispatcher Pattern", () => {
   // ── /config ──
 
   describe("/config", () => {
-    it("opens VSCode settings", async () => {
-      const ctx = createContext();
+    it("opens config panel", async () => {
+      const postMessage = vi.fn();
+      const ctx = createContext({ postMessage });
       const handler = new SlashCommandHandler(ctx);
 
       await handler.handle("/config", "");
 
-      expect(vscodeState.executeCommandMock).toHaveBeenCalledWith(
-        "workbench.action.openSettings",
-        "brotherwhale"
-      );
+      expect(postMessage).toHaveBeenCalledWith({ type: "openConfigPanel" });
     });
   });
 

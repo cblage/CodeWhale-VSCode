@@ -214,6 +214,18 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
       case 'threadLoaded':
         window.__wvSidebar.setActiveThreadId(msg.threadId || msg.thread?.id || null);
         window.__wvSidebar.renderThreads();
+        // Close any open detail overlay from the previous thread
+        window.__wvSidebar.closeTaskDetail();
+        window.__wvSidebar.closeAgentDetail();
+        // Clear stale work/changes state from previous thread
+        window.__wvSidebar.setWorkState({ goal: null, checklist: [], checklistCompletionPct: 0, strategy: [], cycleCount: 0, coherenceState: 'healthy', coherenceLabel: '' });
+        window.__wvSidebar.setChangesState([]);
+        window.__wvSidebar.renderWork();
+        window.__wvSidebar.renderChanges();
+        // Clear stale task/agent data from previous thread
+        window.__wvSidebar.renderTasks([]);
+        window.__wvSidebar.setAgentRuns([]);
+        window.__wvSidebar.renderAgents([]);
         break;
 
       case 'taskList':
@@ -648,6 +660,7 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
 
       case 'clearChat':
         window.__wvSidebar.closeTaskDetail();
+        window.__wvSidebar.closeAgentDetail();
         // Clear shared diff store when starting a new chat.
         _diffStore.clear();
         _diffIdCounter.value = 0;
@@ -665,6 +678,10 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
         window.__wvSidebar.setChangesState([]);
         window.__wvSidebar.renderWork();
         window.__wvSidebar.renderChanges();
+        // Clear task/agent panels too
+        window.__wvSidebar.renderTasks([]);
+        window.__wvSidebar.setAgentRuns([]);
+        window.__wvSidebar.renderAgents([]);
         break;
 
       case 'error':

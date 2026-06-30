@@ -1066,6 +1066,11 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
         type: "status",
         text: `Thread ${threadId.slice(0, 12)}: ${this.messages.length} messages`,
       });
+      // Refresh sidebar task/agent lists for the new thread
+      this.refreshTaskList();
+      this.refreshAgentRuns();
+      // Push current work/changes state for this thread
+      this.refreshWorkPanel();
     } catch (err) {
       this.postMessage({
         type: "error",
@@ -1313,6 +1318,9 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     this.cleanup();
     this.sessionState.reset();
     this.postMessage({ type: "clearChat" });
+    // Clear stale sidebar data
+    this.postMessage({ type: "taskList", tasks: [] });
+    this.postMessage({ type: "agentRunList", runs: [] });
   }
 
   /** Auto-save the current thread as a session after each completed turn.
@@ -1436,11 +1444,17 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     }
   }
 
-  /** Refresh the task list shown in the sidebar */
+  /** Refresh the task list shown in the sidebar, scoped to the current thread */
   public async refreshTaskList(): Promise<void> {
     try {
       const result = await this.api.listTasks({ limit: 50 });
-      this.postMessage({ type: "taskList", tasks: result.tasks });
+      let tasks = result.tasks;
+      // Filter to only show tasks belonging to the current thread
+      if (this.currentThread) {
+        const tid = this.currentThread.id;
+        tasks = tasks.filter(t => t.thread_id === tid);
+      }
+      this.postMessage({ type: "taskList", tasks });
     } catch {
       // best-effort
     }

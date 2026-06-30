@@ -100,9 +100,76 @@ describe("webview-js-event-handler.ts", () => {
     expect(script).toContain("case 'threadLoaded'");
   });
 
+  it("clears stale task/agent panels on threadLoaded", () => {
+    const script = getEventHandlerScript(makeTr());
+    // The threadLoaded case must reset task and agent panels so data from
+    // the previous thread doesn't linger before the refresh arrives.
+    const threadLoadedIdx = script.indexOf("case 'threadLoaded'");
+    const taskListIdx = script.indexOf("case 'taskList'");
+    // The clearing renderTasks([]) call must appear between threadLoaded and
+    // the next case (taskList).
+    expect(threadLoadedIdx).toBeGreaterThan(-1);
+    expect(taskListIdx).toBeGreaterThan(threadLoadedIdx);
+    const slice = script.slice(threadLoadedIdx, taskListIdx);
+    expect(slice).toContain("renderTasks([])");
+    expect(slice).toContain("setAgentRuns([])");
+    expect(slice).toContain("renderAgents([])");
+  });
+
+  it("closes detail overlays and clears work/changes on threadLoaded", () => {
+    const script = getEventHandlerScript(makeTr());
+    const threadLoadedIdx = script.indexOf("case 'threadLoaded'");
+    const taskListIdx = script.indexOf("case 'taskList'");
+    const slice = script.slice(threadLoadedIdx, taskListIdx);
+    // Both detail overlays from the previous thread must be closed
+    expect(slice).toContain("closeTaskDetail()");
+    expect(slice).toContain("closeAgentDetail()");
+    // Work panel state must be reset to empty
+    expect(slice).toContain("setWorkState(");
+    expect(slice).toContain("coherenceState: 'healthy'");
+    // Changes panel must be cleared
+    expect(slice).toContain("setChangesState([])");
+    expect(slice).toContain("renderWork()");
+    expect(slice).toContain("renderChanges()");
+  });
+
   it("handles 'clearChat' message type", () => {
     const script = getEventHandlerScript(makeTr());
     expect(script).toContain("case 'clearChat'");
+  });
+
+  it("closes both task and agent detail overlays on clearChat", () => {
+    const script = getEventHandlerScript(makeTr());
+    const clearChatIdx = script.indexOf("case 'clearChat'");
+    const errorIdx = script.indexOf("case 'error'", clearChatIdx);
+    const slice = script.slice(clearChatIdx, errorIdx);
+    // Both overlays must be closed
+    expect(slice).toContain("closeTaskDetail()");
+    expect(slice).toContain("closeAgentDetail()");
+  });
+
+  it("clears task/agent panels on clearChat", () => {
+    const script = getEventHandlerScript(makeTr());
+    const clearChatIdx = script.indexOf("case 'clearChat'");
+    const errorIdx = script.indexOf("case 'error'", clearChatIdx);
+    const slice = script.slice(clearChatIdx, errorIdx);
+    expect(slice).toContain("renderTasks([])");
+    expect(slice).toContain("setAgentRuns([])");
+    expect(slice).toContain("renderAgents([])");
+  });
+
+  it("clears work and changes panels on clearChat", () => {
+    const script = getEventHandlerScript(makeTr());
+    const clearChatIdx = script.indexOf("case 'clearChat'");
+    const errorIdx = script.indexOf("case 'error'", clearChatIdx);
+    const slice = script.slice(clearChatIdx, errorIdx);
+    // Work state must be reset
+    expect(slice).toContain("setWorkState(");
+    expect(slice).toContain("coherenceState: 'healthy'");
+    // Changes state must be cleared
+    expect(slice).toContain("setChangesState([])");
+    expect(slice).toContain("renderWork()");
+    expect(slice).toContain("renderChanges()");
   });
 
   it("uses __wvSidebar for sidebar state updates", () => {
