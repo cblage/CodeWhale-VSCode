@@ -65,6 +65,11 @@ describe("webview-js-event-handler.ts", () => {
     expect(script).toContain("case 'taskList'");
   });
 
+  it("handles 'agentDetail' message type", () => {
+    const script = getEventHandlerScript(makeTr());
+    expect(script).toContain("case 'agentDetail'");
+  });
+
   it("handles 'workState' message type", () => {
     const script = getEventHandlerScript(makeTr());
     expect(script).toContain("case 'workState'");

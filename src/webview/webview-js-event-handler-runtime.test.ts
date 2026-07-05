@@ -89,6 +89,8 @@ function createRuntimeHarness() {
   const postMessages: Array<Record<string, unknown>> = [];
   const windowListeners = new Map<string, (event: any) => void>();
   const documentListeners = new Map<string, (event: any) => void>();
+  const taskDetailCalls: unknown[] = [];
+  const agentDetailCalls: unknown[] = [];
 
   const windowObj: Record<string, any> = {
     __wvI18n: makeTr(),
@@ -123,7 +125,13 @@ function createRuntimeHarness() {
       renderChanges: () => {},
       setActiveSessionId: () => {},
       setActiveThreadId: () => {},
-      showTaskDetail: () => {},
+      showTaskDetail: (task: unknown) => {
+        taskDetailCalls.push(task);
+      },
+      closeAgentDetail: () => {},
+      showAgentDetail: (run: unknown) => {
+        agentDetailCalls.push(run);
+      },
     },
     __wvMessages: {
       addMessage: () => {},
@@ -173,6 +181,8 @@ function createRuntimeHarness() {
     getElement: getEl,
     postMessages,
     documentListeners,
+    taskDetailCalls,
+    agentDetailCalls,
   };
 }
 
@@ -206,5 +216,18 @@ describe("webview-js-event-handler runtime", () => {
     expect(harness.getElement("current-model").textContent).toBe("deepseek-v4-pro");
     expect(harness.getElement("current-reasoning").textContent).toBe("high");
     expect(harness.postMessages).toEqual([{ type: "webviewReady" }]);
+  });
+
+  it("routes taskDetail and agentDetail messages to the sidebar detail views", () => {
+    const harness = createRuntimeHarness();
+
+    const task = { id: "task-1", status: "completed" };
+    const run = { spec: { run_id: "run-1" }, status: "completed" };
+
+    harness.dispatchMessage({ type: "taskDetail", task });
+    harness.dispatchMessage({ type: "agentDetail", run });
+
+    expect(harness.taskDetailCalls).toEqual([task]);
+    expect(harness.agentDetailCalls).toEqual([run]);
   });
 });

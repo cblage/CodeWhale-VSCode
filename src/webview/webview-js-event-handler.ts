@@ -179,6 +179,7 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
     switch (msg.type) {
       case 'ready':
         window.__wvSidebar.closeTaskDetail();
+        window.__wvSidebar.closeAgentDetail();
         setStreamingState(false, '${tr.ready} (' + (msg.model || 'deepseek-v4-pro') + ')');
         if (msg.mode) currentModeEl.textContent = msg.mode;
         if (msg.model) currentModelEl.textContent = msg.model;
@@ -263,11 +264,18 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
         break;
 
       case 'taskDetail':
+        window.__wvSidebar.closeAgentDetail();
         window.__wvSidebar.showTaskDetail(msg.task);
+        break;
+
+      case 'agentDetail':
+        window.__wvSidebar.closeTaskDetail();
+        window.__wvSidebar.showAgentDetail(msg.run);
         break;
 
       case 'loadHistory':
         window.__wvSidebar.closeTaskDetail();
+        window.__wvSidebar.closeAgentDetail();
         // Clear shared diff store when switching sessions so stale entries
         // from the previous session don't leak into the new one.
         _diffStore.clear();

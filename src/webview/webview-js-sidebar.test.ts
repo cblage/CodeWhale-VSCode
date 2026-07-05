@@ -45,6 +45,12 @@ describe("webview-js-sidebar.ts", () => {
     expect(script).toContain("function renderTasks");
   });
 
+  it("adds task card action buttons for details and result access", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("detailsBtn.textContent = 'Details'");
+    expect(script).toContain("resultBtn.textContent = __i18n.agentResult || 'Result'");
+  });
+
   it("contains renderWork function", () => {
     const script = getSidebarScript(makeTr());
     expect(script).toContain("function renderWork");
@@ -59,6 +65,20 @@ describe("webview-js-sidebar.ts", () => {
     const script = getSidebarScript(makeTr());
     expect(script).toContain("function showTaskDetail");
     expect(script).toContain("function closeTaskDetail");
+  });
+
+  it("renders richer task process sections and overlay actions", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("Full Result");
+    expect(script).toContain("Verification Gates");
+    expect(script).toContain("renderOpenFileButton");
+    expect(script).toContain("detail-open-external");
+  });
+
+  it("contains agent detail rendering", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("function showAgentDetail");
+    expect(script).toContain("function closeAgentDetail");
   });
 
   it("contains threads panel toggle", () => {

@@ -1932,12 +1932,13 @@ export function getWebviewCss(): string {
       border: 1px solid var(--border);
       border-radius: 6px;
       width: 90%;
-      max-width: 600px;
-      max-height: 80vh;
+      max-width: 920px;
+      max-height: 88vh;
       overflow-y: auto;
       padding: 16px;
       font-size: 0.85em;
       position: relative;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
     }
     .task-detail-panel h3 {
       margin: 0 0 8px 0;
@@ -1965,6 +1966,47 @@ export function getWebviewCss(): string {
       white-space: pre-wrap;
       word-break: break-word;
     }
+    .task-detail-panel .detail-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .task-detail-panel .detail-action-btn {
+      border: 1px solid var(--border);
+      background: rgba(128, 128, 128, 0.08);
+      color: var(--fg);
+      border-radius: 6px;
+      padding: 4px 10px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .task-detail-panel .detail-action-btn:hover {
+      background: rgba(128, 128, 128, 0.16);
+    }
+    .task-detail-panel .detail-subtle {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 4px;
+    }
+    .task-detail-panel .detail-list-item {
+      padding: 10px 0;
+      border-top: 1px solid rgba(128,128,128,0.12);
+    }
+    .task-detail-panel .detail-list-item:first-of-type {
+      border-top: none;
+      padding-top: 4px;
+    }
+    .task-detail-panel .detail-chip {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid rgba(128,128,128,0.2);
+      border-radius: 999px;
+      padding: 1px 8px;
+      margin-right: 6px;
+      font-size: 11px;
+      color: var(--muted);
+    }
     .task-detail-panel .detail-value.result {
       color: #4caf50;
     }
@@ -1975,6 +2017,35 @@ export function getWebviewCss(): string {
     .task-detail-panel .timeline-item {
       padding: 2px 0;
       font-size: 0.85em;
+    }
+    .task-detail-panel .tool-call-subtle {
+      color: var(--muted);
+      font-size: 0.92em;
+      margin-top: 2px;
+    }
+    .task-detail-panel .detail-json {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.45;
+      background: rgba(128, 128, 128, 0.08);
+      border: 1px solid rgba(128, 128, 128, 0.12);
+      border-radius: 6px;
+      padding: 10px 12px;
+    }
+    .task-detail-panel .detail-text-block {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.45;
+      background: rgba(128, 128, 128, 0.06);
+      border: 1px solid rgba(128, 128, 128, 0.1);
+      border-radius: 6px;
+      padding: 10px 12px;
     }
     .task-detail-panel .close-btn {
       position: absolute;

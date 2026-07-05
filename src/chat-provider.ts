@@ -8,6 +8,7 @@ import {
   CodeWhaleEngine,
   RuntimeApiCapabilities,
   RuntimeEvent,
+  TaskRecord,
   ThreadRecord,
   TurnRecord,
   TurnItemRecord,
@@ -52,6 +53,43 @@ function normalizePath(p: string): string {
   return p.replace(/\\/g, '/').replace(/\/+$/, '');
 }
 
+// TUI-compatible artifact path resolution
+function getHomeDirectory(): string {
+  return os.homedir();
+}
+
+function defaultTasksDir(): string {
+  const deepseekTasksDir = process.env.DEEPSEEK_TASKS_DIR;
+  if (deepseekTasksDir && deepseekTasksDir.trim()) {
+    return deepseekTasksDir;
+  }
+  const home = getHomeDirectory();
+  const primary = path.join(home, ".codewhale", "tasks");
+  try {
+    if (fs.existsSync(primary) && fs.statSync(primary).isDirectory()) {
+      return primary;
+    }
+  } catch {
+    // ignore
+  }
+  const legacy = path.join(home, ".deepseek", "tasks");
+  try {
+    if (fs.existsSync(legacy) && fs.statSync(legacy).isDirectory()) {
+      return legacy;
+    }
+  } catch {
+    // ignore
+  }
+  return primary;
+}
+
+function resolveTaskArtifactPath(relativeOrAbsolute: string): string {
+  if (path.isAbsolute(relativeOrAbsolute)) {
+    return path.normalize(relativeOrAbsolute);
+  }
+  return path.normalize(path.join(defaultTasksDir(), relativeOrAbsolute));
+}
+
 function mergeThreadRecord(
   current: ThreadRecord,
   updated: Partial<ThreadRecord> | undefined,
@@ -91,6 +129,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
   // replaying buffered events) and currentSessionId is null, each call
   // would create a new session on the server, producing duplicates.
   private autoSaveInProgress = false;
+  private readonly textArtifactPreviewStore = new Map<string, { content: string; language?: string }>();
 
   // Convenience accessors for session state
   public get currentThread(): ThreadRecord | null { return this.sessionState.data.currentThread; }
@@ -292,6 +331,9 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       case "openFile":
         this.handleOpenFile(msg.filePath as string);
         break;
+      case "openExternal":
+        await this.handleOpenExternal(msg.url as string);
+        break;
       case "attachFile":
         await this.handleAttachFile();
         break;
@@ -319,6 +361,12 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
         break;
       case "openConfigPanel":
         ConfigPanel.createOrShow(this.extensionUri, this.api);
+        break;
+      case "showAgentSessions":
+        this.handleShowAgentSessions(msg.runId as string);
+        break;
+      case "showTaskDetail":
+        this.handleShowTaskDetail(msg.taskId as string);
         break;
     }
   }
@@ -1465,6 +1513,109 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     }
   }
 
+  /** Open session panel showing a specific task's detail */
+  private async handleShowTaskDetail(taskId: string): Promise<void> {
+    try {
+      const task = await this.api.getTask(taskId);
+      const enrichedTask = await this.enrichTaskDetail(task);
+      this.postMessage({ type: "taskDetail", task: enrichedTask });
+    } catch (err) {
+      vscode.window.showErrorMessage(`Failed to load task: ${(err as Error).message}`);
+    }
+  }
+
+  /** Show an agent run detail inside the main webview when a run id is known. */
+  private async handleShowAgentSessions(runId: string): Promise<void> {
+    if (!runId) {
+      return;
+    }
+    try {
+      const run = await this.api.getAgentRun(runId);
+      this.postMessage({ type: "agentDetail", run });
+    } catch (err) {
+      vscode.window.showErrorMessage(`Failed to load agent run: ${(err as Error).message}`);
+    }
+  }
+
+  private normalizeOptionalPath(value: unknown): string | null {
+    return typeof value === "string" && value.trim() ? value : null;
+  }
+
+  private cacheTextArtifactPreview(filePath: string | null, content: string, language?: string): void {
+    if (!filePath || !content) {
+      return;
+    }
+    this.textArtifactPreviewStore.set(filePath, { content, language });
+    if (path.isAbsolute(filePath)) {
+      this.textArtifactPreviewStore.set(path.normalize(filePath), { content, language });
+    }
+  }
+
+  private async readTaskTextArtifact(
+    filePath: string | null,
+    maxBytes = 256 * 1024,
+  ): Promise<{ content: string; truncated: boolean } | null> {
+    if (!filePath) {
+      return null;
+    }
+
+    try {
+      const absPath = resolveTaskArtifactPath(filePath);
+      const buffer = await fs.promises.readFile(absPath);
+
+      // Skip binary-ish content and keep the GUI focused on textual artifacts.
+      if (buffer.includes(0)) {
+        return null;
+      }
+
+      const truncated = buffer.length > maxBytes;
+      const slice = truncated ? buffer.subarray(0, maxBytes) : buffer;
+      return {
+        content: slice.toString("utf8"),
+        truncated,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private async enrichTaskDetail(task: TaskRecord): Promise<TaskRecord> {
+    const resultDetailPath = this.normalizeOptionalPath((task as TaskRecord & Record<string, unknown>).result_detail_path);
+    const resultDetail = await this.readTaskTextArtifact(resultDetailPath);
+    if (resultDetailPath && resultDetail?.content) {
+      this.cacheTextArtifactPreview(resultDetailPath, resultDetail.content, "markdown");
+    }
+
+    return {
+      ...task,
+      result_detail_path: resultDetailPath,
+      result_detail_content: resultDetail?.content ?? null,
+      result_detail_truncated: resultDetail?.truncated ?? false,
+      tool_calls: (task.tool_calls || []).map((toolCall) => ({
+        ...toolCall,
+        detail_path: this.normalizeOptionalPath(toolCall.detail_path),
+        patch_ref: this.normalizeOptionalPath(toolCall.patch_ref),
+      })),
+      timeline: (task.timeline || []).map((entry) => ({
+        ...entry,
+        detail_path: this.normalizeOptionalPath(entry.detail_path),
+      })),
+      gates: ((task as TaskRecord & Record<string, unknown>).gates as TaskRecord["gates"] | undefined)?.map((gate) => ({
+        ...gate,
+        log_path: this.normalizeOptionalPath(gate.log_path),
+      })) || [],
+      attempts: ((task as TaskRecord & Record<string, unknown>).attempts as TaskRecord["attempts"] | undefined)?.map((attempt) => ({
+        ...attempt,
+        patch_path: this.normalizeOptionalPath(attempt.patch_path),
+      })) || [],
+      artifacts: ((task as TaskRecord & Record<string, unknown>).artifacts as TaskRecord["artifacts"] | undefined)?.map((artifact) => ({
+        ...artifact,
+        path: this.normalizeOptionalPath(artifact.path) || artifact.path,
+      })) || [],
+      github_events: ((task as TaskRecord & Record<string, unknown>).github_events as TaskRecord["github_events"] | undefined) || [],
+    };
+  }
+
   /** Push the current work state to the webview Work panel */
   public refreshWorkPanel(): void {
     const cfg = vscode.workspace.getConfiguration("brotherwhale");
@@ -2085,13 +2236,39 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
 
   private async handleOpenFile(filePath: string): Promise<void> {
     try {
-      const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-      if (!workspace) return;
-      const absPath = path.isAbsolute(filePath) ? filePath : path.join(workspace, filePath);
-      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absPath));
+      // Try task artifact path first, then fallback to workspace relative
+      const absPath = resolveTaskArtifactPath(filePath);
+      const normalizedAbsPath = path.normalize(absPath);
+      const preview = this.textArtifactPreviewStore.get(filePath) || this.textArtifactPreviewStore.get(normalizedAbsPath);
+
+      if (!fs.existsSync(normalizedAbsPath)) {
+        if (preview) {
+          const doc = await vscode.workspace.openTextDocument({
+            content: preview.content,
+            language: preview.language || "plaintext",
+          });
+          await vscode.window.showTextDocument(doc);
+          return;
+        }
+        void vscode.window.showWarningMessage(`Artifact file is no longer available: ${filePath}`);
+        return;
+      }
+
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(normalizedAbsPath));
       await vscode.window.showTextDocument(doc);
     } catch (err) {
       this.postMessage({ type: "error", message: formatError("Failed to open file", err) });
+    }
+  }
+
+  private async handleOpenExternal(url: string): Promise<void> {
+    try {
+      if (!url) {
+        return;
+      }
+      await vscode.env.openExternal(vscode.Uri.parse(url));
+    } catch (err) {
+      this.postMessage({ type: "error", message: formatError("Failed to open link", err) });
     }
   }
 

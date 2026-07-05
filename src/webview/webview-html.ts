@@ -370,6 +370,8 @@ ${css}
         switchSidebarTab: function() {},
         closeTaskDetail: function() {},
         showTaskDetail: function() {},
+        closeAgentDetail: function() {},
+        showAgentDetail: function() {},
         setSessions: function(s) { this.sessions = s; },
         setActiveSessionId: function(id) { this.activeSessionId = id; },
         setThreads: function(t) { this.threads = t; },

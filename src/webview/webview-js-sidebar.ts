@@ -80,6 +80,79 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     var outK = out >= 1000 ? (out / 1000).toFixed(1) + 'k' : String(out);
     return inpK + ' / ' + outK;
   }
+
+  function formatDetailTime(value) {
+    if (!value) return '-';
+    var date = typeof value === 'number' ? new Date(value) : new Date(String(value));
+    if (isNaN(date.getTime())) return '-';
+    return date.toLocaleString();
+  }
+
+  function hasOwnData(value) {
+    if (!value) return false;
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'object') return Object.keys(value).length > 0;
+    return true;
+  }
+
+  function renderJsonBlock(value) {
+    return '<pre class="detail-json">' + __wvEscapeHtml(JSON.stringify(value, null, 2)) + '</pre>';
+  }
+
+  function taskToolStatusIcon(status) {
+    if (status === 'completed' || status === 'success') return '\\u2713';
+    if (status === 'running' || status === 'queued') return '\\u27F3';
+    if (status === 'failed' || status === 'error' || status === 'interrupted') return '\\u2717';
+    return '\\u00B7';
+  }
+
+  function timelineKindLabel(kind) {
+    if (!kind) return 'event';
+    return String(kind).replace(/_/g, ' ');
+  }
+
+  function renderOpenFileButton(filePath, label) {
+    if (!filePath) return '';
+    return '<button class="detail-action-btn detail-open-file" data-file-path="' + __wvEscapeHtml(filePath) + '">' + __wvEscapeHtml(label || 'Open') + '</button>';
+  }
+
+  function renderOpenExternalButton(url, label) {
+    if (!url) return '';
+    return '<button class="detail-action-btn detail-open-external" data-url="' + __wvEscapeHtml(url) + '">' + __wvEscapeHtml(label || 'Open Link') + '</button>';
+  }
+
+  function renderDetailCodeBlock(text, className) {
+    return '<pre class="' + __wvEscapeHtml(className || 'detail-text-block') + '">' + __wvEscapeHtml(text || '') + '</pre>';
+  }
+
+  function attachDetailOverlayActions(overlay, closeFn) {
+    overlay.onclick = function(e) {
+      if (e.target === overlay) {
+        closeFn();
+        return;
+      }
+      var target = e.target;
+      var closeBtn = target.closest && target.closest('.close-btn');
+      if (closeBtn) {
+        e.stopPropagation();
+        closeFn();
+        return;
+      }
+      var openFileBtn = target.closest && target.closest('.detail-open-file');
+      if (openFileBtn) {
+        e.stopPropagation();
+        var filePath = openFileBtn.getAttribute('data-file-path');
+        if (filePath) vscode.postMessage({ type: 'openFile', filePath: filePath });
+        return;
+      }
+      var openExternalBtn = target.closest && target.closest('.detail-open-external');
+      if (openExternalBtn) {
+        e.stopPropagation();
+        var url = openExternalBtn.getAttribute('data-url');
+        if (url) vscode.postMessage({ type: 'openExternal', url: url });
+      }
+    };
+  }
   var _diffStore = window.__wvDiffStore;
   var _diffIdCounter = window.__wvDiffIdCounter;
 
@@ -360,23 +433,37 @@ export function getSidebarScript(tr: WebviewTranslations): string {
           '<span class="task-title">' + __wvEscapeHtml(title) + '</span>' +
         '</div>' +
         '<div class="task-meta">' + __wvEscapeHtml(t.status) + ' \\u00B7 ' + __wvEscapeHtml(t.model || '') + '</div>';
-      (function(taskId, taskStatus) {
+      (function(taskId, taskStatus, hasResult) {
         card.addEventListener('click', function(e) {
           if (e.target.tagName === 'BUTTON') return;
-          vscode.postMessage({ type: 'slashCommand', command: '/task', args: 'show ' + taskId });
+          vscode.postMessage({ type: 'showTaskDetail', taskId: taskId });
         });
+        var actions = document.createElement('div');
+        actions.className = 'task-actions';
+        var detailsBtn = document.createElement('button');
+        detailsBtn.textContent = 'Details';
+        detailsBtn.onclick = function() {
+          vscode.postMessage({ type: 'showTaskDetail', taskId: taskId });
+        };
+        actions.appendChild(detailsBtn);
+        if (hasResult) {
+          var resultBtn = document.createElement('button');
+          resultBtn.textContent = __i18n.agentResult || 'Result';
+          resultBtn.onclick = function() {
+            vscode.postMessage({ type: 'showTaskDetail', taskId: taskId });
+          };
+          actions.appendChild(resultBtn);
+        }
         if (taskStatus === 'running' || taskStatus === 'queued') {
-          var actions = document.createElement('div');
-          actions.className = 'task-actions';
           var cancelBtn = document.createElement('button');
           cancelBtn.textContent = __i18n.cancel;
           cancelBtn.onclick = function() {
             vscode.postMessage({ type: 'slashCommand', command: '/task', args: 'cancel ' + taskId });
           };
           actions.appendChild(cancelBtn);
-          card.appendChild(actions);
         }
-      })(t.id, t.status);
+        card.appendChild(actions);
+      })(t.id, t.status, !!(t.result_detail_path || t.result_summary));
       container.appendChild(card);
     }
   }
@@ -456,7 +543,8 @@ export function getSidebarScript(tr: WebviewTranslations): string {
       (function(runData) {
         card.addEventListener('click', function(e) {
           if (e.target.tagName === 'BUTTON') return;
-          showAgentDetail(runData);
+          var runId = runData.spec && (runData.spec.run_id || runData.spec.worker_id);
+          vscode.postMessage({ type: 'showAgentSessions', runId: runId || '' });
         });
       })(r);
       container.appendChild(card);
@@ -652,30 +740,76 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     var statusIcon = task.status === 'completed' ? '\\u2713' : task.status === 'running' ? '\\u27F3' : task.status === 'failed' ? '\\u2717' : task.status === 'queued' ? '\\u23F3' : '\\u00B7';
     var statusColor = task.status === 'completed' ? '#4caf50' : task.status === 'running' ? '#ff9800' : task.status === 'failed' ? '#f44336' : '#888';
     var duration = task.duration_ms ? (task.duration_ms / 1000).toFixed(1) + 's' : '-';
+    var prompt = task.prompt || task.prompt_summary || '';
+    var resultText = task.result_summary || '';
+    var fullResultText = task.result_detail_content || '';
+    var checklistItems = task.checklist && Array.isArray(task.checklist.items) ? task.checklist.items : [];
+    var gates = Array.isArray(task.gates) ? task.gates : [];
+    var attempts = Array.isArray(task.attempts) ? task.attempts : [];
+    var artifacts = Array.isArray(task.artifacts) ? task.artifacts : [];
+    var githubEvents = Array.isArray(task.github_events) ? task.github_events : [];
     var html = '<div class="task-detail-panel">';
     html += '<button class="close-btn" type="button">\\u2715</button>';
-    html += '<h3>' + statusIcon + ' Task ' + __wvEscapeHtml(task.id.slice(0, 8)) + '</h3>';
+    html += '<h3>' + statusIcon + ' Task ' + __wvEscapeHtml((task.id || '').slice(0, 8)) + '</h3>';
     html += '<div class="detail-section"><div class="detail-label">Status</div><div class="detail-value" style="color:' + statusColor + '">' + __wvEscapeHtml(task.status) + '</div></div>';
     html += '<div class="detail-section"><div class="detail-label">Model / Mode</div><div class="detail-value">' + __wvEscapeHtml(task.model) + ' \\u00B7 ' + __wvEscapeHtml(task.mode) + '</div></div>';
+    if (task.workspace) {
+      html += '<div class="detail-section"><div class="detail-label">Workspace</div><div class="detail-value">' + __wvEscapeHtml(task.workspace) + '</div></div>';
+    }
+    html += '<div class="detail-section"><div class="detail-label">Created / Started / Ended</div><div class="detail-value">' + __wvEscapeHtml(formatDetailTime(task.created_at)) + ' \\u00B7 ' + __wvEscapeHtml(formatDetailTime(task.started_at)) + ' \\u00B7 ' + __wvEscapeHtml(formatDetailTime(task.ended_at)) + '</div></div>';
     html += '<div class="detail-section"><div class="detail-label">Duration</div><div class="detail-value">' + duration + '</div></div>';
-    html += '<div class="detail-section"><div class="detail-label">Prompt</div><div class="detail-value">' + __wvEscapeHtml(task.prompt) + '</div></div>';
-    if (task.result_summary) {
-      html += '<div class="detail-section"><div class="detail-label">Result</div><div class="detail-value result">' + __wvEscapeHtml(task.result_summary) + '</div></div>';
+    if (task.runtime_event_count) {
+      html += '<div class="detail-section"><div class="detail-label">Runtime Events</div><div class="detail-value">' + __wvEscapeHtml(String(task.runtime_event_count)) + '</div></div>';
+    }
+    if (task.hunt_verdict) {
+      html += '<div class="detail-section"><div class="detail-label">Verdict</div><div class="detail-value">' + __wvEscapeHtml(task.hunt_verdict) + '</div></div>';
+    }
+    if (task.thread_id || task.turn_id) {
+      html += '<div class="detail-section"><div class="detail-label">Thread / Turn</div><div class="detail-value">' + __wvEscapeHtml(task.thread_id || '-') + ' \\u00B7 ' + __wvEscapeHtml(task.turn_id || '-') + '</div></div>';
+    }
+    html += '<div class="detail-section"><div class="detail-label">Prompt</div><div class="detail-value">' + __wvEscapeHtml(prompt) + '</div></div>';
+    if (resultText) {
+      html += '<div class="detail-section"><div class="detail-label">Result</div><div class="detail-value result">' + __wvEscapeHtml(resultText) + '</div></div>';
     }
     if (task.result_detail_path) {
-      html += '<div class="detail-section"><div class="detail-label">Result Artifact</div><div class="detail-value">' + __wvEscapeHtml(task.result_detail_path) + '</div></div>';
+      html += '<div class="detail-section"><div class="detail-label">Result Artifact</div><div class="detail-value">' + __wvEscapeHtml(task.result_detail_path) + '</div><div class="detail-actions">' + renderOpenFileButton(task.result_detail_path, 'Open Result File') + '</div></div>';
+    }
+    if (fullResultText) {
+      html += '<div class="detail-section"><div class="detail-label">Full Result</div><div class="detail-value"><div class="markdown">' + simpleMarkdown(fullResultText) + '</div></div>';
+      if (task.result_detail_truncated) {
+        html += '<div class="detail-subtle">Preview truncated in GUI. Use "Open Result File" for the full artifact.</div>';
+      }
+      html += '</div>';
     }
     if (task.error) {
       html += '<div class="detail-section"><div class="detail-label">Error</div><div class="detail-value error">' + __wvEscapeHtml(task.error) + '</div></div>';
+    }
+    if (checklistItems.length > 0) {
+      html += '<div class="detail-section"><div class="detail-label">Checklist</div>';
+      if (typeof task.checklist.completion_pct === 'number') {
+        html += '<div class="detail-subtle">Completion: ' + __wvEscapeHtml(String(task.checklist.completion_pct)) + '%</div>';
+      }
+      for (var ci = 0; ci < checklistItems.length; ci++) {
+        var item = checklistItems[ci];
+        html += '<div class="detail-list-item"><span class="detail-chip">' + __wvEscapeHtml(item.status || 'pending') + '</span> ' + __wvEscapeHtml(item.content || '') + '</div>';
+      }
+      html += '</div>';
     }
     if (task.tool_calls && task.tool_calls.length > 0) {
       html += '<div class="detail-section"><div class="detail-label">Tool Calls (' + task.tool_calls.length + ')</div>';
       for (var tci = 0; tci < task.tool_calls.length; tci++) {
         var tc = task.tool_calls[tci];
-        var tcStatus = tc.status === 'success' ? '\\u2713' : tc.status === 'running' ? '\\u27F3' : tc.status === 'failed' ? '\\u2717' : '\\u00B7';
+        var tcStatus = taskToolStatusIcon(tc.status);
         var tcDur = tc.duration_ms ? ' (' + (tc.duration_ms / 1000).toFixed(1) + 's)' : '';
         html += '<div class="tool-call-item">' + tcStatus + ' ' + __wvEscapeHtml(tc.name) + tcDur;
-        if (tc.output_summary) html += ' \\u2014 ' + __wvEscapeHtml(tc.output_summary);
+        if (tc.input_summary) html += '<div class="tool-call-subtle">In: ' + __wvEscapeHtml(tc.input_summary) + '</div>';
+        if (tc.output_summary) html += '<div class="tool-call-subtle">Out: ' + __wvEscapeHtml(tc.output_summary) + '</div>';
+        if (tc.detail_path || tc.patch_ref) {
+          html += '<div class="detail-actions">';
+          html += renderOpenFileButton(tc.detail_path, 'Open Detail');
+          html += renderOpenFileButton(tc.patch_ref, 'Open Patch');
+          html += '</div>';
+        }
         html += '</div>';
       }
       html += '</div>';
@@ -684,22 +818,83 @@ export function getSidebarScript(tr: WebviewTranslations): string {
       html += '<div class="detail-section"><div class="detail-label">Timeline</div>';
       for (var ti = 0; ti < task.timeline.length; ti++) {
         var entry = task.timeline[ti];
-        var time = entry.timestamp ? entry.timestamp.slice(11, 19) : '';
-        html += '<div class="timeline-item">[' + time + '] ' + __wvEscapeHtml(entry.kind) + ': ' + __wvEscapeHtml(entry.summary) + '</div>';
+        var time = entry.timestamp ? formatDetailTime(entry.timestamp) : '';
+        html += '<div class="timeline-item">[' + __wvEscapeHtml(time) + '] ' + __wvEscapeHtml(timelineKindLabel(entry.kind)) + ': ' + __wvEscapeHtml(entry.summary || '');
+        if (entry.detail_path) {
+          html += '<div class="detail-actions">' + renderOpenFileButton(entry.detail_path, 'Open Detail') + '</div>';
+        }
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+    if (gates.length > 0) {
+      html += '<div class="detail-section"><div class="detail-label">Verification Gates (' + gates.length + ')</div>';
+      for (var gi = 0; gi < gates.length; gi++) {
+        var gate = gates[gi];
+        html += '<div class="detail-list-item">';
+        html += '<div><span class="detail-chip">' + __wvEscapeHtml(gate.status || 'unknown') + '</span> <strong>' + __wvEscapeHtml(gate.gate || 'gate') + '</strong> \\u00B7 ' + __wvEscapeHtml(gate.summary || '') + '</div>';
+        html += '<div class="detail-subtle">' + __wvEscapeHtml(gate.command || '') + '</div>';
+        html += '<div class="detail-subtle">cwd: ' + __wvEscapeHtml(gate.cwd || '') + '</div>';
+        if (gate.log_path) {
+          html += '<div class="detail-actions">' + renderOpenFileButton(gate.log_path, 'Open Log') + '</div>';
+        }
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+    if (attempts.length > 0) {
+      html += '<div class="detail-section"><div class="detail-label">Attempts (' + attempts.length + ')</div>';
+      for (var ai = 0; ai < attempts.length; ai++) {
+        var attempt = attempts[ai];
+        html += '<div class="detail-list-item">';
+        html += '<div><span class="detail-chip">' + __wvEscapeHtml(attempt.selected ? 'selected' : 'candidate') + '</span> Attempt ' + __wvEscapeHtml(String(attempt.attempt_index)) + '/' + __wvEscapeHtml(String(attempt.attempt_count)) + '</div>';
+        html += '<div>' + __wvEscapeHtml(attempt.summary || '') + '</div>';
+        if (attempt.changed_files && attempt.changed_files.length > 0) {
+          html += '<div class="detail-subtle">Files: ' + __wvEscapeHtml(attempt.changed_files.slice(0, 6).join(', '));
+          if (attempt.changed_files.length > 6) html += ' …';
+          html += '</div>';
+        }
+        if (attempt.verification && attempt.verification.length > 0) {
+          html += '<div class="detail-subtle">Verification: ' + __wvEscapeHtml(attempt.verification.join(' · ')) + '</div>';
+        }
+        if (attempt.patch_path) {
+          html += '<div class="detail-actions">' + renderOpenFileButton(attempt.patch_path, 'Open Patch') + '</div>';
+        }
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+    if (artifacts.length > 0) {
+      html += '<div class="detail-section"><div class="detail-label">Artifacts (' + artifacts.length + ')</div>';
+      for (var ar = 0; ar < artifacts.length; ar++) {
+        var artifact = artifacts[ar];
+        html += '<div class="detail-list-item">';
+        html += '<div><strong>' + __wvEscapeHtml(artifact.label || 'artifact') + '</strong></div>';
+        if (artifact.summary) html += '<div>' + __wvEscapeHtml(artifact.summary) + '</div>';
+        html += '<div class="detail-subtle">' + __wvEscapeHtml(artifact.path || '') + '</div>';
+        html += '<div class="detail-actions">' + renderOpenFileButton(artifact.path, 'Open Artifact') + '</div>';
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+    if (githubEvents.length > 0) {
+      html += '<div class="detail-section"><div class="detail-label">GitHub Events (' + githubEvents.length + ')</div>';
+      for (var ge = 0; ge < githubEvents.length; ge++) {
+        var event = githubEvents[ge];
+        html += '<div class="detail-list-item">';
+        html += '<div><span class="detail-chip">' + __wvEscapeHtml(event.action || 'event') + '</span> ' + __wvEscapeHtml(event.summary || '') + '</div>';
+        html += '<div class="detail-subtle">' + __wvEscapeHtml(event.target || '') + ' #' + __wvEscapeHtml(String(event.number || '')) + ' \\u00B7 ' + __wvEscapeHtml(formatDetailTime(event.recorded_at)) + '</div>';
+        if (event.url) {
+          html += '<div class="detail-actions">' + renderOpenExternalButton(event.url, 'Open GitHub') + '</div>';
+        }
+        html += '</div>';
       }
       html += '</div>';
     }
     html += '</div>';
     overlay.innerHTML = html;
     overlay.style.display = 'flex';
-    var closeBtn = overlay.querySelector('.close-btn');
-    if (closeBtn) {
-      closeBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        closeTaskDetail();
-      });
-    }
-    overlay.onclick = function(e) { if (e.target === overlay) closeTaskDetail(); };
+    attachDetailOverlayActions(overlay, closeTaskDetail);
   }
 
   // ── Agent Detail ──
@@ -728,13 +923,16 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     var parentId = run.parent_run_id || '';
     var createdAt = run.created_at_ms ? new Date(run.created_at_ms).toLocaleString() : '-';
     var updatedAt = run.updated_at_ms ? new Date(run.updated_at_ms).toLocaleString() : '-';
+    var startedAt = run.started_at_ms ? new Date(run.started_at_ms).toLocaleString() : '-';
+    var completedAt = run.completed_at_ms ? new Date(run.completed_at_ms).toLocaleString() : '-';
+    var events = Array.isArray(run.events) ? run.events : [];
 
     var html = '<div class="task-detail-panel">';
     html += '<button class="close-btn" type="button">\\u2715</button>';
     html += '<h3>' + statusIcon + ' ' + __wvEscapeHtml(__i18n.agents) + '</h3>';
 
     // Status
-    html += '<div class="detail-section"><div class="detail-label">' + __wvEscapeHtml(__i18n.agentStatusRunning) + '</div>';
+    html += '<div class="detail-section"><div class="detail-label">Status</div>';
     html += '<div class="detail-value" style="color:' + statusColor + '">' + __wvEscapeHtml(statusLabel) + '</div></div>';
 
     // Run ID
@@ -774,8 +972,17 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     // Timestamps
     html += '<div class="detail-section"><div class="detail-label">Created</div>';
     html += '<div class="detail-value">' + __wvEscapeHtml(createdAt) + '</div></div>';
+    html += '<div class="detail-section"><div class="detail-label">Started</div>';
+    html += '<div class="detail-value">' + __wvEscapeHtml(startedAt) + '</div></div>';
     html += '<div class="detail-section"><div class="detail-label">Updated</div>';
     html += '<div class="detail-value">' + __wvEscapeHtml(updatedAt) + '</div></div>';
+    html += '<div class="detail-section"><div class="detail-label">Completed</div>';
+    html += '<div class="detail-value">' + __wvEscapeHtml(completedAt) + '</div></div>';
+
+    if (run.latest_message) {
+      html += '<div class="detail-section"><div class="detail-label">Latest Activity</div>';
+      html += '<div class="detail-value">' + __wvEscapeHtml(run.latest_message) + '</div></div>';
+    }
 
     // Result
     if (run.result_summary) {
@@ -803,17 +1010,31 @@ export function getSidebarScript(tr: WebviewTranslations): string {
       html += '</div>';
     }
 
+    if (events.length > 0) {
+      html += '<div class="detail-section"><div class="detail-label">Events</div>';
+      for (var ei = 0; ei < events.length; ei++) {
+        var ev = events[ei];
+        html += '<div class="timeline-item">[' + __wvEscapeHtml(formatDetailTime(ev.timestamp_ms)) + '] ' + __wvEscapeHtml(timelineKindLabel(ev.kind)) + ': ' + __wvEscapeHtml(ev.summary || '') + '</div>';
+      }
+      html += '</div>';
+    }
+
+    if (hasOwnData(run.follow_up)) {
+      html += '<div class="detail-section"><div class="detail-label">Follow Up</div><div class="detail-value">' + renderJsonBlock(run.follow_up) + '</div></div>';
+    }
+
+    if (hasOwnData(run.recommended_action)) {
+      html += '<div class="detail-section"><div class="detail-label">Recommended Action</div><div class="detail-value">' + renderJsonBlock(run.recommended_action) + '</div></div>';
+    }
+
+    if (hasOwnData(run.verification)) {
+      html += '<div class="detail-section"><div class="detail-label">Verification</div><div class="detail-value">' + renderJsonBlock(run.verification) + '</div></div>';
+    }
+
     html += '</div>';
     overlay.innerHTML = html;
     overlay.style.display = 'flex';
-    var closeBtn = overlay.querySelector('.close-btn');
-    if (closeBtn) {
-      closeBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        closeAgentDetail();
-      });
-    }
-    overlay.onclick = function(e) { if (e.target === overlay) closeAgentDetail(); };
+    attachDetailOverlayActions(overlay, closeAgentDetail);
   }
 
   // ── Sidebar toggle ──

@@ -168,6 +168,67 @@ export interface TaskTimelineEntry {
   detail_path: string | null;
 }
 
+export interface TaskChecklistItem {
+  id: number;
+  content: string;
+  status: string;
+}
+
+export interface TaskChecklistState {
+  items: TaskChecklistItem[];
+  completion_pct: number;
+  in_progress_id?: number | null;
+  updated_at?: string | null;
+}
+
+export interface TaskGateRecord {
+  id: string;
+  gate: string;
+  command: string;
+  cwd: string;
+  exit_code?: number | null;
+  status: string;
+  classification: string;
+  duration_ms: number;
+  summary: string;
+  log_path?: string | null;
+  recorded_at: string;
+}
+
+export interface TaskAttemptRecord {
+  id: string;
+  attempt_group_id: string;
+  attempt_index: number;
+  attempt_count: number;
+  base_ref?: string | null;
+  base_sha?: string | null;
+  head_ref?: string | null;
+  head_sha?: string | null;
+  summary: string;
+  changed_files: string[];
+  patch_path?: string | null;
+  verification: string[];
+  selected: boolean;
+  recorded_at: string;
+}
+
+export interface TaskArtifactRef {
+  label: string;
+  path: string;
+  summary: string;
+  created_at: string;
+}
+
+export interface TaskGithubEvent {
+  id: string;
+  action: string;
+  target: string;
+  number: number;
+  summary: string;
+  url?: string | null;
+  recorded_at: string;
+}
+
 export interface TaskRecord {
   id: string;
   prompt: string;
@@ -186,6 +247,15 @@ export interface TaskRecord {
   turn_id: string | null;
   tool_calls: TaskToolCallSummary[];
   timeline: TaskTimelineEntry[];
+  hunt_verdict?: string | null;
+  runtime_event_count?: number;
+  checklist?: TaskChecklistState;
+  gates?: TaskGateRecord[];
+  attempts?: TaskAttemptRecord[];
+  artifacts?: TaskArtifactRef[];
+  github_events?: TaskGithubEvent[];
+  result_detail_content?: string | null;
+  result_detail_truncated?: boolean;
   allow_shell: boolean;
   trust_mode: boolean;
   auto_approve: boolean;
