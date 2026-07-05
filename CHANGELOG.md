@@ -1,5 +1,21 @@
 # Change Log
 
+## 0.4.0
+
+### New Features
+
+- **Inline Task & Agent Detail Views** — Route task and agent sidebar interactions to inline detail overlays in the main chat webview, including richer task process/result rendering and agent run detail views. Resolve task result artifacts using the TUI task path semantics, add result preview fallback support, and remove the deprecated standalone Agent Sessions panel command and implementation.
+
+- **Config Panel** — Add a full-featured config panel UI that reads/writes TUI runtime config via `/v1/config` and `/v1/config/reload` APIs, supporting all GUI-relevant config keys including nested-table entries (sandbox_mode, strict_tool_mode, memory_enabled, search_provider, prompt_suggestion). Accessible via the `/config` slash command or the settings bar gear icon.
+
+### Improvements
+
+- **Workspace-Scoped Task List** — Remove thread-level filter from refreshTaskList() so the sidebar shows all tasks across the entire workspace instead of just the active thread.
+
+### Bug Fixes
+
+- **Sidebar Clear on Thread Switch** — Clear sidebar tasks, agents, work, and changes panels when switching threads, preventing stale data from the previous thread from persisting into the new thread context.
+
 ## 0.3.3
 
 ### Bug Fixes
