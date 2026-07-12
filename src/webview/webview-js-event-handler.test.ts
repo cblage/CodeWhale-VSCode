@@ -45,9 +45,41 @@ describe("webview-js-event-handler.ts", () => {
     expect(script).toContain("case 'updateToolCall'");
   });
 
+  it("updates delegate-card status text and color classes when agent calls finish", () => {
+    const script = getEventHandlerScript(makeTr());
+    expect(script).toContain("tcEl.querySelector('.delegate-status')");
+    expect(script).toContain("tcEl.classList.remove('delegate-running')");
+    expect(script).toContain("tcEl.classList.add('delegate-completed')");
+    expect(script).toContain("tcEl.classList.add('delegate-failed')");
+  });
+
+  it("updates generic tool status classes so failures remain expanded", () => {
+    const script = getEventHandlerScript(makeTr());
+    expect(script).toContain("tcEl.classList.remove('tool-call-' + toolStatusClasses[sci])");
+    expect(script).toContain("tcEl.classList.add('tool-call-' + (msg.status || 'unknown'))");
+  });
+
   it("handles 'status' message type", () => {
     const script = getEventHandlerScript(makeTr());
     expect(script).toContain("case 'status'");
+  });
+
+  it("renders live context usage and refreshes it when the webview becomes visible", () => {
+    const script = getEventHandlerScript(makeTr());
+    expect(script).toContain("function renderContextUsage(available, usage)");
+    expect(script).toContain("case 'contextUsage'");
+    expect(script).toContain("__i18n.contextUsage || 'Context'");
+    expect(script).toContain("__i18n.contextUsageUnavailable || 'Context usage unavailable'");
+    expect(script).toContain("renderContextUsage(!!msg.available, msg.usage || null)");
+    expect(script).toContain("type: 'refreshContextUsage'");
+    expect(script).toContain("used.toLocaleString(__i18n.locale || undefined)");
+    expect(script).toContain("percent.toFixed(1) + '%)'");
+  });
+
+  it("formats per-message token usage with locale separators", () => {
+    const script = getEventHandlerScript(makeTr());
+    expect(script).toContain("Number(msg.usage.input_tokens || 0).toLocaleString('en-US')");
+    expect(script).toContain("Number(msg.usage.output_tokens || 0).toLocaleString('en-US')");
   });
 
   it("handles 'sessionList' message type", () => {
@@ -70,6 +102,14 @@ describe("webview-js-event-handler.ts", () => {
     expect(script).toContain("case 'agentDetail'");
   });
 
+  it("releases optimistic agent stop state from provider results", () => {
+    const script = getEventHandlerScript(makeTr());
+    expect(script).toContain("case 'agentStopResult'");
+    expect(script).toContain("if (msg.all) window.__wvSidebar.finishAgentStop(null)");
+    expect(script).toContain("window.__wvSidebar.finishAgentStop(attemptedAgentRunIds)");
+    expect(script).toContain("else window.__wvSidebar.finishAgentStop(null)");
+  });
+
   it("handles 'workState' message type", () => {
     const script = getEventHandlerScript(makeTr());
     expect(script).toContain("case 'workState'");
@@ -78,6 +118,12 @@ describe("webview-js-event-handler.ts", () => {
   it("handles 'apiCapabilities' message type", () => {
     const script = getEventHandlerScript(makeTr());
     expect(script).toContain("case 'apiCapabilities'");
+  });
+
+  it("handles dynamic skill command updates", () => {
+    const script = getEventHandlerScript(makeTr());
+    expect(script).toContain("case 'skillCommands'");
+    expect(script).toContain("window.__wvInput.setSkillCommands(msg.skills || [])");
   });
 
   it("handles 'error' message type", () => {
@@ -90,9 +136,54 @@ describe("webview-js-event-handler.ts", () => {
     expect(script).toContain("case 'info'");
   });
 
+  it("applies raw agent tool-card visibility on ready and live setting changes", () => {
+    const script = getEventHandlerScript(makeTr());
+    expect(script).toContain("applyShowAgentToolCards(!!msg.showAgentToolCards)");
+    expect(script).toContain("applyToolDetailSettings(!!msg.showToolDetails, !!msg.calmMode)");
+    expect(script).toContain("case 'displaySettingsUpdated'");
+  });
+
+  it("inserts and updates live subagent transcript blocks in arrival order", () => {
+    const script = getEventHandlerScript(makeTr());
+    expect(script).toContain("case 'addSubagentTranscriptBlock'");
+    expect(script).toContain("renderSubagentTranscriptBlock(msg.entry, msg.blockIdx)");
+    expect(script).toContain("case 'updateSubagentTranscriptBlock'");
+    expect(script).toContain("updateSubagentTranscriptBlock(msg.entry)");
+  });
+
+  it("inserts live steer blocks in assistant block order", () => {
+    const script = getEventHandlerScript(makeTr());
+    expect(script).toContain("case 'addSteerBlock'");
+    expect(script).toContain("renderSteerBlock(msg.content || '', msg.blockIdx)");
+  });
+
+  it("renders info notes with an individually dismissible close button", () => {
+    const script = getEventHandlerScript(makeTr());
+    expect(script).toContain("function appendDismissibleSystemMessage(message)");
+    expect(script).toContain("dismissEl.type = 'button'");
+    expect(script).toContain("dismissEl.className = 'system-message-dismiss'");
+    expect(script).toContain("var dismissLabel = __i18n.dismissNotification || 'Dismiss notification'");
+    expect(script).toContain("dismissEl.setAttribute('aria-label', dismissLabel)");
+    expect(script).toContain("dismissEl.title = dismissLabel");
+    expect(script).toContain("dismissEl.textContent = '✕'");
+    expect(script).toContain("infoEl.remove()");
+    expect(script).toContain("appendDismissibleSystemMessage(msg.message)");
+    expect(script).toContain("appendDismissibleSystemMessage(__i18n.noPreviousMessage)");
+  });
+
   it("handles 'settingsUpdated' message type", () => {
     const script = getEventHandlerScript(makeTr());
     expect(script).toContain("case 'settingsUpdated'");
+  });
+
+  it("restores the authoritative running state when a webview is recreated", () => {
+    const script = getEventHandlerScript(makeTr());
+    expect(script).toContain("var turnInProgress = !!msg.turnInProgress");
+    expect(script).toContain("window.__wvMessages.setStreaming(turnInProgress)");
+    expect(script).toContain("window.__wvMessages.setStreaming(true)");
+    expect(script).toContain("setStreamingState(window.__wvMessages.isStreaming(), msg.text)");
+    expect(script).toContain("case 'turnState'");
+    expect(script).toContain("type: 'refreshTurnState'");
   });
 
   it("handles 'sessionLoaded' message type", () => {
@@ -117,8 +208,7 @@ describe("webview-js-event-handler.ts", () => {
     expect(taskListIdx).toBeGreaterThan(threadLoadedIdx);
     const slice = script.slice(threadLoadedIdx, taskListIdx);
     expect(slice).toContain("renderTasks([])");
-    expect(slice).toContain("setAgentRuns([])");
-    expect(slice).toContain("renderAgents([])");
+    expect(slice).toContain("updateAgentRuns([])");
   });
 
   it("closes detail overlays and clears work/changes on threadLoaded", () => {
@@ -159,8 +249,7 @@ describe("webview-js-event-handler.ts", () => {
     const errorIdx = script.indexOf("case 'error'", clearChatIdx);
     const slice = script.slice(clearChatIdx, errorIdx);
     expect(slice).toContain("renderTasks([])");
-    expect(slice).toContain("setAgentRuns([])");
-    expect(slice).toContain("renderAgents([])");
+    expect(slice).toContain("updateAgentRuns([])");
   });
 
   it("clears work and changes panels on clearChat", () => {

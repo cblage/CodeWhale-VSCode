@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { safeRenderMarkdown, renderMessageBlocks, finalizeAssistantMessage } from "./event-helpers";
+import {
+  ensureTerminalErrorContent,
+  safeRenderMarkdown,
+  renderMessageBlocks,
+  finalizeAssistantMessage,
+} from "./event-helpers";
 import type { ChatMessage } from "./session-state";
 
 describe("event-helpers", () => {
@@ -111,6 +116,37 @@ describe("event-helpers", () => {
       };
       const payload = finalizeAssistantMessage(msg, "complete");
       expect(payload.blockHtmls).toHaveLength(1);
+    });
+  });
+
+  describe("ensureTerminalErrorContent", () => {
+    it("fills an empty assistant card with the provider error", () => {
+      const msg: ChatMessage = {
+        id: "m5", role: "assistant", content: "",
+        status: "streaming", timestamp: Date.now(), blocks: [],
+      };
+
+      const update = ensureTerminalErrorContent(
+        msg,
+        "Thinking mode does not support this tool_choice",
+      );
+
+      expect(update).toEqual({
+        blockIdx: 0,
+        content: "Error: Thinking mode does not support this tool_choice",
+      });
+      expect(msg.content).toBe(update?.content);
+      expect(msg.blocks?.[0]).toEqual({ type: "text", content: update?.content });
+    });
+
+    it("does not overwrite assistant output that already exists", () => {
+      const msg: ChatMessage = {
+        id: "m6", role: "assistant", content: "partial answer",
+        status: "streaming", timestamp: Date.now(),
+      };
+
+      expect(ensureTerminalErrorContent(msg, "late failure")).toBeNull();
+      expect(msg.content).toBe("partial answer");
     });
   });
 });

@@ -13,9 +13,18 @@ import * as os from "os";
 import { exec } from "child_process";
 import { t } from "../i18n";
 import { formatCostAmount } from "../utils/cost-calculator";
-import { isCommandAvailableInGui } from "./slash-commands";
+import {
+  isCommandAvailableInGui,
+  isRegisteredSlashCommand,
+} from "./slash-commands";
 import { formatError, getErrorMessage } from "../utils/error-handler";
-import type { CodeWhaleApiClient, CodeWhaleEngine, ThreadRecord, TaskSummary } from "../types";
+import type {
+  CodeWhaleApiClient,
+  CodeWhaleEngine,
+  ThreadRecord,
+  TaskSummary,
+  SkillsResponse,
+} from "../types";
 
 // ── Context interface for dependency injection ──
 
@@ -44,12 +53,18 @@ export interface SlashCommandContext {
   refreshSessionList(): void;
   refreshTaskList(): Promise<void>;
   refreshWorkPanel(): void;
-  loadSessionMessages(sessionId: string): Promise<void>;
+  loadSessionMessages(sessionId: string): Promise<unknown>;
   handleInterrupt(): Promise<void>;
   handleCompact(): Promise<void>;
   handleUndoLastTurn(): Promise<void>;
   handleRetryLastTurn(): Promise<void>;
   handleAttachFile(): Promise<void>;
+  refreshSkillCommands(): Promise<SkillsResponse>;
+  tryInvokeSkillCommand(
+    command: string,
+    args: string,
+    rawText: string,
+  ): Promise<boolean>;
 }
 
 // ── Handler type ──
@@ -65,7 +80,7 @@ function notAvailable(ctx: SlashCommandContext): void {
 // ── Helper: get config shortcut ──
 
 function cfg() {
-  return vscode.workspace.getConfiguration("brotherwhale");
+  return vscode.workspace.getConfiguration("cblage.codewhale");
 }
 
 function mergeThreadUpdate(
@@ -216,7 +231,7 @@ async function handleConfig(ctx: SlashCommandContext, args: string): Promise<voi
 }
 
 async function handleSettings(ctx: SlashCommandContext, _args: string): Promise<void> {
-  ctx.postMessage({ type: "info", message: `Current settings:\n- Mode: ${cfg().get<string>("defaultMode", "agent")}\n- Model: ${cfg().get<string>("defaultModel", "deepseek-v4-pro")}\n- Reasoning Effort: ${cfg().get<string>("reasoningEffort", "auto")}\n- Engine Path: ${cfg().get<string>("enginePath", "codewhale")}\n- Auto Start Engine: ${cfg().get<boolean>("autoStartEngine", true)}` });
+  ctx.postMessage({ type: "info", message: `Current settings:\n- Mode: ${cfg().get<string>("defaultMode", "agent")}\n- Model: ${cfg().get<string>("defaultModel", "deepseek-v4-pro")}\n- Effort: ${cfg().get<string>("reasoningEffort", "auto")}\n- Engine Path: ${cfg().get<string>("enginePath", "codewhale")}\n- Auto Start Engine: ${cfg().get<boolean>("autoStartEngine", true)}` });
 }
 
 async function handleInterrupt(ctx: SlashCommandContext, _args: string): Promise<void> {
@@ -232,7 +247,7 @@ async function handleCompact(ctx: SlashCommandContext, _args: string): Promise<v
 }
 
 async function handleExit(_ctx: SlashCommandContext, _args: string): Promise<void> {
-  vscode.commands.executeCommand("workbench.action.closeSidebar");
+  vscode.commands.executeCommand("workbench.action.closeAuxiliaryBar");
 }
 
 async function handleRename(ctx: SlashCommandContext, args: string): Promise<void> {
@@ -478,7 +493,7 @@ async function handleTask(ctx: SlashCommandContext, args: string): Promise<void>
   try {
     await ctx.api.ensureReady();
     if (taskSub === "add" && taskRest) {
-      const taskCfg = vscode.workspace.getConfiguration("brotherwhale");
+      const taskCfg = vscode.workspace.getConfiguration("cblage.codewhale");
       const task = await ctx.api.createTask({
         prompt: taskRest,
         model: taskCfg.get<string>("defaultModel", "deepseek-v4-pro"),
@@ -551,12 +566,12 @@ async function handleVerbose(ctx: SlashCommandContext, args: string): Promise<vo
 }
 
 async function handleInit(ctx: SlashCommandContext, _args: string): Promise<void> {
-  vscode.commands.executeCommand("workbench.action.openSettings", "brotherwhale");
+  vscode.commands.executeCommand("workbench.action.openSettings", "cblage.codewhale");
   ctx.postMessage({ type: "info", message: "Use the VSCode settings to configure CodeWhale. Open settings with /config." });
 }
 
 async function handleMcp(ctx: SlashCommandContext, _args: string): Promise<void> {
-  vscode.commands.executeCommand("workbench.action.openSettings", "brotherwhale");
+  vscode.commands.executeCommand("workbench.action.openSettings", "cblage.codewhale");
   ctx.postMessage({ type: "info", message: "MCP server configuration is available in VSCode settings." });
 }
 
@@ -593,6 +608,7 @@ async function handleHelp(ctx: SlashCommandContext, _args: string): Promise<void
 /verbose [on|off] - Toggle verbose mode
 /skills - List all available skills with status
 /skill <name> [on|off] - Enable or disable a skill
+/<skill-name> <request> - Run an enabled skill explicitly
 /init - Open settings for initialization
 /mcp - Open MCP settings
 /provider - Show provider info
@@ -658,8 +674,7 @@ async function handleGoal(ctx: SlashCommandContext, args: string): Promise<void>
 
 async function handleSkills(ctx: SlashCommandContext, _args: string): Promise<void> {
   try {
-    await ctx.api.ensureReady();
-    const result = await ctx.api.listSkills();
+    const result = await ctx.refreshSkillCommands();
     const skills = result.skills;
     if (skills && skills.length > 0) {
       const userSkills = skills.filter(s => !s.is_bundled);
@@ -700,7 +715,7 @@ async function handleSkills(ctx: SlashCommandContext, _args: string): Promise<vo
 
       ctx.postMessage({
         type: "info",
-        message: `${output}\nUse /skill <name> [on|off] to enable/disable\n${dirInfo}${warnings}`
+        message: `${output}\nRun an enabled skill: /<skill-name> <request>\nUse /skill <name> [on|off] to enable/disable\n${dirInfo}${warnings}`
       });
     } else {
       const dirInfo = result.directories && result.directories.length > 1
@@ -731,10 +746,16 @@ async function handleSkill(ctx: SlashCommandContext, args: string): Promise<void
 
     if (action === "on" || action === "enable" || action === "") {
       const result = await ctx.api.setSkillEnabled(skillName, true);
-      ctx.postMessage({ type: "info", message: `Skill '${result.name}' enabled. It will auto-trigger when task matches.` });
+      ctx.postMessage({ type: "info", message: `Skill '${result.name}' enabled. Run it with /${result.name} <request>, or let it auto-trigger when the task matches.` });
+      try {
+        await ctx.refreshSkillCommands();
+      } catch { /* the toggle succeeded; a menu refresh can retry later */ }
     } else if (action === "off" || action === "disable") {
       const result = await ctx.api.setSkillEnabled(skillName, false);
       ctx.postMessage({ type: "info", message: `Skill '${result.name}' disabled.` });
+      try {
+        await ctx.refreshSkillCommands();
+      } catch { /* the toggle succeeded; a menu refresh can retry later */ }
     } else {
       ctx.postMessage({ type: "error", message: `Unknown action: ${action}\nUsage: /skill <name> [on|off]` });
     }
@@ -1333,20 +1354,42 @@ const HANDLERS: Record<string, CommandHandler> = {
 export class SlashCommandHandler {
   constructor(private ctx: SlashCommandContext) {}
 
-  async handle(command: string, args: string): Promise<void> {
-    const handler = HANDLERS[command];
+  async handle(command: string, args: string, rawText?: string): Promise<void> {
+    const normalizedCommand = command.toLowerCase();
+    const handler = HANDLERS[normalizedCommand];
 
     if (handler) {
       // Check availability from the slash-commands registry
-      const availability = isCommandAvailableInGui(command);
+      const availability = isCommandAvailableInGui(normalizedCommand);
       if (availability === "unavailable") {
         notAvailable(this.ctx);
         return;
       }
       await handler(this.ctx, args);
-    } else {
-      this.ctx.postMessage({ type: "error", message: `Unknown command: ${command}. Type /help for available commands.` });
+      return;
     }
+
+    // Every static command name is reserved, even if that command has no GUI
+    // handler. A same-named skill must never shadow a built-in command.
+    if (isRegisteredSlashCommand(normalizedCommand)) {
+      notAvailable(this.ctx);
+      return;
+    }
+
+    const visibleText = rawText?.trim()
+      || normalizedCommand + (args ? " " + args : "");
+    if (await this.ctx.tryInvokeSkillCommand(
+      normalizedCommand,
+      args,
+      visibleText,
+    )) {
+      return;
+    }
+
+    this.ctx.postMessage({
+      type: "error",
+      message: `Unknown command: ${normalizedCommand}. Type /help for available commands.`,
+    });
   }
 }
 

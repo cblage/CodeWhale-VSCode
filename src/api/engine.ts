@@ -15,6 +15,27 @@ function homeDir(): string {
   return os.homedir();
 }
 
+function patchedRuntimeCandidates(): string[] {
+  if (isWindows) {
+    const localAppData = process.env.LOCALAPPDATA || path.join(homeDir(), "AppData", "Local");
+    return [
+      path.join(localAppData, "CodeWhale-cblage", "codewhale-tui.exe"),
+      path.join(homeDir(), ".local", "lib", "codewhale-cblage", "codewhale-tui.exe"),
+    ];
+  }
+  return [
+    path.join(homeDir(), ".local", "lib", "codewhale-cblage", "codewhale-tui"),
+    path.join(homeDir(), ".local", "bin", "codewhale-tui-cblage"),
+  ];
+}
+
+function isPatchedRuntimePath(enginePath: string): boolean {
+  const normalized = enginePath.replace(/\\/g, "/").toLowerCase();
+  return normalized.includes("/codewhale-cblage/")
+    || normalized.endsWith("/codewhale-tui-cblage")
+    || normalized.endsWith("/codewhale-tui-cblage.exe");
+}
+
 function killProcessOnPort(port: number): Promise<void> {
   return new Promise((resolve) => {
     if (isWindows) {
@@ -50,7 +71,11 @@ function resolveEnginePath(configuredPath: string): string {
     return configuredPath;
   }
 
-  const candidates: string[] = [];
+  // This personal fork can use a separately installed runtime with the small
+  // agent-cancellation API patch. Keep it ahead of the user's official
+  // CodeWhale installation so both versions can coexist without replacing one
+  // another.
+  const candidates: string[] = patchedRuntimeCandidates();
 
   if (isWindows) {
     const appData = process.env.APPDATA || path.join(homeDir(), "AppData", "Roaming");
@@ -175,20 +200,31 @@ export class CodeWhaleEngine {
       this._port = savedPort;
       this.log(`Found saved port ${this._port}, checking health...`);
       if (await this.checkHealth()) {
+        // A healthy detached runtime can own in-memory master/subagent work.
+        // Optional route availability must never be used as permission to
+        // replace it during ordinary activation. Capability probing later
+        // disables unsupported controls until an explicit engine restart.
         this._running = true;
         this._workspaceKey = currentKey;
         this.log(`Reusing existing engine on port ${this._port}`);
         return;
+      } else {
+        this.log(`Saved port ${this._port} not responding, starting new instance`);
       }
-      this.log(`Saved port ${this._port} not responding, starting new instance`);
     }
 
     await this.start();
+    this.persistCurrentPort(currentKey, portFile);
+  }
 
+  private persistCurrentPort(
+    workspaceKey = this.getWorkspaceKey(),
+    portFile = this.getPortFile(),
+  ): void {
     try {
       fs.mkdirSync(this.context.globalStorageUri.fsPath, { recursive: true });
       fs.writeFileSync(portFile, String(this._port));
-      this._workspaceKey = currentKey;
+      this._workspaceKey = workspaceKey;
     } catch { /* ignore */ }
   }
 
@@ -205,16 +241,6 @@ export class CodeWhaleEngine {
   async start(): Promise<void> {
     await this.stop();
 
-    const portFile = this.getPortFile();
-    try {
-      const savedPort = parseInt(fs.readFileSync(portFile, "utf8").trim(), 10);
-      if (savedPort > 0) {
-        this.log(`Killing any orphan process on port ${savedPort}...`);
-        await killProcessOnPort(savedPort);
-        await new Promise(resolve => setTimeout(resolve, 300));
-      }
-    } catch { /* no port file */ }
-
     // 1. Pick a random free port so we never conflict with old serve instances
     this._port = await findFreePort();
     this.log(`Selected free port: ${this._port}`);
@@ -224,7 +250,7 @@ export class CodeWhaleEngine {
     this.log(`Tasks dir: ${tasksDir}`);
 
     // 3. Start fresh engine
-    const cfg = vscode.workspace.getConfiguration("brotherwhale");
+    const cfg = vscode.workspace.getConfiguration("cblage.codewhale");
     const configuredPath = cfg.get<string>("enginePath", "codewhale");
     const enginePath = resolveEnginePath(configuredPath);
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -272,8 +298,33 @@ export class CodeWhaleEngine {
       delete extendedEnv.Path;
     }
 
+    // The engine is deliberately detached and can be reused by a new
+    // extension host after a reload.  Do not leave stdout/stderr attached to
+    // pipes owned by the current extension host: once that host exits, the
+    // next engine write can hit a closed pipe and terminate the runtime.
+    // A directly inherited append-only file descriptor survives the parent
+    // host and keeps the engine's diagnostics available.
+    let processLogFd: number | null = null;
+    const processLogPath = path.join(
+      this.context.globalStorageUri.fsPath,
+      "engine-process.log"
+    );
+    try {
+      fs.mkdirSync(this.context.globalStorageUri.fsPath, { recursive: true });
+      processLogFd = fs.openSync(processLogPath, "a");
+      this.log(`Process output: ${processLogPath}`);
+    } catch (err) {
+      this.log(
+        `Unable to open persistent process log; engine output will be discarded: ${(err as Error).message}`
+      );
+    }
+
     const spawnOptions: import("child_process").SpawnOptions = {
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [
+        "ignore",
+        processLogFd ?? "ignore",
+        processLogFd ?? "ignore",
+      ],
       env: extendedEnv,
       windowsHide: true,
     };
@@ -281,15 +332,17 @@ export class CodeWhaleEngine {
       spawnOptions.detached = true;
     }
 
-    this.process = spawn(enginePath, baseArgs, spawnOptions);
-
-    this.process.stdout?.on("data", (data: Buffer) => {
-      this.log(`[stdout] ${data.toString().trim()}`);
-    });
-
-    this.process.stderr?.on("data", (data: Buffer) => {
-      this.log(`[stderr] ${data.toString().trim()}`);
-    });
+    try {
+      this.process = spawn(enginePath, baseArgs, spawnOptions);
+    } finally {
+      // spawn() duplicates inherited descriptors into the child before it
+      // returns, so the extension host should release its copy immediately.
+      if (processLogFd !== null) {
+        try {
+          fs.closeSync(processLogFd);
+        } catch { /* already closed */ }
+      }
+    }
 
     let spawnError: string | null = null;
     let exited = false;
@@ -322,6 +375,13 @@ export class CodeWhaleEngine {
       throw new Error("Engine process exited immediately. Is 'codewhale' installed and in PATH?");
     }
 
+    if (isPatchedRuntimePath(enginePath) && !await this.checkAgentCancellationSupport()) {
+      await this.stop();
+      throw new Error(
+        `Patched CodeWhale runtime at '${enginePath}' does not expose direct agent cancellation. Rebuild the cblage runtime before restarting the extension.`
+      );
+    }
+
     this._running = true;
     this.log(`Engine ready on port ${this._port}`);
   }
@@ -349,8 +409,19 @@ export class CodeWhaleEngine {
   }
 
   async restart(): Promise<void> {
+    // Restart Engine is the explicit force-reset path. Unlike ordinary
+    // activation, it intentionally replaces a healthy detached runtime too.
+    const previousPort = this._running
+      ? this._port
+      : this.tryReadPort(this.getPortFile()) ?? this.tryReadPort(this.getLegacyPortFile());
     await this.stop();
+    if (previousPort !== null && previousPort > 0) {
+      this.log(`Force-stopping the previous engine on port ${previousPort}...`);
+      await killProcessOnPort(previousPort);
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
     await this.start();
+    this.persistCurrentPort();
   }
 
   private async checkHealth(): Promise<boolean> {
@@ -368,6 +439,28 @@ export class CodeWhaleEngine {
               resolve(false);
             }
           });
+        }
+      );
+      req.on("error", () => resolve(false));
+      req.on("timeout", () => {
+        req.destroy();
+        resolve(false);
+      });
+    });
+  }
+
+  /**
+   * Probe the POST-only cancellation route with GET. Axum returns 405 when the
+   * route exists and 404 on stock runtimes, so this is side-effect free.
+   */
+  private async checkAgentCancellationSupport(): Promise<boolean> {
+    return new Promise((resolve) => {
+      const req = http.get(
+        `${this.baseUrl}/v1/threads/__probe__/agent-runs/__probe__/cancel`,
+        { timeout: HEALTH_TIMEOUT_MS },
+        (res) => {
+          res.resume();
+          resolve(res.statusCode !== 404);
         }
       );
       req.on("error", () => resolve(false));

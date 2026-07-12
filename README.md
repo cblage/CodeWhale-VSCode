@@ -1,6 +1,6 @@
 # CodeWhale for VS Code — GUI Frontend for the CodeWhale AI Agent
 
-[![Version](https://img.shields.io/badge/version-0.4.0-blue)](https://github.com/HengQuWorld/CodeWhale-VSCode)
+[![Version](https://img.shields.io/badge/version-0.4.31-blue)](https://github.com/HengQuWorld/CodeWhale-VSCode)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.85+-informational)](https://code.visualstudio.com/)
 
@@ -46,7 +46,7 @@ The extension will attempt to locate the `codewhale` binary automatically from s
 
 ### Conversation & Thread Management
 - **Threaded conversations** — organize work into separate threads with automatic history.
-- **Slash commands** — `/help`, `/mode`, `/model`, `/reasoning`, `/task`, `/compact`, `/note`, `/memory`, `/export`, and more.
+- **Slash commands** — `/help`, `/mode`, `/model`, `/reasoning`, `/task`, `/compact`, `/note`, `/memory`, `/export`, and dynamically discovered skill commands.
 - **Context compaction** — when conversations grow long, use `/compact` to summarize and free up context window space.
 - **Export & save** — export conversations for sharing or archiving.
 
@@ -66,8 +66,8 @@ The extension will attempt to locate the `codewhale` binary automatically from s
 - **Port persistence** — the engine reuses its last known port across sessions for faster startup.
 
 ### Built for VS Code
-- **Activity bar integration** — dedicated CodeWhale icon in the activity bar.
-- **Sidebar panels** — Chat, Threads, Work, and Tasks panels.
+- **Secondary Side Bar integration** — CodeWhale opens on the right without replacing the Explorer.
+- **Sidebar panels** — Chat, Threads, Work, and Tasks panels in the Secondary Side Bar.
 - **Status bar** — model, mode, and workspace indicators.
 - **Settings UI** — configure model, mode, reasoning effort, engine path, auto-approve, and more via VS Code settings.
 - **Dark & light themes** — follows your VS Code theme automatically.
@@ -109,7 +109,7 @@ Then install the generated `.vsix` file from the VS Code extensions menu (`Insta
 
 ### 3. Open CodeWhale
 
-Click the **CodeWhale icon** in the activity bar (the layered whale icon on the left edge of VS Code). The engine starts automatically — you'll see a "Ready" indicator in the status bar.
+Run **CodeWhale: Open Chat** from the command palette. CodeWhale opens in the Secondary Side Bar on the right, and the engine starts automatically — you'll see a "Ready" indicator in the status bar.
 
 ### 4. Start a Conversation
 
@@ -147,23 +147,29 @@ That's it. The agent reads your workspace and responds.
 | `/export` | Export conversation |
 | `/note <text>` | Add a note |
 | `/memory` | Manage persistent memory |
+| `/skills` | List discovered skills and their enabled state |
+| `/skill <name> [on\|off]` | Enable or disable a skill |
+| `/<skill-name> <request>` | Run an enabled skill explicitly |
 | `/help` | Show all commands |
 
 ---
 
 ## Configuration
 
-CodeWhale is configurable via VS Code settings (`Cmd+,` → search "brotherwhale").
+CodeWhale is configurable via VS Code settings (`Cmd+,` → search "cblage.codewhale").
 
 | Setting | Default | Description |
 |---|---|---|
-| `brotherwhale.enginePath` | `"codewhale"` | Path to the codewhale binary |
-| `brotherwhale.enginePort` | `7878` | Port for the CodeWhale runtime API |
-| `brotherwhale.defaultModel` | `"deepseek-v4-pro"` | Default model for new threads |
-| `brotherwhale.defaultMode` | `"agent"` | Default mode (agent / plan / yolo) |
-| `brotherwhale.reasoningEffort` | `"auto"` | Reasoning effort level |
-| `brotherwhale.autoStartEngine` | `true` | Auto-start engine on activation |
-| `brotherwhale.autoApprove` | `false` | Auto-approve tool calls in agent mode |
+| `cblage.codewhale.enginePath` | `"codewhale"` | Path to the codewhale binary |
+| `cblage.codewhale.enginePort` | `7878` | Port for the CodeWhale runtime API |
+| `cblage.codewhale.defaultModel` | `"deepseek-v4-pro"` | Default model for new threads |
+| `cblage.codewhale.defaultMode` | `"agent"` | Default mode (agent / plan / yolo) |
+| `cblage.codewhale.reasoningEffort` | `"auto"` | Reasoning effort level |
+| `cblage.codewhale.autoStartEngine` | `true` | Auto-start engine on activation |
+| `cblage.codewhale.autoApprove` | `false` | Auto-approve tool calls in agent mode |
+| `cblage.codewhale.showAgentToolCards` | `false` | Show raw agent tool-call cards; subagent transcript cards remain visible |
+| `cblage.codewhale.autoWakeMasterForAgents` | `true` | Periodically nudge an active master turn to inspect running subagents; can use model tokens |
+| `cblage.codewhale.agentWakeIntervalSeconds` | `30` | Seconds between agent watchdog nudges (10–3600) |
 
 ---
 
@@ -179,18 +185,23 @@ CodeWhale is configurable via VS Code settings (`Cmd+,` → search "brotherwhale
 - Ensure VS Code 1.85+ is installed.
 
 ### Engine not found
-- Set the full path to the engine binary in `brotherwhale.enginePath`.
+- Set the full path to the engine binary in `cblage.codewhale.enginePath`.
 - Common paths: `/opt/homebrew/bin/codewhale`, `/usr/local/bin/codewhale`.
+- This fork automatically prefers the isolated patched runtime at `~/.local/lib/codewhale-cblage/codewhale-tui` when present. The official `codewhale` CLI remains installed and unchanged.
 
 ### Installing the VSIX
 ```bash
-code --install-extension /path/to/brotherwhale-vscode-0.4.0.vsix --force
+code --install-extension /path/to/cblage-codewhale-vscode-0.4.31-secondary-sidebar.vsix --force
 ```
 
 > **Trae CN users**: if `code` is not available, use the full path:
 > ```bash
-> "/Applications/Trae CN.app/Contents/Resources/app/bin/code" --install-extension /path/to/brotherwhale-vscode-0.3.1.vsix --force
+> "/Applications/Trae CN.app/Contents/Resources/app/bin/code" --install-extension /path/to/cblage-codewhale-vscode-0.4.31-secondary-sidebar.vsix --force
 > ```
+
+Custom extension ID: `cblage.codewhale-vscode`
+
+Launcher command: `cblage.codewhale.openChat`
 
 ---
 

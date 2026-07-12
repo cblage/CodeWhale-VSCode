@@ -19,6 +19,8 @@ export interface ThreadRecord {
   system_prompt?: string | null;
   task_id?: string | null;
   title?: string | null;
+  /** Saved-session snapshot associated with this runtime thread. */
+  session_id?: string | null;
   coherence_state: string;
 }
 
@@ -118,6 +120,20 @@ export interface ThreadDetailResponse {
   turns: TurnRecord[];
   items: TurnItemRecord[];
   latest_seq?: number;
+}
+
+export interface ThreadContextUsageResponse {
+  thread_id: string;
+  provider: string;
+  model: string;
+  estimated_input_tokens: number;
+  context_window_tokens: number;
+  remaining_context_tokens: number;
+  used_percent: number;
+  auto_compact_enabled: boolean;
+  auto_compact_threshold_tokens: number;
+  auto_compact_threshold_percent: number;
+  source: string;
 }
 
 export interface ApprovalRequest {
@@ -359,6 +375,8 @@ export interface RuntimeApiCapabilities {
   threadRetry: boolean;
   snapshotList: boolean;
   snapshotRestore: boolean;
+  agentRunCancel: boolean;
+  agentRunNudge: boolean;
 }
 
 export interface UsageTotals {
@@ -459,6 +477,8 @@ export interface AgentWorkerSpec {
   session_name: string | null;
   objective: string;
   role: string | null;
+  /** Canonical Fleet roster profile id. Absent on older persisted runs. */
+  profile?: string | null;
   agent_type: string;
   model: string;
   workspace: string;
@@ -472,21 +492,36 @@ export interface AgentWorkerSpec {
 
 export interface AgentRunUsage {
   status: string;
-  input_tokens: number;
-  output_tokens: number;
-  budget_spent_tokens: number;
-  budget_remaining_tokens: number;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens?: number | null;
+  token_budget?: number | null;
+  budget_spent_tokens: number | null;
+  budget_remaining_tokens: number | null;
+  budget_scope?: string | null;
+  note?: string;
 }
 
 export interface AgentRunArtifactRef {
   kind: string;
-  path: string;
+  name: string;
+  target: string;
+  description: string;
+  /** Backward-compatible field used by older worker-record projections. */
+  path?: string;
 }
 
 export interface AgentWorkerEvent {
+  seq: number;
+  worker_id: string;
+  status: AgentWorkerStatus;
   timestamp_ms: number;
-  kind: string;
-  summary: string;
+  message?: string | null;
+  step?: number | null;
+  tool_name?: string | null;
+  /** Backward-compatible event fields accepted from older runtimes. */
+  kind?: string;
+  summary?: string;
 }
 
 export interface AgentRunRecord {
@@ -509,10 +544,27 @@ export interface AgentRunRecord {
   error: string | null;
   steps_taken: number;
   events: AgentWorkerEvent[];
+  /** Optional richer projections accepted when a future runtime exposes them. */
+  transcript?: unknown;
+  transcript_messages?: unknown[];
+  messages?: unknown[];
+  nickname?: string | null;
+  latest_output?: string | null;
+  persisted_result?: string | null;
+  /** False when the owning runtime instance no longer has this worker. */
+  runtime_available?: boolean;
 }
 
 export interface AgentRunsResponse {
   runs: AgentRunRecord[];
+}
+
+export interface AgentRunNudgeResponse {
+  accepted: boolean;
+  coalesced: boolean;
+  thread_id: string;
+  turn_id: string;
+  agent_ids: string[];
 }
 
 // ── Config ──

@@ -1,12 +1,12 @@
 {
-  "displayName": "CodeWhale",
-  "description": "CodeWhale AI coding agent powered by the CodeWhale engine",
-  "viewsContainers.activitybar.title": "CodeWhale",
-  "views.chat.name": "Chat",
-  "commands.openChat.title": "CodeWhale: Open Chat",
-  "commands.newThread.title": "CodeWhale: New Thread",
-  "commands.compactContext.title": "CodeWhale: Compact Context",
-  "commands.restartEngine.title": "CodeWhale: Restart Engine",
+  "displayName": "CodeWhale (cblage)",
+  "description": "The cblage CodeWhale client, powered by the CodeWhale engine",
+  "viewsContainers.secondarySidebar.title": "🦍 HarambeChat",
+  "views.chat.name": "🦍 HarambeChat",
+  "commands.openChat.title": "CodeWhale (cblage): Open Chat",
+  "commands.newThread.title": "CodeWhale (cblage): New Thread",
+  "commands.compactContext.title": "CodeWhale (cblage): Compact Context",
+  "commands.restartEngine.title": "CodeWhale (cblage): Restart Engine",
   "config.enginePath.description": "Path to the codewhale binary",
   "config.enginePort.description": "Port for the CodeWhale runtime API server",
   "config.defaultModel.description": "Default model for new threads",
@@ -14,5 +14,8 @@
   "config.reasoningEffort.description": "Reasoning effort level (auto, off, low, medium, high, max)",
   "config.autoStartEngine.description": "Automatically start the CodeWhale engine when the extension activates",
   "config.autoApprove.description": "Auto-approve tool calls in agent mode (equivalent to trust mode / YOLO approval behavior)",
-  "config.showThreadList.description": "Show the Threads tab in the sidebar. Legacy feature — threads are superseded by sessions."
+  "config.showThreadList.description": "Show the Threads tab in the sidebar. Legacy feature — threads are superseded by sessions.",
+  "config.showAgentToolCards.description": "Show raw agent tool-call cards in the chat transcript. Subagent transcript cards remain visible.",
+  "config.autoWakeMasterForAgents.description": "Periodically wake the master agent while subagents are active so it checks, recovers, or replaces workers that need attention. Watchdog turns can use model tokens.",
+  "config.agentWakeIntervalSeconds.description": "Seconds between automatic master-agent checks while subagents remain active (minimum 10)."
 }

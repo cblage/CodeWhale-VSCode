@@ -1,12 +1,12 @@
 {
-  "name": "brotherwhale-vscode",
+  "name": "codewhale-vscode",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.4.0",
-  "publisher": "hengquworld",
+  "version": "0.4.40",
+  "publisher": "cblage",
   "repository": "https://github.com/HengQuWorld/CodeWhale-VSCode",
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.106.0"
   },
   "icon": "media/icon.png",
   "categories": [
@@ -38,60 +38,60 @@
   "main": "./dist/extension.js",
   "contributes": {
     "viewsContainers": {
-      "activitybar": [
+      "secondarySidebar": [
         {
-          "id": "brotherwhale",
-          "title": "%viewsContainers.activitybar.title%",
+          "id": "cblage-codewhale",
+          "title": "%viewsContainers.secondarySidebar.title%",
           "icon": "media/icon.svg"
         }
       ]
     },
     "views": {
-      "brotherwhale": [
+      "cblage-codewhale": [
         {
           "type": "webview",
-          "id": "brotherwhale.chat",
+          "id": "cblage.codewhale.chat",
           "name": "%views.chat.name%"
         }
       ]
     },
     "commands": [
       {
-        "command": "brotherwhale.openChat",
+        "command": "cblage.codewhale.openChat",
         "title": "%commands.openChat.title%"
       },
       {
-        "command": "brotherwhale.newThread",
+        "command": "cblage.codewhale.newThread",
         "title": "%commands.newThread.title%"
       },
       {
-        "command": "brotherwhale.compactContext",
+        "command": "cblage.codewhale.compactContext",
         "title": "%commands.compactContext.title%"
       },
       {
-        "command": "brotherwhale.restartEngine",
+        "command": "cblage.codewhale.restartEngine",
         "title": "%commands.restartEngine.title%"
       }
     ],
     "configuration": {
-      "title": "BrotherWhale",
+      "title": "CodeWhale (cblage)",
       "properties": {
-        "brotherwhale.enginePath": {
+        "cblage.codewhale.enginePath": {
           "type": "string",
           "default": "codewhale",
           "description": "%config.enginePath.description%"
         },
-        "brotherwhale.enginePort": {
+        "cblage.codewhale.enginePort": {
           "type": "number",
           "default": 7878,
           "description": "%config.enginePort.description%"
         },
-        "brotherwhale.defaultModel": {
+        "cblage.codewhale.defaultModel": {
           "type": "string",
           "default": "deepseek-v4-pro",
           "description": "%config.defaultModel.description%"
         },
-        "brotherwhale.defaultMode": {
+        "cblage.codewhale.defaultMode": {
           "type": "string",
           "enum": [
             "agent",
@@ -101,7 +101,7 @@
           "default": "agent",
           "description": "%config.defaultMode.description%"
         },
-        "brotherwhale.reasoningEffort": {
+        "cblage.codewhale.reasoningEffort": {
           "type": "string",
           "enum": [
             "auto",
@@ -114,20 +114,37 @@
           "default": "auto",
           "description": "%config.reasoningEffort.description%"
         },
-        "brotherwhale.autoStartEngine": {
+        "cblage.codewhale.autoStartEngine": {
           "type": "boolean",
           "default": true,
           "description": "%config.autoStartEngine.description%"
         },
-        "brotherwhale.autoApprove": {
+        "cblage.codewhale.autoApprove": {
           "type": "boolean",
           "default": false,
           "description": "%config.autoApprove.description%"
         },
-        "brotherwhale.showThreadList": {
+        "cblage.codewhale.showThreadList": {
           "type": "boolean",
           "default": false,
           "description": "%config.showThreadList.description%"
+        },
+        "cblage.codewhale.showAgentToolCards": {
+          "type": "boolean",
+          "default": false,
+          "description": "%config.showAgentToolCards.description%"
+        },
+        "cblage.codewhale.autoWakeMasterForAgents": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.autoWakeMasterForAgents.description%"
+        },
+        "cblage.codewhale.agentWakeIntervalSeconds": {
+          "type": "number",
+          "default": 30,
+          "minimum": 10,
+          "maximum": 3600,
+          "description": "%config.agentWakeIntervalSeconds.description%"
         }
       }
     }

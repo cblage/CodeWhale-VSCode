@@ -47,13 +47,13 @@ npm test
 ```bash
 npx @vscode/vsce package --no-dependencies
 ```
-- 生成 `brotherwhale-vscode-0.1.0.vsix` 文件
+- 生成 `cblage-codewhale-vscode-0.1.0.vsix` 文件
 - 包含所有必要的源文件和资源
 - 文件大小约 180KB
 
 ### 安装 VSIX
 ```bash
-code --install-extension ./brotherwhale-vscode-0.1.0.vsix --force
+code --install-extension ./cblage-codewhale-vscode-0.1.0.vsix --force
 ```
 
 > 使用 Trae CN 时如果 `code` 不可用，先设置 alias：
@@ -65,7 +65,7 @@ code --install-extension ./brotherwhale-vscode-0.1.0.vsix --force
 ```bash
 npm run compile && \
 npx @vscode/vsce package --no-dependencies && \
-code --install-extension ./brotherwhale-vscode-0.1.0.vsix --force
+code --install-extension ./cblage-codewhale-vscode-0.1.0.vsix --force
 ```
 
 ### 安装后激活

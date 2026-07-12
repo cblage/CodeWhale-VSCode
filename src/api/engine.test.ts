@@ -1,4 +1,8 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+const engineSource = readFileSync(resolve(__dirname, "engine.ts"), "utf8");
 
 describe("Engine baseUrl synchronization", () => {
   it("baseUrl uses correct format", () => {
@@ -41,6 +45,50 @@ describe("Engine baseUrl synchronization", () => {
       expect(url.origin).toBe(baseUrl);
       expect(url.pathname).toBe(path);
     }
+  });
+});
+
+describe("Engine process lifecycle", () => {
+  it("uses persistent inherited output instead of extension-host pipes", () => {
+    expect(engineSource).toContain(
+      'fs.openSync(processLogPath, "a")'
+    );
+    expect(engineSource).toMatch(
+      /stdio:\s*\[\s*"ignore",\s*processLogFd \?\? "ignore",\s*processLogFd \?\? "ignore"/s
+    );
+    expect(engineSource).toContain("fs.closeSync(processLogFd)");
+    expect(engineSource).not.toContain(
+      'stdio: ["ignore", "pipe", "pipe"]'
+    );
+  });
+
+  it("prefers the isolated cblage runtime without replacing official CodeWhale", () => {
+    expect(engineSource).toContain('.local", "lib", "codewhale-cblage"');
+    expect(engineSource.indexOf("patchedRuntimeCandidates()"))
+      .toBeLessThan(engineSource.indexOf('path.join(homeDir(), ".cargo", "bin", "codewhale")'));
+  });
+
+  it("reuses healthy runtimes without replacing live work for optional capabilities", () => {
+    expect(engineSource).toContain("checkAgentCancellationSupport");
+    expect(engineSource).toContain("/v1/threads/__probe__/agent-runs/__probe__/cancel");
+    expect(engineSource).toContain("res.statusCode !== 404");
+    expect(engineSource).toContain("Optional route availability must never be used as permission");
+    expect(engineSource).not.toContain("lacks direct agent cancellation; restarting");
+  });
+
+  it("reserves port-based process termination for explicit Restart Engine", () => {
+    const startBody = engineSource.slice(
+      engineSource.indexOf("async start(): Promise<void>"),
+      engineSource.indexOf("async stop(): Promise<void>"),
+    );
+    const restartBody = engineSource.slice(
+      engineSource.indexOf("async restart(): Promise<void>"),
+      engineSource.indexOf("private async checkHealth"),
+    );
+    expect(startBody).not.toContain("killProcessOnPort");
+    expect(restartBody).toContain("killProcessOnPort(previousPort)");
+    expect(restartBody).toContain("Force-stopping the previous engine");
+    expect(restartBody).toContain("this.persistCurrentPort()");
   });
 });
 

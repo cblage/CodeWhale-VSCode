@@ -99,6 +99,9 @@ vi.mock("./slash-commands", () => ({
     if (unavailable.includes(name)) return "unavailable";
     return "full";
   }),
+  isRegisteredSlashCommand: vi.fn((name: string) =>
+    ["/theme", "/review"].includes(name.toLowerCase())
+  ),
 }));
 
 // ── Helper: create context ──
@@ -215,6 +218,13 @@ function createContext(overrides: Partial<SlashCommandContext> = {}): SlashComma
     handleUndoLastTurn: vi.fn(async () => undefined),
     handleRetryLastTurn: vi.fn(async () => undefined),
     handleAttachFile: vi.fn(async () => undefined),
+    refreshSkillCommands: vi.fn(async () => ({
+      directory: "/skills",
+      directories: ["/skills"],
+      warnings: [],
+      skills: [],
+    })),
+    tryInvokeSkillCommand: vi.fn(async () => false),
     ...overrides,
   };
 }
@@ -271,13 +281,49 @@ describe("SlashCommandHandler - Dispatcher Pattern", () => {
       });
     });
 
-    it("routes unknown (not-in-HANDLERS) commands to error message", async () => {
+    it("reserves registered commands even when they have no GUI handler", async () => {
       const ctx = createContext();
       const handler = new SlashCommandHandler(ctx);
       await handler.handle("/theme", "");
       expect(ctx.postMessage).toHaveBeenCalledWith({
-        type: "error",
-        message: "Unknown command: /theme. Type /help for available commands.",
+        type: "info",
+        message: "This command is not available in GUI mode.",
+      });
+      expect(ctx.tryInvokeSkillCommand).not.toHaveBeenCalled();
+    });
+
+    it("falls back to an enabled dynamic skill and preserves raw text", async () => {
+      const tryInvokeSkillCommand = vi.fn(async () => true);
+      const ctx = createContext({ tryInvokeSkillCommand });
+      const handler = new SlashCommandHandler(ctx);
+
+      await handler.handle(
+        "/engineering-review",
+        "review #177",
+        "/Engineering-Review  review #177",
+      );
+
+      expect(tryInvokeSkillCommand).toHaveBeenCalledWith(
+        "/engineering-review",
+        "review #177",
+        "/Engineering-Review  review #177",
+      );
+      expect(ctx.postMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: "error" }),
+      );
+    });
+
+    it("does not let a dynamic skill shadow a registered command", async () => {
+      const tryInvokeSkillCommand = vi.fn(async () => true);
+      const ctx = createContext({ tryInvokeSkillCommand });
+      const handler = new SlashCommandHandler(ctx);
+
+      await handler.handle("/review", "#177", "/review #177");
+
+      expect(tryInvokeSkillCommand).not.toHaveBeenCalled();
+      expect(ctx.postMessage).toHaveBeenCalledWith({
+        type: "info",
+        message: "This command is not available in GUI mode.",
       });
     });
 
@@ -544,6 +590,8 @@ describe("SlashCommandHandler - Dispatcher Pattern", () => {
       const msg = postMessage.mock.calls[0][0].message;
       expect(msg).toContain("Mode:");
       expect(msg).toContain("Model:");
+      expect(msg).toContain("Effort:");
+      expect(msg).not.toContain("Reasoning Effort:");
     });
   });
 
@@ -590,14 +638,14 @@ describe("SlashCommandHandler - Dispatcher Pattern", () => {
   // ── /exit ──
 
   describe("/exit", () => {
-    it("closes sidebar", async () => {
+    it("closes the secondary sidebar", async () => {
       const ctx = createContext();
       const handler = new SlashCommandHandler(ctx);
 
       await handler.handle("/exit", "");
 
       expect(vscodeState.executeCommandMock).toHaveBeenCalledWith(
-        "workbench.action.closeSidebar"
+        "workbench.action.closeAuxiliaryBar"
       );
     });
   });
@@ -625,6 +673,100 @@ describe("SlashCommandHandler - Dispatcher Pattern", () => {
       await handler.handle("/retry", "");
 
       expect(ctx.handleRetryLastTurn).toHaveBeenCalledOnce();
+    });
+  });
+
+  // ── /skills and /skill ──
+
+  describe("/skills", () => {
+    it("uses the shared refresh result for output and autocomplete", async () => {
+      const refreshSkillCommands = vi.fn(async () => ({
+        directory: "/skills",
+        directories: ["/skills"],
+        warnings: [],
+        skills: [{
+          name: "engineering-review",
+          description: "Review a pull request",
+          path: "/skills/engineering-review/SKILL.md",
+          enabled: true,
+          is_bundled: false,
+        }],
+      }));
+      const ctx = createContext({ refreshSkillCommands });
+      const handler = new SlashCommandHandler(ctx);
+
+      await handler.handle("/skills", "");
+
+      expect(refreshSkillCommands).toHaveBeenCalledOnce();
+      expect(ctx.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "info",
+          message: expect.stringContaining("/engineering-review"),
+        }),
+      );
+    });
+  });
+
+  describe("/skill", () => {
+    it.each([
+      ["engineering-review on", true],
+      ["engineering-review off", false],
+    ])("toggles and refreshes the dynamic menu for %s", async (args, enabled) => {
+      const setSkillEnabled = vi.fn(async () => ({
+        name: "engineering-review",
+        enabled,
+      }));
+      const refreshSkillCommands = vi.fn(async () => ({
+        directory: "/skills",
+        directories: ["/skills"],
+        warnings: [],
+        skills: [],
+      }));
+      const ctx = createContext({
+        api: { ...createContext().api, setSkillEnabled } as any,
+        refreshSkillCommands,
+      });
+      const handler = new SlashCommandHandler(ctx);
+
+      await handler.handle("/skill", args);
+
+      expect(setSkillEnabled).toHaveBeenCalledWith(
+        "engineering-review",
+        enabled,
+      );
+      expect(refreshSkillCommands).toHaveBeenCalledOnce();
+    });
+
+    it("does not refresh after an invalid action", async () => {
+      const refreshSkillCommands = vi.fn();
+      const ctx = createContext({ refreshSkillCommands });
+      const handler = new SlashCommandHandler(ctx);
+
+      await handler.handle("/skill", "engineering-review maybe");
+
+      expect(refreshSkillCommands).not.toHaveBeenCalled();
+      expect(ctx.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "error" }),
+      );
+    });
+
+    it("does not refresh when the toggle fails", async () => {
+      const setSkillEnabled = vi.fn(async () => {
+        throw new Error("not found");
+      });
+      const refreshSkillCommands = vi.fn();
+      const ctx = createContext({
+        api: { ...createContext().api, setSkillEnabled } as any,
+        refreshSkillCommands,
+      });
+      const handler = new SlashCommandHandler(ctx);
+
+      await handler.handle("/skill", "missing on");
+
+      expect(refreshSkillCommands).not.toHaveBeenCalled();
+      expect(ctx.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "error" }),
+      );
     });
   });
 
@@ -1455,7 +1597,7 @@ describe("SlashCommandHandler - Dispatcher Pattern", () => {
 
       expect(vscodeState.executeCommandMock).toHaveBeenCalledWith(
         "workbench.action.openSettings",
-        "brotherwhale"
+        "cblage.codewhale"
       );
     });
   });
@@ -1502,7 +1644,7 @@ describe("SlashCommandHandler - Dispatcher Pattern", () => {
 
       expect(vscodeState.executeCommandMock).toHaveBeenCalledWith(
         "workbench.action.openSettings",
-        "brotherwhale"
+        "cblage.codewhale"
       );
     });
   });

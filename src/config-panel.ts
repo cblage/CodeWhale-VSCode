@@ -7,22 +7,26 @@
 import * as vscode from "vscode";
 import type { CodeWhaleApiClient, GuiConfigResponse } from "./types";
 import { getErrorMessage } from "./utils/error-handler";
+import { t } from "./i18n";
 
 export class ConfigPanel {
   public static currentPanel: ConfigPanel | undefined;
   private readonly panel: vscode.WebviewPanel;
   private readonly api: CodeWhaleApiClient;
   private readonly extensionUri: vscode.Uri;
+  private onRuntimeDisplaySettingsChanged?: () => void | Promise<void>;
   private disposables: vscode.Disposable[] = [];
 
   private constructor(
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
-    api: CodeWhaleApiClient
+    api: CodeWhaleApiClient,
+    onRuntimeDisplaySettingsChanged?: () => void | Promise<void>,
   ) {
     this.panel = panel;
     this.extensionUri = extensionUri;
     this.api = api;
+    this.onRuntimeDisplaySettingsChanged = onRuntimeDisplaySettingsChanged;
 
     this.panel.webview.html = this.getHtml();
 
@@ -36,36 +40,66 @@ export class ConfigPanel {
 
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
 
+    this.disposables.push(
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (
+          event.affectsConfiguration("cblage.codewhale.showAgentToolCards")
+          || event.affectsConfiguration("cblage.codewhale.autoWakeMasterForAgents")
+          || event.affectsConfiguration("cblage.codewhale.agentWakeIntervalSeconds")
+        ) {
+          this.postExtensionSettings();
+        }
+      })
+    );
+
     // Load initial config
     this.loadConfig();
   }
 
   public static createOrShow(
     extensionUri: vscode.Uri,
-    api: CodeWhaleApiClient
+    api: CodeWhaleApiClient,
+    onRuntimeDisplaySettingsChanged?: () => void | Promise<void>,
   ): ConfigPanel {
     const column = vscode.window.activeTextEditor
       ? vscode.window.activeTextEditor.viewColumn
       : undefined;
 
     if (ConfigPanel.currentPanel) {
+      ConfigPanel.currentPanel.onRuntimeDisplaySettingsChanged = onRuntimeDisplaySettingsChanged;
       ConfigPanel.currentPanel.panel.reveal(column);
       ConfigPanel.currentPanel.loadConfig();
       return ConfigPanel.currentPanel;
     }
 
     const panel = vscode.window.createWebviewPanel(
-      "codewhaleConfig",
+      "cblage.codewhale.config",
       "CodeWhale Config",
       column || vscode.ViewColumn.One,
       { enableScripts: true, localResourceRoots: [extensionUri] }
     );
 
-    ConfigPanel.currentPanel = new ConfigPanel(panel, extensionUri, api);
+    ConfigPanel.currentPanel = new ConfigPanel(
+      panel,
+      extensionUri,
+      api,
+      onRuntimeDisplaySettingsChanged,
+    );
     return ConfigPanel.currentPanel;
   }
 
+  private postExtensionSettings(): void {
+    const config = vscode.workspace.getConfiguration("cblage.codewhale");
+    this.panel.webview.postMessage({
+      type: "extensionSettings",
+      showAgentToolCards: config.get<boolean>("showAgentToolCards", false),
+      autoWakeMasterForAgents: config.get<boolean>("autoWakeMasterForAgents", true),
+      agentWakeIntervalSeconds: config.get<number>("agentWakeIntervalSeconds", 30),
+    });
+  }
+
   private async loadConfig(): Promise<void> {
+    this.postExtensionSettings();
     try {
       const config = await this.api.getConfig();
       this.panel.webview.postMessage({ type: "configData", config });
@@ -77,11 +111,52 @@ export class ConfigPanel {
     }
   }
 
+  private async notifyRuntimeDisplaySettingsChanged(): Promise<void> {
+    try {
+      await this.onRuntimeDisplaySettingsChanged?.();
+    } catch {
+      // The config operation itself succeeded. A transient chat-webview sync
+      // failure must not turn that successful save into a reported failure.
+    }
+  }
+
   private async handleMessage(msg: Record<string, unknown>): Promise<void> {
     switch (msg.type as string) {
       case "refresh":
         await this.loadConfig();
         break;
+      case "setExtensionSetting": {
+        const key = String(msg.key || "");
+        const booleanKeys = new Set(["showAgentToolCards", "autoWakeMasterForAgents"]);
+        const isInterval = key === "agentWakeIntervalSeconds";
+        if (!booleanKeys.has(key) && !isInterval) break;
+        const rawInterval = Number(msg.value);
+        const value = isInterval
+          ? Math.min(3600, Math.max(10, Number.isFinite(rawInterval) ? Math.round(rawInterval) : 30))
+          : msg.value === true;
+        try {
+          await vscode.workspace
+            .getConfiguration("cblage.codewhale")
+            .update(
+              key,
+              value,
+              vscode.ConfigurationTarget.Global
+            );
+          this.panel.webview.postMessage({
+            type: "extensionSettingResult",
+            success: true,
+          });
+          this.postExtensionSettings();
+        } catch (err) {
+          this.panel.webview.postMessage({
+            type: "extensionSettingResult",
+            success: false,
+            error: getErrorMessage(err),
+          });
+          this.postExtensionSettings();
+        }
+        break;
+      }
       case "setConfig": {
         const key = msg.key as string;
         const value = msg.value as string;
@@ -98,6 +173,9 @@ export class ConfigPanel {
           });
           // Refresh to show updated values
           await this.loadConfig();
+          if (key === "show_tool_details" || key === "calm_mode") {
+            await this.notifyRuntimeDisplaySettingsChanged();
+          }
         } catch (err) {
           this.panel.webview.postMessage({
             type: "setConfigResult",
@@ -137,12 +215,16 @@ export class ConfigPanel {
         });
         // Refresh to show updated values
         await this.loadConfig();
+        if (keys.includes("show_tool_details") || keys.includes("calm_mode")) {
+          await this.notifyRuntimeDisplaySettingsChanged();
+        }
         break;
       }
       case "reloadConfig":
         try {
           await this.api.reloadConfig();
           await this.loadConfig();
+          await this.notifyRuntimeDisplaySettingsChanged();
           this.panel.webview.postMessage({
             type: "reloadResult",
             success: true,
@@ -159,6 +241,7 @@ export class ConfigPanel {
   }
 
   private getHtml(): string {
+    const tr = t();
     return /*html*/ `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -249,7 +332,33 @@ export class ConfigPanel {
     .field-value {
       flex: 1;
     }
-    select, input[type="text"] {
+    .field-copy {
+      min-width: 0;
+      flex: 1;
+    }
+    .field-copy .field-label {
+      display: block;
+      min-width: 0;
+      color: var(--fg);
+    }
+    .field-description {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .checkbox-field {
+      cursor: pointer;
+    }
+    .checkbox-field input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      flex: 0 0 auto;
+      accent-color: var(--vscode-checkbox-selectBackground, var(--btn-bg));
+      cursor: pointer;
+    }
+    select, input[type="text"], input[type="number"] {
       width: 100%;
       padding: 4px 8px;
       background: var(--input-bg);
@@ -259,7 +368,7 @@ export class ConfigPanel {
       font-size: 13px;
       font-family: inherit;
     }
-    select:focus, input[type="text"]:focus {
+    select:focus, input[type="text"]:focus, input[type="number"]:focus {
       outline: 1px solid var(--focus);
     }
     .status {
@@ -286,6 +395,34 @@ export class ConfigPanel {
   <div id="status" class="status info hidden"></div>
 
   <div id="config-form">
+    <!-- Extension UI Section -->
+    <div class="section">
+      <div class="section-title">${tr.extensionUi}</div>
+      <label class="field checkbox-field" for="ext-show-agent-tool-cards">
+        <span class="field-copy">
+          <span class="field-label">${tr.showAgentToolCards}</span>
+          <span class="field-description">${tr.showAgentToolCardsDescription}</span>
+        </span>
+        <input type="checkbox" id="ext-show-agent-tool-cards">
+      </label>
+      <label class="field checkbox-field" for="ext-auto-wake-master-agents">
+        <span class="field-copy">
+          <span class="field-label">${tr.autoWakeMasterForAgents}</span>
+          <span class="field-description">${tr.autoWakeMasterForAgentsDescription}</span>
+        </span>
+        <input type="checkbox" id="ext-auto-wake-master-agents">
+      </label>
+      <label class="field" for="ext-agent-wake-interval">
+        <span class="field-copy">
+          <span class="field-label">${tr.agentWakeIntervalSeconds}</span>
+          <span class="field-description">${tr.agentWakeIntervalSecondsDescription}</span>
+        </span>
+        <span class="field-value">
+          <input type="number" id="ext-agent-wake-interval" min="10" max="3600" step="1" value="30">
+        </span>
+      </label>
+    </div>
+
     <!-- Runtime Section -->
     <div class="section">
       <div class="section-title">Runtime</div>
@@ -312,7 +449,7 @@ export class ConfigPanel {
         </div>
       </div>
       <div class="field">
-        <span class="field-label">Reasoning Effort</span>
+        <span class="field-label">Effort</span>
         <div class="field-value">
           <select id="cfg-reasoning_effort">
             <option value="auto">auto</option>
@@ -644,6 +781,36 @@ export class ConfigPanel {
       vscode.postMessage({ type: 'setConfigBatch', changes: changes });
     });
 
+    $('ext-show-agent-tool-cards').addEventListener('change', function() {
+      vscode.postMessage({
+        type: 'setExtensionSetting',
+        key: 'showAgentToolCards',
+        value: this.checked
+      });
+      showStatus('Saving display preference...', 'info');
+    });
+
+    $('ext-auto-wake-master-agents').addEventListener('change', function() {
+      vscode.postMessage({
+        type: 'setExtensionSetting',
+        key: 'autoWakeMasterForAgents',
+        value: this.checked
+      });
+      $('ext-agent-wake-interval').disabled = !this.checked;
+      showStatus('Saving agent watchdog preference...', 'info');
+    });
+
+    $('ext-agent-wake-interval').addEventListener('change', function() {
+      var seconds = Math.min(3600, Math.max(10, Math.round(Number(this.value) || 30)));
+      this.value = String(seconds);
+      vscode.postMessage({
+        type: 'setExtensionSetting',
+        key: 'agentWakeIntervalSeconds',
+        value: seconds
+      });
+      showStatus('Saving agent watchdog interval...', 'info');
+    });
+
     // ── Message handling ──
 
     window.addEventListener('message', function(event) {
@@ -651,6 +818,17 @@ export class ConfigPanel {
       if (msg.type === 'configData') {
         populateForm(msg.config);
         showStatus('Config loaded', 'info');
+      } else if (msg.type === 'extensionSettings') {
+        $('ext-show-agent-tool-cards').checked = !!msg.showAgentToolCards;
+        $('ext-auto-wake-master-agents').checked = !!msg.autoWakeMasterForAgents;
+        $('ext-agent-wake-interval').value = String(msg.agentWakeIntervalSeconds || 30);
+        $('ext-agent-wake-interval').disabled = !msg.autoWakeMasterForAgents;
+      } else if (msg.type === 'extensionSettingResult') {
+        if (msg.success) {
+          showStatus('Display preference saved', 'success');
+        } else {
+          showStatus('Failed to save display preference: ' + msg.error, 'error');
+        }
       } else if (msg.type === 'setConfigResult') {
         if (msg.success) {
           showStatus(msg.key + ' = ' + msg.value + ' applied', 'success');

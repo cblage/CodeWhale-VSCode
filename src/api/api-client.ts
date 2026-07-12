@@ -12,6 +12,7 @@ import type {
   RetryTurnResponse,
   SnapshotEntry,
   ThreadDetailResponse,
+  ThreadContextUsageResponse,
   ApprovalRequest,
   TaskSummary,
   TaskCounts,
@@ -41,6 +42,7 @@ import type {
   UpdateAutomationRequest,
   AgentRunRecord,
   AgentRunsResponse,
+  AgentRunNudgeResponse,
   GuiConfigResponse,
   SetConfigRequest,
   SetConfigResponse,
@@ -63,6 +65,7 @@ export type {
   RetryTurnResponse,
   SnapshotEntry,
   ThreadDetailResponse,
+  ThreadContextUsageResponse,
   ApprovalRequest,
   TaskSummary,
   TaskCounts,
@@ -92,6 +95,7 @@ export type {
   UpdateAutomationRequest,
   AgentRunRecord,
   AgentRunsResponse,
+  AgentRunNudgeResponse,
   EventListener,
   EngineRef,
 };
@@ -228,7 +232,7 @@ export class CodeWhaleApiClient {
   async startTurn(
     threadId: string,
     prompt: string,
-    opts?: { model?: string; mode?: string; reasoning_effort?: string; auto_approve?: boolean; trust_mode?: boolean }
+    opts?: { model?: string; mode?: string; reasoning_effort?: string; auto_approve?: boolean; trust_mode?: boolean; input_summary?: string }
   ): Promise<StartTurnResponse> {
     const body: Record<string, unknown> = { prompt };
     if (opts?.model) body.model = opts.model;
@@ -236,6 +240,7 @@ export class CodeWhaleApiClient {
     if (opts?.reasoning_effort) body.reasoning_effort = opts.reasoning_effort;
     if (opts?.auto_approve !== undefined) body.auto_approve = opts.auto_approve;
     if (opts?.trust_mode !== undefined) body.trust_mode = opts.trust_mode;
+    if (opts?.input_summary) body.input_summary = opts.input_summary;
     return (await this.post(
       `/v1/threads/${threadId}/turns`,
       body
@@ -244,6 +249,13 @@ export class CodeWhaleApiClient {
 
   async interruptTurn(threadId: string, turnId: string): Promise<void> {
     await this.post(`/v1/threads/${threadId}/turns/${turnId}/interrupt`, {});
+  }
+
+  async steerTurn(threadId: string, turnId: string, prompt: string): Promise<TurnRecord> {
+    return (await this.post(
+      `/v1/threads/${encodeURIComponent(threadId)}/turns/${encodeURIComponent(turnId)}/steer`,
+      { prompt },
+    )) as TurnRecord;
   }
 
   async compactThread(threadId: string, reason?: string): Promise<void> {
@@ -336,6 +348,12 @@ export class CodeWhaleApiClient {
     return (await this.get(
       `/v1/threads/${threadId}`
     )) as ThreadDetailResponse;
+  }
+
+  async getThreadContext(threadId: string): Promise<ThreadContextUsageResponse> {
+    return (await this.get(
+      `/v1/threads/${encodeURIComponent(threadId)}/context`
+    )) as ThreadContextUsageResponse;
   }
 
   // ── Health ──
@@ -469,6 +487,8 @@ export class CodeWhaleApiClient {
       threadRetry,
       snapshotList,
       snapshotRestore,
+      agentRunCancel,
+      agentRunNudge,
     ] = await Promise.all([
       this.probePath("/v1/sessions"),
       this.probePath("/v1/threads/__probe__/undo"),
@@ -476,6 +496,12 @@ export class CodeWhaleApiClient {
       this.probePath("/v1/threads/__probe__/retry"),
       this.probePath("/v1/snapshots"),
       this.probePath("/v1/snapshots/__probe__/restore"),
+      // GET can only yield 404/405 for this POST-only route, so capability
+      // discovery cannot accidentally cancel a real agent.
+      this.probePath("/v1/threads/__probe__/agent-runs/__probe__/cancel"),
+      // This GET can only prove the POST-only watchdog route exists; it
+      // cannot wake or otherwise mutate a real conversation.
+      this.probePath("/v1/threads/__probe__/agent-runs/nudge"),
     ]);
 
     return {
@@ -485,6 +511,8 @@ export class CodeWhaleApiClient {
       threadRetry,
       snapshotList,
       snapshotRestore,
+      agentRunCancel,
+      agentRunNudge,
     };
   }
 
@@ -548,6 +576,20 @@ export class CodeWhaleApiClient {
 
   async getAgentRun(runId: string): Promise<AgentRunRecord> {
     return (await this.get(`/v1/agent-runs/${runId}`)) as AgentRunRecord;
+  }
+
+  async cancelAgentRun(threadId: string, agentId: string): Promise<void> {
+    await this.post(
+      `/v1/threads/${encodeURIComponent(threadId)}/agent-runs/${encodeURIComponent(agentId)}/cancel`,
+      {},
+    );
+  }
+
+  async nudgeAgentRuns(threadId: string, agentIds: string[]): Promise<AgentRunNudgeResponse> {
+    return (await this.post(
+      `/v1/threads/${encodeURIComponent(threadId)}/agent-runs/nudge`,
+      { agent_ids: agentIds },
+    )) as AgentRunNudgeResponse;
   }
 
   // ── Config ──

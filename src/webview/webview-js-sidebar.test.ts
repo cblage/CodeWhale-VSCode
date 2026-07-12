@@ -35,6 +35,13 @@ describe("webview-js-sidebar.ts", () => {
     expect(script).toContain("function renderSessions");
   });
 
+  it("deduplicates the empty session state and uses the requested empty icons", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("work-empty session-empty-msg");
+    expect(script).toContain("\\uD83D\\uDDE8");
+    expect(script).toContain("\\u26F6");
+  });
+
   it("contains renderThreads function", () => {
     const script = getSidebarScript(makeTr());
     expect(script).toContain("function renderThreads");
@@ -78,7 +85,55 @@ describe("webview-js-sidebar.ts", () => {
   it("contains agent detail rendering", () => {
     const script = getSidebarScript(makeTr());
     expect(script).toContain("function showAgentDetail");
+    expect(script).toContain("codicon codicon-robot");
+    expect(script).not.toContain("\\\\u2659");
     expect(script).toContain("function closeAgentDetail");
+    expect(script).toContain("agent-transcript-group");
+    expect(script).toContain("agent-events-group");
+    expect(script).toContain("normalizedAgentEvent");
+    expect(script).toContain("ev.status || ev.kind");
+    expect(script).toContain("art.name || art.path || art.kind");
+  });
+
+  it("renders a toggleable agent popover with persistent expansion and Details reuse", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("function renderAgentPopover");
+    expect(script).toContain("function updateAgentRuns");
+    expect(script).toContain("expandedAgentRunIds");
+    expect(script).toContain("\\u25B6");
+    expect(script).toContain("\\u25BC");
+    expect(script).toContain("agent-popover-details");
+    expect(script).toContain("agent-popover-stop");
+    expect(script).toContain("codicon codicon-debug-stop");
+    expect(script).toContain("type: 'stopAgent'");
+    expect(script).toContain("type: 'stopAllAgents'");
+    expect(script).toContain("finishAgentStop: finishAgentStop");
+    expect(script).toContain("showAgentSessions");
+    expect(script).toContain("type: 'refreshAgentRuns'");
+  });
+
+  it("renders a checklist popover from Work state and makes it exclusive with Agents", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("function renderWorkPopover");
+    expect(script).toContain("function toggleWorkPopover");
+    expect(script).toContain("workState && Array.isArray(workState.checklist)");
+    expect(script).toContain("setWorkPopoverOpen(false)");
+    expect(script).toContain("setAgentPopoverOpen(false)");
+    expect(script).toContain("row.className = 'work-popover-item'");
+    expect(script).toContain("completed ? ' completed'");
+    expect(script).toContain("codicon-check");
+    expect(script).toContain("codicon-broadcast");
+    expect(script).toContain("codicon-circle");
+    expect(script).toContain("renderWorkPopover: renderWorkPopover");
+  });
+
+  it("uses one active-status definition for the sidebar and popover", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("function isAgentActiveStatus");
+    expect(script).toContain("['queued', 'starting', 'running', 'in_progress', 'waiting_for_user', 'model_wait', 'running_tool', 'working', 'pending']");
+    expect(script).toContain("run.runtime_available !== false && run.completed_at_ms == null");
+    expect(script).toContain("card.className = 'agent-card' + (isAgentActive(r)");
+    expect(script).toContain("agentStatusNeedsAction");
   });
 
   it("contains threads panel toggle", () => {
@@ -90,6 +145,9 @@ describe("webview-js-sidebar.ts", () => {
     const script = getSidebarScript(makeTr());
     expect(script).toContain("workspace-filter-toggle");
     expect(script).toContain("toggleAllWorkspaces");
+    expect(script).toContain("codicon-save-all");
+    expect(script).toContain("codicon-save");
+    expect(script).toContain("codicon-trash");
   });
 
   it("contains section collapse/expand via sidebar-section-header", () => {
@@ -133,7 +191,7 @@ describe("webview-js-sidebar.ts", () => {
     expect(script).not.toContain("workState.fileChanges");
   });
 
-  it("contains renderChanges function for the Changes panel", () => {
+  it("contains renderChanges function for the Changes popover", () => {
     const script = getSidebarScript(makeTr());
     expect(script).toContain("function renderChanges");
   });
@@ -149,10 +207,31 @@ describe("webview-js-sidebar.ts", () => {
     expect(script).toContain("getChangesState:");
   });
 
-  it("renders file changes in the Changes panel, not the Work panel", () => {
+  it("renders file changes in the Changes popover, not the Work panel", () => {
     const script = getSidebarScript(makeTr());
     expect(script).toContain("changesState");
-    expect(script).toContain("tab-changes");
+    expect(script).toContain("changes-popover-list");
+    expect(script).toContain("changes-count-badge");
+    expect(script).toContain("function toggleChangesPopover");
     expect(script).not.toContain("workState.fileChanges");
+  });
+
+  it("switches the history toggle icon with the sidebar state", () => {
+    const script = getSidebarScript(makeTr());
+    expect(script).toContain("function renderThreadsPanelToggle");
+    expect(script).toContain("codicon-layout-sidebar-left-off");
+    expect(script).toContain("codicon-layout-sidebar-left");
+  });
+
+  it("does not repeat the Changes heading inside the Changes popover list", () => {
+    const script = getSidebarScript(makeTr());
+    const start = script.indexOf("function renderChanges()");
+    const end = script.indexOf("function closeTaskDetail", start);
+    const renderChanges = script.slice(start, end);
+
+    expect(renderChanges).toContain("change-summary-row");
+    expect(renderChanges).not.toContain("__wvEscapeHtml(__i18n.fileChanges)");
+    expect(renderChanges).not.toContain("work-section-subtitle");
+    expect(renderChanges).not.toContain("\\uD83D\\uDCC1");
   });
 });

@@ -105,6 +105,15 @@ export function isCommandAvailableInGui(
   return cmd?.availability ?? "unavailable";
 }
 
+export function isRegisteredSlashCommand(name: string): boolean {
+  const normalized = name.toLowerCase();
+  return COMMANDS.some((command) => command.name.toLowerCase() === normalized);
+}
+
+export function getRegisteredSlashCommandNames(): string[] {
+  return COMMANDS.map((command) => command.name);
+}
+
 export function getCommandHelpText(name: string): string {
   const cmd = COMMANDS.find((c) => c.name === name);
   if (!cmd) return `Unknown command: ${name}. Type /help for available commands.`;

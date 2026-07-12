@@ -696,8 +696,8 @@ describe("Diff URI uniqueness for multiple cards", () => {
   it("constructs unique oldUri and newUri with diffId", () => {
     const diffId = "abc123";
     const absPath = "/project/src/foo.ts";
-    const oldUri = `brotherwhale-diff:${absPath}?old&id=${diffId}`;
-    const newUri = `brotherwhale-diff:${absPath}?new&id=${diffId}`;
+    const oldUri = `cblage-codewhale-diff:${absPath}?old&id=${diffId}`;
+    const newUri = `cblage-codewhale-diff:${absPath}?new&id=${diffId}`;
     expect(oldUri).not.toBe(newUri);
     expect(oldUri).toContain("id=abc123");
     expect(newUri).toContain("id=abc123");
@@ -705,8 +705,8 @@ describe("Diff URI uniqueness for multiple cards", () => {
 
   it("same file with different diffIds produces different URIs", () => {
     const absPath = "/project/src/foo.ts";
-    const uri1 = `brotherwhale-diff:${absPath}?old&id=id1`;
-    const uri2 = `brotherwhale-diff:${absPath}?old&id=id2`;
+    const uri1 = `cblage-codewhale-diff:${absPath}?old&id=id1`;
+    const uri2 = `cblage-codewhale-diff:${absPath}?old&id=id2`;
     expect(uri1).not.toBe(uri2);
   });
 });
@@ -714,15 +714,15 @@ describe("Diff URI uniqueness for multiple cards", () => {
 describe("DiffContentStore lifecycle", () => {
   it("stores and retrieves content by URI string", () => {
     const store = new Map<string, string>();
-    const uri = "brotherwhale-diff:/foo.ts?old&id=abc";
+    const uri = "cblage-codewhale-diff:/foo.ts?old&id=abc";
     store.set(uri, "old content");
     expect(store.get(uri)).toBe("old content");
   });
 
   it("stores old and new content separately", () => {
     const store = new Map<string, string>();
-    const oldUri = "brotherwhale-diff:/foo.ts?old&id=abc";
-    const newUri = "brotherwhale-diff:/foo.ts?new&id=abc";
+    const oldUri = "cblage-codewhale-diff:/foo.ts?old&id=abc";
+    const newUri = "cblage-codewhale-diff:/foo.ts?new&id=abc";
     store.set(oldUri, "old content");
     store.set(newUri, "new content");
     expect(store.get(oldUri)).toBe("old content");
@@ -731,10 +731,10 @@ describe("DiffContentStore lifecycle", () => {
 
   it("supports multiple diffs for the same file", () => {
     const store = new Map<string, string>();
-    const oldUri1 = "brotherwhale-diff:/foo.ts?old&id=id1";
-    const newUri1 = "brotherwhale-diff:/foo.ts?new&id=id1";
-    const oldUri2 = "brotherwhale-diff:/foo.ts?old&id=id2";
-    const newUri2 = "brotherwhale-diff:/foo.ts?new&id=id2";
+    const oldUri1 = "cblage-codewhale-diff:/foo.ts?old&id=id1";
+    const newUri1 = "cblage-codewhale-diff:/foo.ts?new&id=id1";
+    const oldUri2 = "cblage-codewhale-diff:/foo.ts?old&id=id2";
+    const newUri2 = "cblage-codewhale-diff:/foo.ts?new&id=id2";
     store.set(oldUri1, "old v1");
     store.set(newUri1, "new v1");
     store.set(oldUri2, "old v2");

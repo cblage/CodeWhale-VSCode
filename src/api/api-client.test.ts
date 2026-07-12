@@ -461,7 +461,10 @@ vi.mock("http", () => {
 
 import * as http from "http";
 
+let lastRequestBody = "";
+
 function mockHttpRequest(statusCode: number, responseData: string) {
+  lastRequestBody = "";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (http.request as any).mockImplementation(
     (_url: unknown, _opts: unknown, callback: (res: { statusCode: number; on: (evt: string, fn: (chunk?: Buffer) => void) => void }) => void) => {
@@ -479,7 +482,9 @@ function mockHttpRequest(statusCode: number, responseData: string) {
       const req = {
         on: () => req,
         setTimeout: () => req,
-        write: () => {},
+        write: (chunk: string | Buffer) => {
+          lastRequestBody += chunk.toString();
+        },
         end: () => {},
       };
       return req;
@@ -639,6 +644,30 @@ describe("CodeWhaleApiClient - HTTP methods with mocked server", () => {
     expect(result.id).toBe("thread-2");
   });
 
+  it("getThreadContext() reads the encoded per-thread context endpoint", async () => {
+    const response = {
+      thread_id: "thread/with spaces",
+      provider: "deepseek",
+      model: "deepseek-v4-pro",
+      estimated_input_tokens: 742_000,
+      context_window_tokens: 1_000_000,
+      remaining_context_tokens: 258_000,
+      used_percent: 74.2,
+      auto_compact_enabled: true,
+      auto_compact_threshold_tokens: 900_000,
+      auto_compact_threshold_percent: 90,
+      source: "estimated_current_messages",
+    };
+    mockHttpRequest(200, JSON.stringify(response));
+
+    const result = await client.getThreadContext("thread/with spaces");
+
+    expect(result).toEqual(response);
+    const [url, options] = (http.request as any).mock.calls[0];
+    expect(url.pathname).toBe("/v1/threads/thread%2Fwith%20spaces/context");
+    expect(options.method).toBe("GET");
+  });
+
   it("createThread() sends POST to /v1/threads", async () => {
     const threadData: ThreadRecord = {
       schema_version: 1,
@@ -661,14 +690,41 @@ describe("CodeWhaleApiClient - HTTP methods with mocked server", () => {
     expect(http.request).toHaveBeenCalled();
   });
 
-  it("startTurn() sends prompt and returns StartTurnResponse", async () => {
+  it("startTurn() sends prompt, visible input summary, and returns StartTurnResponse", async () => {
     const response = {
       thread: { id: "thread-1", schema_version: 1, created_at: "", updated_at: "", model: "", workspace: "", mode: "", allow_shell: false, trust_mode: false, auto_approve: false, latest_turn_id: null, archived: false, coherence_state: "" },
       turn: { id: "turn-1", schema_version: 1, thread_id: "thread-1", status: "in_progress", input_summary: "Hello", created_at: "", item_ids: [], steer_count: 0 },
     };
     mockHttpRequest(200, JSON.stringify(response));
-    const result = await client.startTurn("thread-1", "Hello");
+    const result = await client.startTurn("thread-1", "Hidden prompt", {
+      input_summary: "/engineering-review review #177",
+    });
     expect(result.turn.id).toBe("turn-1");
+    expect(JSON.parse(lastRequestBody)).toEqual({
+      prompt: "Hidden prompt",
+      input_summary: "/engineering-review review #177",
+    });
+  });
+
+  it("steerTurn() posts guidance to the specified active master turn", async () => {
+    const turn = {
+      id: "turn-master",
+      schema_version: 1,
+      thread_id: "thread-master",
+      status: "in_progress",
+      input_summary: "Initial request",
+      created_at: "",
+      item_ids: [],
+      steer_count: 1,
+    };
+    mockHttpRequest(200, JSON.stringify(turn));
+
+    const result = await client.steerTurn("thread-master", "turn-master", "Focus on tests");
+
+    expect(result.id).toBe("turn-master");
+    const request = (http.request as any).mock.calls.at(-1);
+    expect(request[0].pathname).toBe("/v1/threads/thread-master/turns/turn-master/steer");
+    expect(JSON.parse(lastRequestBody)).toEqual({ prompt: "Focus on tests" });
   });
 
   it("listThreads() returns array of threads", async () => {
@@ -753,6 +809,54 @@ describe("CodeWhaleApiClient - HTTP methods with mocked server", () => {
     const result = await client.getRuntimeInfo();
     expect(result.port).toBe(54321);
     expect(result.version).toBe("1.0.0");
+  });
+
+  it("probes agent cancellation with a side-effect-free GET", async () => {
+    // A POST-only registered route answers GET with 405, which still proves
+    // the route exists without dispatching a cancellation.
+    mockHttpRequest(405, "Method Not Allowed");
+    const result = await client.probeRuntimeCapabilities();
+
+    const cancelProbe = (http.request as any).mock.calls.find(
+      ([url]: [URL]) => url.pathname === "/v1/threads/__probe__/agent-runs/__probe__/cancel",
+    );
+    expect(cancelProbe).toBeDefined();
+    expect(cancelProbe[1]).toMatchObject({ method: "GET" });
+    expect(result.agentRunCancel).toBe(true);
+    const nudgeProbe = (http.request as any).mock.calls.find(
+      ([url]: [URL]) => url.pathname === "/v1/threads/__probe__/agent-runs/nudge",
+    );
+    expect(nudgeProbe).toBeDefined();
+    expect(nudgeProbe[1]).toMatchObject({ method: "GET" });
+    expect(result.agentRunNudge).toBe(true);
+  });
+
+  it("cancelAgentRun() posts to the thread-scoped endpoint using the worker id", async () => {
+    mockHttpRequest(202, JSON.stringify({ status: "cancellation_requested" }));
+    await client.cancelAgentRun("thread/one", "agent two");
+
+    const [url, options] = (http.request as any).mock.calls[0];
+    expect(url.pathname).toBe("/v1/threads/thread%2Fone/agent-runs/agent%20two/cancel");
+    expect(options).toMatchObject({ method: "POST" });
+    expect(lastRequestBody).toBe("{}");
+  });
+
+  it("nudgeAgentRuns() posts scoped worker ids to the runtime watchdog endpoint", async () => {
+    mockHttpRequest(202, JSON.stringify({
+      accepted: true,
+      coalesced: false,
+      thread_id: "thread/one",
+      turn_id: "turn-1",
+      agent_ids: ["agent-a", "agent-b"],
+    }));
+
+    const result = await client.nudgeAgentRuns("thread/one", ["agent-a", "agent-b"]);
+
+    const [url, options] = (http.request as any).mock.calls[0];
+    expect(url.pathname).toBe("/v1/threads/thread%2Fone/agent-runs/nudge");
+    expect(options).toMatchObject({ method: "POST" });
+    expect(JSON.parse(lastRequestBody)).toEqual({ agent_ids: ["agent-a", "agent-b"] });
+    expect(result).toMatchObject({ accepted: true, coalesced: false, turn_id: "turn-1" });
   });
 
   it("getWorkspaceStatus() returns workspace info", async () => {

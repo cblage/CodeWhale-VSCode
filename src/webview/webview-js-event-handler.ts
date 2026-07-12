@@ -18,6 +18,8 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
   var currentModeEl = document.getElementById('current-mode');
   var currentModelEl = document.getElementById('current-model');
   var currentReasoningEl = document.getElementById('current-reasoning');
+  var contextUsageGaugeEl = document.getElementById('context-usage-gauge');
+  var contextUsageValueEl = contextUsageGaugeEl ? contextUsageGaugeEl.querySelector('.context-usage-value') : null;
   var _diffStore = window.__wvDiffStore;
   var _diffIdCounter = window.__wvDiffIdCounter;
 
@@ -77,6 +79,36 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
     if (indicator) indicator.remove();
   }
 
+  function appendDismissibleSystemMessage(message) {
+    var infoEl = document.createElement('div');
+    infoEl.className = 'system-message';
+
+    var labelEl = document.createElement('span');
+    labelEl.className = 'msg-label note';
+    labelEl.textContent = __i18n.note;
+
+    var bodyEl = document.createElement('span');
+    bodyEl.className = 'msg-body';
+    bodyEl.textContent = message;
+
+    var dismissEl = document.createElement('button');
+    var dismissLabel = __i18n.dismissNotification || 'Dismiss notification';
+    dismissEl.type = 'button';
+    dismissEl.className = 'system-message-dismiss';
+    dismissEl.setAttribute('aria-label', dismissLabel);
+    dismissEl.title = dismissLabel;
+    dismissEl.textContent = '✕';
+    dismissEl.addEventListener('click', function() {
+      infoEl.remove();
+    });
+
+    infoEl.appendChild(labelEl);
+    infoEl.appendChild(bodyEl);
+    infoEl.appendChild(dismissEl);
+    messagesEl.appendChild(infoEl);
+    return infoEl;
+  }
+
   function renderStatusStats() {
     if (!statusStatsEl) return;
     var statsHtml = '';
@@ -100,8 +132,55 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
     statusStatsEl.innerHTML = statsHtml;
   }
 
+  function renderContextUsage(available, usage) {
+    if (!contextUsageGaugeEl || !contextUsageValueEl) return;
+    if (!available || !usage) {
+      var unavailableLabel = __i18n.contextUsageUnavailable || 'Context usage unavailable';
+      contextUsageGaugeEl.classList.remove('warning', 'critical');
+      contextUsageGaugeEl.classList.add('unavailable');
+      contextUsageValueEl.setAttribute('stroke-dashoffset', '100');
+      contextUsageGaugeEl.setAttribute('data-tooltip', unavailableLabel);
+      contextUsageGaugeEl.setAttribute('aria-label', unavailableLabel);
+      return;
+    }
+
+    var used = Math.max(0, Number(usage.estimated_input_tokens || 0));
+    var max = Math.max(0, Number(usage.context_window_tokens || 0));
+    var percent = Number(usage.used_percent);
+    if (!Number.isFinite(percent)) percent = max > 0 ? (used / max) * 100 : 0;
+    percent = Math.max(0, Math.min(100, percent));
+    var threshold = Number(usage.auto_compact_threshold_percent);
+    if (!Number.isFinite(threshold) || threshold <= 0) threshold = 90;
+    threshold = Math.max(10, Math.min(100, threshold));
+    var warningAt = Math.max(0, threshold - 10);
+
+    contextUsageGaugeEl.classList.remove('unavailable', 'warning', 'critical');
+    if (percent >= threshold) contextUsageGaugeEl.classList.add('critical');
+    else if (percent >= warningAt) contextUsageGaugeEl.classList.add('warning');
+    contextUsageValueEl.setAttribute('stroke-dashoffset', String(100 - percent));
+
+    var contextLabel = __i18n.contextUsage || 'Context';
+    var tooltip = contextLabel + ': '
+      + used.toLocaleString(__i18n.locale || undefined) + ' / '
+      + max.toLocaleString(__i18n.locale || undefined) + ' tokens ('
+      + percent.toFixed(1) + '%)';
+    contextUsageGaugeEl.setAttribute('data-tooltip', tooltip);
+    contextUsageGaugeEl.setAttribute('aria-label', tooltip);
+  }
+
   // ── Tell extension we're ready ──
   vscode.postMessage({ type: 'webviewReady' });
+
+  // retainContextWhenHidden keeps this document alive while another provider
+  // owns the Secondary Side Bar. Recheck the backend whenever it becomes
+  // visible so a missed terminal event cannot leave Send/Stop stale.
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') {
+      vscode.postMessage({ type: 'refreshTurnState' });
+      vscode.postMessage({ type: 'refreshAgentRuns' });
+      vscode.postMessage({ type: 'refreshContextUsage' });
+    }
+  });
 
   // ── Settings dropdown handlers ──
   (function(){
@@ -180,13 +259,31 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
       case 'ready':
         window.__wvSidebar.closeTaskDetail();
         window.__wvSidebar.closeAgentDetail();
-        setStreamingState(false, '${tr.ready} (' + (msg.model || 'deepseek-v4-pro') + ')');
+        var turnInProgress = !!msg.turnInProgress;
+        window.__wvMessages.setStreaming(turnInProgress);
+        setStreamingState(
+          turnInProgress,
+          turnInProgress
+            ? __i18n.processing
+            : '${tr.ready} (' + (msg.model || 'deepseek-v4-pro') + ')'
+        );
         if (msg.mode) currentModeEl.textContent = msg.mode;
         if (msg.model) currentModelEl.textContent = msg.model;
         if (msg.reasoningEffort) currentReasoningEl.textContent = msg.reasoningEffort;
         runtimeVersion = msg.runtimeVersion || runtimeVersion || '';
         renderStatusStats();
         window.__wvSidebar.applyShowThreadList(!!msg.showThreadList);
+        window.__wvMessages.applyShowAgentToolCards(!!msg.showAgentToolCards);
+        window.__wvMessages.applyToolDetailSettings(!!msg.showToolDetails, !!msg.calmMode);
+        break;
+
+      case 'displaySettingsUpdated':
+        if (Object.prototype.hasOwnProperty.call(msg, 'showAgentToolCards')) {
+          window.__wvMessages.applyShowAgentToolCards(!!msg.showAgentToolCards);
+        }
+        if (Object.prototype.hasOwnProperty.call(msg, 'showToolDetails') || Object.prototype.hasOwnProperty.call(msg, 'calmMode')) {
+          window.__wvMessages.applyToolDetailSettings(!!msg.showToolDetails, !!msg.calmMode);
+        }
         break;
 
       case 'settingsUpdated':
@@ -213,6 +310,7 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
         break;
 
       case 'threadLoaded':
+        renderContextUsage(false, null);
         window.__wvSidebar.setActiveThreadId(msg.threadId || msg.thread?.id || null);
         window.__wvSidebar.renderThreads();
         // Close any open detail overlay from the previous thread
@@ -225,8 +323,7 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
         window.__wvSidebar.renderChanges();
         // Clear stale task/agent data from previous thread
         window.__wvSidebar.renderTasks([]);
-        window.__wvSidebar.setAgentRuns([]);
-        window.__wvSidebar.renderAgents([]);
+        window.__wvSidebar.updateAgentRuns([]);
         break;
 
       case 'taskList':
@@ -234,8 +331,22 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
         break;
 
       case 'agentRunList':
-        window.__wvSidebar.setAgentRuns(msg.runs || []);
-        window.__wvSidebar.renderAgents(msg.runs || []);
+        window.__wvSidebar.updateAgentRuns(msg.runs || []);
+        break;
+
+      case 'contextUsage':
+        renderContextUsage(!!msg.available, msg.usage || null);
+        break;
+
+      case 'agentStopResult':
+        // Every request represented by runIds has reached a terminal HTTP
+        // result, whether cancellation succeeded or failed. Release all of
+        // those optimistic "Stopping…" rows immediately; the refreshed run
+        // list decides whether each row becomes inactive or offers Stop again.
+        var attemptedAgentRunIds = msg.runIds || [];
+        if (msg.all) window.__wvSidebar.finishAgentStop(null);
+        else if (attemptedAgentRunIds.length > 0) window.__wvSidebar.finishAgentStop(attemptedAgentRunIds);
+        else window.__wvSidebar.finishAgentStop(null);
         break;
 
       case 'workState':
@@ -260,7 +371,12 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
         apiCapabilities = Object.assign({}, apiCapabilities, msg.capabilities || {});
         window.__wvApiCapabilities = apiCapabilities;
         window.__wvInput.applyApiCapabilities();
+        window.__wvSidebar.applyAgentStopCapabilities();
         window.__wvSidebar.renderWork();
+        break;
+
+      case 'skillCommands':
+        window.__wvInput.setSkillCommands(msg.skills || []);
         break;
 
       case 'taskDetail':
@@ -296,8 +412,8 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
           if (st) clearTimeout(st);
           window.__wvMessages.setStreamingTimeout(setTimeout(function() {
             if (window.__wvMessages.isStreaming()) {
-              window.__wvMessages.setStreaming(false);
-              setStreamingState(false, __i18n.readyTimedOut);
+              window.__wvMessages.setStreamingTimeout(null);
+              vscode.postMessage({ type: 'refreshTurnState' });
             }
           }, 300000));
           showThinkingActivity(msg.message.id, __i18n.thinking);
@@ -403,6 +519,35 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
         break;
       }
 
+      case 'addSteerBlock': {
+        var bodyEl = document.getElementById('body-' + msg.messageId);
+        if (bodyEl) {
+          var block = window.__wvMessages.renderSteerBlock(msg.content || '', msg.blockIdx);
+          var insertBefore = bodyEl.querySelector('[data-block-idx="' + (msg.blockIdx + 1) + '"]');
+          if (insertBefore) bodyEl.insertBefore(block, insertBefore);
+          else bodyEl.appendChild(block);
+          window.__wvMessages.smartScrollToBottom();
+        }
+        break;
+      }
+
+      case 'addSubagentTranscriptBlock': {
+        var bodyEl = document.getElementById('body-' + msg.messageId);
+        if (bodyEl) {
+          var block = window.__wvMessages.renderSubagentTranscriptBlock(msg.entry, msg.blockIdx);
+          var insertBefore = bodyEl.querySelector('[data-block-idx="' + (msg.blockIdx + 1) + '"]');
+          if (insertBefore) bodyEl.insertBefore(block, insertBefore);
+          else bodyEl.appendChild(block);
+          window.__wvMessages.smartScrollToBottom();
+        }
+        break;
+      }
+
+      case 'updateSubagentTranscriptBlock':
+        window.__wvMessages.updateSubagentTranscriptBlock(msg.entry);
+        window.__wvMessages.smartScrollToBottom();
+        break;
+
       case 'addToolCall': {
         var bodyEl = document.getElementById('body-' + msg.messageId);
         if (bodyEl) {
@@ -436,15 +581,30 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
       case 'updateToolCall': {
         var tcEl = document.getElementById('tc-' + msg.messageId + '-' + msg.toolCallIdx);
         if (tcEl) {
-          var statusSpan = tcEl.querySelector('.tool-status');
+          var isDelegateCard = tcEl.classList.contains('delegate-card');
+          var statusSpan = tcEl.querySelector('.tool-status') || tcEl.querySelector('.delegate-status');
           if (statusSpan) {
             var statusIcon = '';
             var statusText = msg.status;
             if (msg.status === 'running') { statusIcon = '\\u27F3'; statusText = 'running...'; }
-            else if (msg.status === 'complete') { statusIcon = '\\u2713'; statusText = 'completed'; }
-            else if (msg.status === 'error') { statusIcon = '\\u2717'; statusText = 'error'; }
+            else if (msg.status === 'complete') { statusIcon = '\\u2713'; statusText = isDelegateCard ? __i18n.agentStatusCompleted : 'completed'; }
+            else if (msg.status === 'error') { statusIcon = '\\u2717'; statusText = isDelegateCard ? __i18n.agentStatusFailed : 'error'; }
             else if (msg.status === 'awaiting_approval') { statusIcon = '\\u26A0'; statusText = __i18n.approvalAwaiting; }
             statusSpan.textContent = statusIcon + ' ' + statusText;
+          }
+          if (isDelegateCard) {
+            tcEl.classList.remove('delegate-running');
+            tcEl.classList.remove('delegate-completed');
+            tcEl.classList.remove('delegate-failed');
+            if (msg.status === 'running') tcEl.classList.add('delegate-running');
+            else if (msg.status === 'complete') tcEl.classList.add('delegate-completed');
+            else if (msg.status === 'error') tcEl.classList.add('delegate-failed');
+          } else {
+            var toolStatusClasses = ['running', 'complete', 'error', 'awaiting_approval', 'pending', 'unknown'];
+            for (var sci = 0; sci < toolStatusClasses.length; sci++) {
+              tcEl.classList.remove('tool-call-' + toolStatusClasses[sci]);
+            }
+            tcEl.classList.add('tool-call-' + (msg.status || 'unknown'));
           }
           if (msg.output) {
             var outputEl = tcEl.querySelector('.tool-output');
@@ -593,7 +753,7 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
           if (msgEl) {
             var usageEl = document.createElement('div');
             usageEl.className = 'usage-info';
-            usageEl.textContent = '\\u2191' + (msg.usage.input_tokens || 0) + ' \\u2193' + (msg.usage.output_tokens || 0);
+            usageEl.textContent = '\\u2191' + Number(msg.usage.input_tokens || 0).toLocaleString('en-US') + ' \\u2193' + Number(msg.usage.output_tokens || 0).toLocaleString('en-US');
             msgEl.appendChild(usageEl);
           }
         }
@@ -625,7 +785,17 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
       }
 
       case 'turnStarted':
+        window.__wvMessages.setStreaming(true);
         setStreamingState(true, __i18n.processing);
+        break;
+
+      case 'turnState':
+        var turnStateRunning = !!msg.turnInProgress;
+        window.__wvMessages.setStreaming(turnStateRunning);
+        setStreamingState(
+          turnStateRunning,
+          turnStateRunning ? __i18n.processing : __i18n.ready
+        );
         break;
 
       case 'turnInterrupted':
@@ -650,7 +820,7 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
       }
 
       case 'status':
-        setStreamingState(false, msg.text);
+        setStreamingState(window.__wvMessages.isStreaming(), msg.text);
         break;
 
       case 'setInputText':
@@ -658,6 +828,7 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
           inputEl.value = msg.text;
           inputEl.focus();
           inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+          window.__wvInput.centerInputTextVertically();
         }
         break;
 
@@ -667,6 +838,7 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
         break;
 
       case 'clearChat':
+        renderContextUsage(false, null);
         window.__wvSidebar.closeTaskDetail();
         window.__wvSidebar.closeAgentDetail();
         // Clear shared diff store when starting a new chat.
@@ -688,8 +860,7 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
         window.__wvSidebar.renderChanges();
         // Clear task/agent panels too
         window.__wvSidebar.renderTasks([]);
-        window.__wvSidebar.setAgentRuns([]);
-        window.__wvSidebar.renderAgents([]);
+        window.__wvSidebar.updateAgentRuns([]);
         break;
 
       case 'openConfigPanel':
@@ -710,10 +881,7 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
         break;
 
       case 'info': {
-        var infoEl = document.createElement('div');
-        infoEl.className = 'system-message';
-        infoEl.innerHTML = '<span class="msg-label note">' + __wvEscapeHtml(__i18n.note) + '</span><span class="msg-body">' + __wvEscapeHtml(msg.message) + '</span>';
-        messagesEl.appendChild(infoEl);
+        appendDismissibleSystemMessage(msg.message);
         window.__wvMessages.smartScrollToBottom();
         break;
       }
@@ -725,11 +893,9 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
           inputEl.value = lastMsg.textContent || '';
           inputEl.focus();
           inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+          window.__wvInput.centerInputTextVertically();
         } else {
-          var infoEl = document.createElement('div');
-          infoEl.className = 'system-message';
-          infoEl.innerHTML = '<span class="msg-label note">' + __wvEscapeHtml(__i18n.note) + '</span><span class="msg-body">' + __wvEscapeHtml(__i18n.noPreviousMessage) + '</span>';
-          messagesEl.appendChild(infoEl);
+          appendDismissibleSystemMessage(__i18n.noPreviousMessage);
           window.__wvMessages.smartScrollToBottom();
         }
         break;

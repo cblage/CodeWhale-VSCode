@@ -36,7 +36,7 @@ function createProvider() {
 
   provider.postMessage = vi.fn();
   provider.refreshWorkPanel = vi.fn();
-  provider.refreshSessionList = vi.fn(async () => undefined);
+  provider.refreshSessionList = vi.fn(async () => []);
   (provider as any).loadThread = vi.fn(async () => undefined);
   (provider as any).apiCapabilities.threadPatchUndo = true;
   (provider as any).apiCapabilities.threadRetry = true;

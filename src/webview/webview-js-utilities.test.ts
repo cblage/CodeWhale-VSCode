@@ -39,10 +39,36 @@ describe("webview-js-utilities.ts", () => {
   });
 
   it("injects i18n translations", () => {
-    const tr = makeTr({ error: "CustomError", note: "CustomNote" });
+    const tr = makeTr({
+      error: "CustomError",
+      note: "CustomNote",
+      dismissNotification: "CloseThisNote",
+      changes: "Changed files",
+      contextUsage: "Context meter",
+      contextUsageUnavailable: "Context meter unavailable",
+    });
     const script = getUtilitiesScript(tr);
     expect(script).toContain("CustomError");
     expect(script).toContain("CustomNote");
+    expect(script).toContain("dismissNotification: 'CloseThisNote'");
+    expect(script).toContain("changes: 'Changed files'");
+    expect(script).toContain("locale: __locale");
+    expect(script).toContain("contextUsage: 'Context meter'");
+    expect(script).toContain("contextUsageUnavailable: 'Context meter unavailable'");
+  });
+
+  it("injects the complete agent UI translation surface", () => {
+    const script = getUtilitiesScript(makeTr());
+    for (const key of [
+      "agents", "noAgentRuns", "agentStatusRunning", "agentStatusCompleted",
+      "agentObjective", "agentModel", "agentProfile", "agentSteps", "agentUsage",
+      "agentActive", "agentInactive", "agentType", "agentLatestOutput",
+      "agentDetails", "agentTranscript", "agentEvents", "agentAssignment",
+      "agentRunMetadata", "agentReferences", "agentNoTranscript", "agentNoEvents",
+      "subagent",
+    ]) {
+      expect(script).toContain(`${key}:`);
+    }
   });
 
   it("escapeHtml function handles special characters", () => {

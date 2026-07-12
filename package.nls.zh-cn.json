@@ -1,12 +1,12 @@
 {
-  "displayName": "CodeWhale",
-  "description": "基于 CodeWhale 引擎的 AI 编程智能体",
-  "viewsContainers.activitybar.title": "CodeWhale",
-  "views.chat.name": "对话",
-  "commands.openChat.title": "CodeWhale: 打开对话",
-  "commands.newThread.title": "CodeWhale: 新建会话",
-  "commands.compactContext.title": "CodeWhale: 压缩上下文",
-  "commands.restartEngine.title": "CodeWhale: 重启引擎",
+  "displayName": "CodeWhale (cblage)",
+  "description": "基于 CodeWhale 引擎的 cblage CodeWhale 客户端",
+  "viewsContainers.secondarySidebar.title": "🦍 HarambeChat",
+  "views.chat.name": "🦍 HarambeChat",
+  "commands.openChat.title": "CodeWhale (cblage): 打开对话",
+  "commands.newThread.title": "CodeWhale (cblage): 新建会话",
+  "commands.compactContext.title": "CodeWhale (cblage): 压缩上下文",
+  "commands.restartEngine.title": "CodeWhale (cblage): 重启引擎",
   "config.enginePath.description": "codewhale 可执行文件路径",
   "config.enginePort.description": "CodeWhale 运行时 API 服务器端口",
   "config.defaultModel.description": "新会话的默认模型",
@@ -14,5 +14,8 @@
   "config.reasoningEffort.description": "思考深度级别（auto、off、low、medium、high、max）",
   "config.autoStartEngine.description": "扩展激活时自动启动 CodeWhale 引擎",
   "config.autoApprove.description": "自动批准 agent 模式下的工具调用（等同于信任模式 / YOLO 审批行为）",
-  "config.showThreadList.description": "在侧边栏显示 Threads 标签页。遗留功能 — threads 已被 sessions 取代。"
+  "config.showThreadList.description": "在侧边栏显示 Threads 标签页。遗留功能 — threads 已被 sessions 取代。",
+  "config.showAgentToolCards.description": "在聊天记录中显示原始子代理工具调用卡片。子代理对话卡片仍会保持可见。",
+  "config.autoWakeMasterForAgents.description": "子代理处于活动状态时定期唤醒主代理，让其检查、恢复或替换需要处理的工作代理。看护提示可能会使用模型令牌。",
+  "config.agentWakeIntervalSeconds.description": "子代理保持活动时，主代理自动检查之间的秒数（最少 10 秒）。"
 }

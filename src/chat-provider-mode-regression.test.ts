@@ -83,7 +83,7 @@ function createProvider() {
   const provider = new ChatProvider({} as any, {} as any, api as any);
 
   provider.postMessage = vi.fn();
-  provider.refreshSessionList = vi.fn(async () => undefined);
+  provider.refreshSessionList = vi.fn(async () => []);
   provider.refreshTaskList = vi.fn(async () => undefined);
   provider.refreshWorkPanel = vi.fn();
   provider.currentThread = currentThread as any;

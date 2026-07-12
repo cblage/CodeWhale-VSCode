@@ -48,3 +48,38 @@ export function finalizeAssistantMessage(
     ...extra,
   };
 }
+
+/**
+ * Put a runtime failure into an otherwise-empty assistant card.
+ *
+ * Some providers reject a request before producing any text deltas. The turn
+ * still reaches a terminal failed state, but without this fallback the UI
+ * renders a blank assistant card and only the tiny footer says "Error".
+ */
+export function ensureTerminalErrorContent(
+  msg: ChatMessage,
+  error: string | null | undefined,
+): { blockIdx: number; content: string } | null {
+  const hasVisibleText = Boolean(msg.content.trim())
+    || Boolean(msg.blocks?.some((block) =>
+      block.type === "text" && Boolean(block.content?.trim())
+    ));
+  if (hasVisibleText) return null;
+
+  const detail = error?.trim() || "Turn failed";
+  const content = `Error: ${detail}`;
+  msg.content = content;
+  msg.blocks = msg.blocks || [];
+
+  let blockIdx = msg.blocks.findIndex((block) =>
+    block.type === "text" && !block.content?.trim()
+  );
+  if (blockIdx < 0) {
+    blockIdx = msg.blocks.length;
+    msg.blocks.push({ type: "text", content });
+  } else {
+    msg.blocks[blockIdx].content = content;
+  }
+
+  return { blockIdx, content };
+}

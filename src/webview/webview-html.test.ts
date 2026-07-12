@@ -5,7 +5,9 @@ import { getWebviewHtml, WebviewTranslations } from "./webview-html";
 vi.mock("vscode", () => ({
   Uri: {
     file: (p: string) => ({ fsPath: p }),
-    joinPath: (...args: string[]) => ({ fsPath: args.join("/") }),
+    joinPath: (...args: any[]) => ({
+      fsPath: args.map((arg) => typeof arg === "string" ? arg : arg.fsPath).join("/"),
+    }),
   },
 }));
 
@@ -19,7 +21,10 @@ function makeTr(): WebviewTranslations {
     work: "Work",
     newThread: "New Thread",
     compact: "Compact",
+    contextUsage: "Context",
+    contextUsageUnavailable: "Context usage unavailable",
     interrupt: "Interrupt",
+    steer: "Steer",
     toggleHistory: "Toggle History",
     send: "Send",
     inputPlaceholder: "Type a message...",
@@ -36,8 +41,8 @@ function makeTr(): WebviewTranslations {
     modelLabel: "Model",
     workspaceLabel: "Workspace",
     loadedThreadPattern: "Loaded: {0}",
-    showAllWorkspaces: "Show all workspaces",
-    filterCurrentWorkspace: "Current workspace",
+    showAllWorkspaces: "All workspaces",
+    filterCurrentWorkspace: "Current workspace only",
     approvalRequired: "Approval required",
     allow: "Allow",
     deny: "Deny",
@@ -45,7 +50,7 @@ function makeTr(): WebviewTranslations {
     thinkingOpen: "▶ Thinking",
     thinkingClose: "▼ Thinking",
     modeLabel: "Mode",
-    reasoningEffortLabel: "Reasoning",
+    reasoningEffortLabel: "Effort",
     welcomeTitle: "CodeWhale",
     welcomeSubtitle: "Your AI coding partner",
     welcomeQuote: "The best way to predict the future is to invent it.",
@@ -58,7 +63,7 @@ function makeTr(): WebviewTranslations {
     noActiveWork: "No active work",
     cancel: "Cancel",
     goal: "Goal",
-    checklist: "Checklist",
+    checklist: "To-do",
     strategy: "Strategy",
     cycles: "Cycles",
     coherenceHealthy: "Healthy",
@@ -69,6 +74,7 @@ function makeTr(): WebviewTranslations {
     completionPct: "0%",
     readyTimedOut: "Ready timed out",
     note: "Note",
+    dismissNotification: "Dismiss notification",
     noPreviousMessage: "No previous message",
     justNow: "just now",
     minutesAgoPattern: "{n} min ago",
@@ -176,6 +182,7 @@ function makeTr(): WebviewTranslations {
     agentStatusStarting: "Starting",
     agentStatusRunning: "Running",
     agentStatusWaitingForUser: "Waiting for input",
+    agentStatusNeedsAction: "Needs parent action",
     agentStatusModelWait: "Waiting for model",
     agentStatusRunningTool: "Running tool",
     agentStatusCompleted: "Completed",
@@ -184,6 +191,7 @@ function makeTr(): WebviewTranslations {
     agentStatusInterrupted: "Interrupted",
     agentObjective: "Objective",
     agentModel: "Model",
+    agentProfile: "Profile",
     agentSteps: "Steps",
     agentResult: "Result",
     agentError: "Error",
@@ -193,12 +201,30 @@ function makeTr(): WebviewTranslations {
     agentSpawned: "Spawned",
     agentDelegating: "Delegating",
     agentFanout: "Fan-out",
+    agentActive: "active",
+    agentInactive: "inactive",
+    agentType: "Type",
+    agentLatestOutput: "Latest output",
+    agentDetails: "Details",
+    stopAgent: "Stop",
+    stopAllAgents: "Stop all agents",
+    stoppingAgent: "Stopping…",
+    agentTranscript: "Transcript",
+    agentEvents: "Events",
+    agentAssignment: "Assignment",
+    agentRunMetadata: "Run metadata",
+    agentReferences: "References",
+    agentNoTranscript: "No transcript content is available",
+    agentNoEvents: "No lifecycle events are available",
+    agentPartialTranscript: "Earlier transcript messages were omitted from this bounded checkpoint",
+    subagent: "Subagent",
   };
 }
 
 function makeMockWebview() {
   return {
-    asWebviewUri: (uri: any) => uri,
+    asWebviewUri: (uri: any) => uri.fsPath,
+    cspSource: "vscode-webview://test",
   } as any;
 }
 
@@ -211,6 +237,8 @@ describe("webview-html.ts assembler", () => {
     const html = getWebviewHtml(makeMockWebview(), makeMockExtensionUri(), makeTr());
     expect(html).toContain("<!DOCTYPE html>");
     expect(html).toContain('<html lang="en">');
+    expect(html).toContain("<title>🦍 HarambeChat</title>");
+    expect(html).toContain('<body class="hide-agent-tool-cards compact-tool-details">');
     expect(html).toContain("</html>");
   });
 
@@ -245,35 +273,103 @@ describe("webview-html.ts assembler", () => {
     expect(html).toContain('id="debug-panel"');
   });
 
-  it("contains sidebar sections", () => {
+  it("contains only Sessions/Threads and Tasks in the history sidebar", () => {
     const html = getWebviewHtml(makeMockWebview(), makeMockExtensionUri(), makeTr());
     expect(html).toContain('id="sidebar-threads"');
-    expect(html).toContain('id="sidebar-work"');
     expect(html).toContain('id="sidebar-tasks"');
-    expect(html).toContain('id="sidebar-changes"');
     expect(html).toContain('id="tab-sessions"');
     expect(html).toContain('id="tab-threads-list"');
-    expect(html).toContain('id="tab-work"');
     expect(html).toContain('id="tab-tasks"');
-    expect(html).toContain('id="tab-changes"');
+    expect(html).not.toContain('id="sidebar-changes"');
+    expect(html).not.toContain('id="tab-changes"');
+    expect(html).not.toContain('id="sidebar-work"');
+    expect(html).not.toContain('id="tab-work"');
+    expect(html).not.toContain('id="sidebar-agents"');
+    expect(html).not.toContain('id="tab-agents"');
+  });
+
+  it("moves Changes out of the history sidebar into a top popover", () => {
+    const html = getWebviewHtml(makeMockWebview(), makeMockExtensionUri(), makeTr());
+    expect(html).not.toContain('<span class="sidebar-section-title">⛁ Changes</span>');
+    expect(html).toContain('id="btn-changes" title="Changes"');
+    expect(html).toContain('codicon codicon-diff-multiple');
+    expect(html).toContain('id="changes-count-badge"');
+    expect(html).toContain('id="changes-popover"');
+    expect(html).toContain('id="changes-popover-list"');
+    expect(html).not.toContain('<span class="sidebar-section-title">♙ Agents</span>');
+    expect(html).not.toContain('<span class="sidebar-section-title">🤖 Agents</span>');
+    expect(html).not.toContain('<span class="sidebar-section-title">📝 Changes</span>');
   });
 
   it("contains input area with all controls", () => {
     const html = getWebviewHtml(makeMockWebview(), makeMockExtensionUri(), makeTr());
     expect(html).toContain('id="input"');
     expect(html).toContain('id="btn-send-stop"');
-    expect(html).toContain('id="btn-attach"');
+    expect(html).toContain('id="btn-attach" title="Attach files" aria-label="Attach files"><span class="codicon codicon-attach"');
+    expect(html).not.toContain("📎");
     expect(html).toContain('id="slash-menu"');
     expect(html).toContain('id="attachments-area"');
   });
 
   it("contains toolbar buttons", () => {
     const html = getWebviewHtml(makeMockWebview(), makeMockExtensionUri(), makeTr());
-    expect(html).toContain('id="btn-new-thread"');
-    expect(html).toContain('id="btn-threads"');
-    expect(html).toContain('id="btn-compact"');
-    expect(html).toContain('id="btn-undo"');
-    expect(html).toContain('id="btn-retry"');
+    expect(html).toContain('id="context-usage-gauge" class="context-usage-gauge unavailable" role="img" tabindex="0"');
+    expect(html).toContain('data-tooltip="Context usage unavailable"');
+    expect(html).toContain('<circle class="context-usage-track"');
+    expect(html).toContain('<circle class="context-usage-value"');
+    const sidebarButtonIndex = html.indexOf('id="btn-threads"');
+    const newSessionButtonIndex = html.indexOf('id="btn-new-thread"');
+    const firstSettingIndex = html.indexOf('<div class="setting-item">');
+    expect(sidebarButtonIndex).toBeLessThan(newSessionButtonIndex);
+    expect(newSessionButtonIndex).toBeLessThan(firstSettingIndex);
+    expect(html.match(/id="btn-new-thread"/g)).toHaveLength(1);
+    expect(html).toContain('id="btn-new-thread" title="New session" aria-label="New session"><span class="codicon codicon-new-session" aria-hidden="true"></span></button>');
+    const toolbarHtml = html.slice(html.indexOf('<div id="toolbar">'), html.indexOf('<div id="input-resize-handle"'));
+    expect(toolbarHtml).not.toContain('id="btn-new-thread"');
+    expect(html).toContain('id="btn-threads" title="Toggle History"><span class="codicon codicon-layout-sidebar-left"');
+    expect(html).not.toContain(">📋</button>");
+    expect(html).toContain('id="btn-compact"><span class="codicon codicon-fold" aria-hidden="true"></span>Compact</button>');
+    expect(html).toContain('id="btn-undo" title="Undo last turn"><span class="codicon codicon-discard" aria-hidden="true"></span>Undo</button>');
+    expect(html).toContain('id="btn-retry" title="Retry last turn"><span class="codicon codicon-history" aria-hidden="true"></span>Retry</button>');
+    expect(html).not.toContain("🔁 Retry");
+    expect(html).toContain('id="btn-stop-agents" title="Stop all agents" disabled><span class="codicon codicon-debug-stop" aria-hidden="true"></span>Stop all agents</button>');
+    expect(html.indexOf('id="btn-stop-agents"')).toBeGreaterThan(html.indexOf('id="btn-retry"'));
+    expect(html).toContain('id="btn-config" title="Open Config Panel"><span class="codicon codicon-settings-gear"');
+  });
+
+  it("places mutually exclusive Work, Changes, and Agent popovers before Config", () => {
+    const html = getWebviewHtml(makeMockWebview(), makeMockExtensionUri(), makeTr());
+    expect(html).toContain('id="btn-work-popover"');
+    expect(html).toContain('disabled><span class="codicon codicon-checklist"');
+    expect(html).toContain('<span id="work-pending-badge"');
+    expect(html).toContain('aria-controls="work-popover"');
+    expect(html).toMatch(/id="btn-work-popover"[^>]*\sdisabled(?:\s|>)/);
+    expect(html).toContain('id="work-pending-badge"');
+    expect(html).toContain('id="work-popover"');
+    expect(html).toContain('id="work-popover-list"');
+    expect(html).toContain('id="btn-changes"');
+    expect(html).toContain('aria-controls="changes-popover"');
+    expect(html).toMatch(/id="btn-changes"[^>]*\sdisabled(?:\s|>)/);
+    expect(html).toContain('id="changes-count-badge"');
+    expect(html).toContain('id="changes-popover"');
+    expect(html).toContain('id="changes-popover-list"');
+    expect(html).toContain('id="btn-agents"');
+    expect(html).toContain('id="btn-agents" title="Agents" aria-label="Agents" aria-expanded="false" aria-controls="agent-popover" disabled><span class="codicon codicon-robot"');
+    expect(html).toContain('aria-controls="agent-popover"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toMatch(/id="btn-agents"[^>]*\sdisabled(?:\s|>)/);
+    expect(html).toContain('id="agent-count-badge"');
+    expect(html).toContain('id="agent-popover"');
+    expect(html).toContain('id="agent-popover-list"');
+    expect(html.indexOf('id="btn-work-popover"')).toBeLessThan(html.indexOf('id="btn-agents"'));
+    expect(html.indexOf('id="btn-agents"')).toBeLessThan(html.indexOf('id="btn-config"'));
+  });
+
+  it("loads the bundled Codicon font under the webview CSP", () => {
+    const html = getWebviewHtml(makeMockWebview(), makeMockExtensionUri(), makeTr());
+    expect(html).toContain('/test/extension/media/codicons/codicon.css');
+    expect(html).toContain("vscode-webview://test; font-src vscode-webview://test;");
+    expect(html).toContain('<span class="codicon codicon-robot" aria-hidden="true"></span> Agents');
   });
 
   it("injects translation strings into HTML", () => {
@@ -284,9 +380,10 @@ describe("webview-html.ts assembler", () => {
     expect(html).toContain(tr.send);
     expect(html).toContain(tr.inputPlaceholder);
     expect(html).toContain(tr.initializing);
-    expect(html).toContain(tr.newThread);
+    expect(html).toContain('title="New session"');
     expect(html).toContain(tr.compact);
     expect(html).toContain(tr.interrupt);
+    expect(html).toContain(tr.steer);
   });
 
   it("contains shared state initialization script", () => {
@@ -410,6 +507,7 @@ describe("webview-html.ts assembler", () => {
     expect(html).toContain('id="current-mode"');
     expect(html).toContain('id="current-model"');
     expect(html).toContain('id="current-reasoning"');
+    expect(html).toContain('<span class="setting-label">Effort:</span>');
   });
 
   it("contains status bar with status text and stats", () => {
@@ -425,7 +523,8 @@ describe("webview-html.ts assembler", () => {
 
   it("contains workspace filter toggle", () => {
     const html = getWebviewHtml(makeMockWebview(), makeMockExtensionUri(), makeTr());
-    expect(html).toContain('id="workspace-filter-toggle"');
+    expect(html).toContain('id="workspace-filter-toggle" title="Current workspace only" aria-label="Current workspace only"');
+    expect(html).toContain('codicon codicon-save');
   });
 
   it("contains sidebar tab buttons", () => {

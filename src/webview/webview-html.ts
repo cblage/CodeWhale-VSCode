@@ -17,7 +17,10 @@ export interface WebviewTranslations {
   work: string;
   newThread: string;
   compact: string;
+  contextUsage: string;
+  contextUsageUnavailable: string;
   interrupt: string;
+  steer: string;
   toggleHistory: string;
   send: string;
   inputPlaceholder: string;
@@ -67,6 +70,7 @@ export interface WebviewTranslations {
   completionPct: string;
   readyTimedOut: string;
   note: string;
+  dismissNotification: string;
   noPreviousMessage: string;
   justNow: string;
   minutesAgoPattern: string;
@@ -175,6 +179,7 @@ export interface WebviewTranslations {
   agentStatusStarting: string;
   agentStatusRunning: string;
   agentStatusWaitingForUser: string;
+  agentStatusNeedsAction: string;
   agentStatusModelWait: string;
   agentStatusRunningTool: string;
   agentStatusCompleted: string;
@@ -183,6 +188,7 @@ export interface WebviewTranslations {
   agentStatusInterrupted: string;
   agentObjective: string;
   agentModel: string;
+  agentProfile: string;
   agentSteps: string;
   agentResult: string;
   agentError: string;
@@ -192,6 +198,23 @@ export interface WebviewTranslations {
   agentSpawned: string;
   agentDelegating: string;
   agentFanout: string;
+  agentActive: string;
+  agentInactive: string;
+  agentType: string;
+  agentLatestOutput: string;
+  agentDetails: string;
+  stopAgent: string;
+  stopAllAgents: string;
+  stoppingAgent: string;
+  agentTranscript: string;
+  agentEvents: string;
+  agentAssignment: string;
+  agentRunMetadata: string;
+  agentReferences: string;
+  agentNoTranscript: string;
+  agentNoEvents: string;
+  agentPartialTranscript: string;
+  subagent: string;
 }
 
 export function getWebviewHtml(
@@ -201,20 +224,24 @@ export function getWebviewHtml(
 ): string {
   const nonce = getNonce();
   const css = getWebviewCss();
+  const codiconsCssUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(extensionUri, "media", "codicons", "codicon.css")
+  );
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+    content="default-src 'none'; style-src 'nonce-${nonce}' ${webview.cspSource}; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CodeWhale Chat</title>
+  <title>🦍 HarambeChat</title>
+  <link href="${codiconsCssUri}" rel="stylesheet">
   <style nonce="${nonce}">
 ${css}
   </style>
 </head>
-<body>
+<body class="hide-agent-tool-cards compact-tool-details">
   <div id="task-detail-overlay" class="task-detail-overlay" style="display:none"></div>
   <div id="agent-detail-overlay" class="task-detail-overlay" style="display:none"></div>
   <div id="layout">
@@ -223,17 +250,10 @@ ${css}
         <div class="sidebar-tabs">
           <button class="sidebar-tab active" id="tab-sessions-btn" data-tab="sessions">${tr.sessions}</button>
           <button class="sidebar-tab" id="tab-threads-btn" data-tab="threads">${tr.threads}</button>
-          <span class="sidebar-section-action" id="workspace-filter-toggle" title="${tr.showAllWorkspaces}">🌐</span>
+          <span class="sidebar-section-action" id="workspace-filter-toggle" title="${tr.filterCurrentWorkspace}" aria-label="${tr.filterCurrentWorkspace}"><span class="codicon codicon-save" aria-hidden="true"></span></span>
         </div>
         <div class="sidebar-section-body" id="tab-sessions"></div>
         <div class="sidebar-section-body" id="tab-threads-list"></div>
-      </div>
-      <div class="sidebar-section" id="sidebar-work">
-        <div class="sidebar-section-header" id="work-section-toggle">
-          <span class="sidebar-section-title">◆ ${tr.work}</span>
-          <span class="sidebar-section-arrow">▼</span>
-        </div>
-        <div class="sidebar-section-body" id="tab-work"></div>
       </div>
       <div class="sidebar-section" id="sidebar-tasks">
         <div class="sidebar-section-header" id="tasks-section-toggle">
@@ -242,25 +262,12 @@ ${css}
         </div>
         <div class="sidebar-section-body" id="tab-tasks"></div>
       </div>
-      <div class="sidebar-section" id="sidebar-agents">
-        <div class="sidebar-section-header" id="agents-section-toggle">
-          <span class="sidebar-section-title">🤖 ${tr.agents}</span>
-          <span class="sidebar-section-arrow">▼</span>
-        </div>
-        <div class="sidebar-section-body" id="tab-agents"></div>
-      </div>
-      <div class="sidebar-section" id="sidebar-changes">
-        <div class="sidebar-section-header" id="changes-section-toggle">
-          <span class="sidebar-section-title">📝 ${tr.changes}</span>
-          <span class="sidebar-section-arrow">▼</span>
-        </div>
-        <div class="sidebar-section-body" id="tab-changes"></div>
-      </div>
     </div>
     <div id="sidebar-resize-handle" title="Drag to resize sidebar"></div>
     <div id="chat-area">
       <div id="settings-bar">
-        <button id="btn-threads" title="${tr.toggleHistory}">📋</button>
+        <button id="btn-threads" title="${tr.toggleHistory}"><span class="codicon codicon-layout-sidebar-left" aria-hidden="true"></span></button>
+        <button id="btn-new-thread" title="New session" aria-label="New session"><span class="codicon codicon-new-session" aria-hidden="true"></span></button>
         <div class="setting-item">
           <span class="setting-label">${tr.modeLabel}:</span>
           <div class="setting-dropdown" data-setting="mode">
@@ -298,14 +305,43 @@ ${css}
             </div>
           </div>
         </div>
-        <button id="btn-config" title="Open Config Panel">⚙</button>
+        <button id="btn-work-popover" title="${tr.checklist}" aria-label="${tr.checklist}" aria-expanded="false" aria-controls="work-popover" disabled><span class="codicon codicon-checklist" aria-hidden="true"></span><span id="work-pending-badge" aria-hidden="true"></span></button>
+        <button id="btn-changes" title="${tr.changes}" aria-label="${tr.changes}" aria-expanded="false" aria-controls="changes-popover" disabled><span class="codicon codicon-diff-multiple" aria-hidden="true"></span><span id="changes-count-badge" aria-hidden="true"></span></button>
+        <button id="btn-agents" title="${tr.agents}" aria-label="${tr.agents}" aria-expanded="false" aria-controls="agent-popover" disabled><span class="codicon codicon-robot" aria-hidden="true"></span><span id="agent-count-badge" aria-hidden="true"></span></button>
+        <button id="btn-config" title="Open Config Panel"><span class="codicon codicon-settings-gear" aria-hidden="true"></span></button>
+      </div>
+      <div id="work-popover" role="dialog" aria-label="${tr.checklist}" aria-hidden="true">
+        <div class="work-popover-header">
+          <span>✔ ${tr.checklist}</span>
+        </div>
+        <div id="work-popover-list"></div>
+      </div>
+      <div id="changes-popover" role="dialog" aria-label="${tr.changes}" aria-hidden="true">
+        <div class="changes-popover-header">
+          <span><span class="codicon codicon-diff-multiple" aria-hidden="true"></span> ${tr.changes}</span>
+          <span id="changes-popover-count">0</span>
+        </div>
+        <div id="changes-popover-list"></div>
+      </div>
+      <div id="agent-popover" role="dialog" aria-label="${tr.agents}" aria-hidden="true">
+        <div class="agent-popover-header">
+          <span><span class="codicon codicon-robot" aria-hidden="true"></span> ${tr.agents}</span>
+          <span id="agent-popover-count">0</span>
+        </div>
+        <div id="agent-popover-list"></div>
       </div>
       <div id="messages"></div>
       <div id="toolbar">
-        <button id="btn-new-thread">${tr.newThread}</button>
-        <button id="btn-compact">${tr.compact}</button>
-        <button id="btn-undo" title="Undo last turn">↩ Undo</button>
-        <button id="btn-retry" title="Retry last turn">🔁 Retry</button>
+        <div id="context-usage-gauge" class="context-usage-gauge unavailable" role="img" tabindex="0" aria-label="${tr.contextUsageUnavailable}" data-tooltip="${tr.contextUsageUnavailable}">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle class="context-usage-track" cx="12" cy="12" r="9" pathLength="100"></circle>
+            <circle class="context-usage-value" cx="12" cy="12" r="9" pathLength="100"></circle>
+          </svg>
+        </div>
+        <button id="btn-compact"><span class="codicon codicon-fold" aria-hidden="true"></span>${tr.compact}</button>
+        <button id="btn-undo" title="Undo last turn"><span class="codicon codicon-discard" aria-hidden="true"></span>Undo</button>
+        <button id="btn-retry" title="Retry last turn"><span class="codicon codicon-history" aria-hidden="true"></span>Retry</button>
+        <button id="btn-stop-agents" title="${tr.stopAllAgents}" disabled><span class="codicon codicon-debug-stop" aria-hidden="true"></span>${tr.stopAllAgents}</button>
         <span class="thread-count" id="thread-count" title="${tr.toggleHistory}">0 sessions</span>
       </div>
       <div id="input-resize-handle" title="Drag to resize input area"></div>
@@ -313,11 +349,12 @@ ${css}
         <div id="slash-menu"></div>
         <div id="attachments-area"></div>
         <div id="input-row">
-          <button id="btn-attach" title="${tr.attachFiles}">📎</button>
+          <button id="btn-attach" title="${tr.attachFiles}" aria-label="${tr.attachFiles}"><span class="codicon codicon-attach" aria-hidden="true"></span></button>
           <textarea id="input" placeholder="${tr.inputPlaceholder}" rows="1"></textarea>
           <button id="btn-send-stop" class="btn-send-stop">
             <span class="btn-text-send">${tr.send}</span>
             <span class="btn-text-stop">${tr.interrupt}</span>
+            <span class="btn-text-steer">${tr.steer}</span>
           </button>
         </div>
       </div>
@@ -351,7 +388,7 @@ ${css}
       window.__wvDiffIdCounter = { value: 0 };
 
       // Shared API capabilities
-      window.__wvApiCapabilities = { saveSession: false, undoLastTurn: false, retryLastTurn: false, revertFileChange: false };
+      window.__wvApiCapabilities = { saveSession: false, undoLastTurn: false, retryLastTurn: false, revertFileChange: false, stopAgents: false };
 
       // Sidebar state exposed for event handler
       window.__wvSidebar = {
@@ -394,7 +431,7 @@ ${css}
 
       // Restore saved width from previous session
       try {
-        var savedWidth = localStorage.getItem('codewhale:sidebarWidth');
+        var savedWidth = localStorage.getItem('cblage.codewhale:sidebarWidth');
         if (savedWidth) {
           var w = parseInt(savedWidth, 10);
           if (w >= 120 && w <= 600) {
@@ -433,7 +470,7 @@ ${css}
         // Save width for next session
         try {
           var finalWidth = panel.getBoundingClientRect().width;
-          localStorage.setItem('codewhale:sidebarWidth', String(Math.round(finalWidth)));
+          localStorage.setItem('cblage.codewhale:sidebarWidth', String(Math.round(finalWidth)));
         } catch(e) { /* ignore localStorage errors */ }
         startX = undefined;
         startWidth = undefined;
@@ -451,7 +488,7 @@ ${css}
 
       // Restore saved height from previous session
       try {
-        var savedHeight = localStorage.getItem('codewhale:inputAreaHeight');
+        var savedHeight = localStorage.getItem('cblage.codewhale:inputAreaHeight');
         if (savedHeight) {
           var h = parseInt(savedHeight, 10);
           if (h >= 56 && h <= 400) {
@@ -498,7 +535,7 @@ ${css}
         // Save height for next session
         try {
           var finalHeight = inputArea.getBoundingClientRect().height;
-          localStorage.setItem('codewhale:inputAreaHeight', String(Math.round(finalHeight)));
+          localStorage.setItem('cblage.codewhale:inputAreaHeight', String(Math.round(finalHeight)));
         } catch(e) { /* ignore localStorage errors */ }
         // Reset textarea height so it fills the resized container
         var input = document.getElementById('input');

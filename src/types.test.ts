@@ -4,6 +4,7 @@ import type {
   TurnRecord,
   TurnItemRecord,
   RuntimeEvent,
+  ThreadContextUsageResponse,
   PatchUndoResponse,
   SessionMetadata,
   RuntimeApiCapabilities,
@@ -135,6 +136,26 @@ describe("types.ts - Interface structural conformance", () => {
     expect(event.payload).toEqual({});
   });
 
+  it("ThreadContextUsageResponse carries the authoritative donut inputs", () => {
+    const usage: ThreadContextUsageResponse = {
+      thread_id: "thread-1",
+      provider: "deepseek",
+      model: "deepseek-v4-pro",
+      estimated_input_tokens: 742_000,
+      context_window_tokens: 1_000_000,
+      remaining_context_tokens: 258_000,
+      used_percent: 74.2,
+      auto_compact_enabled: true,
+      auto_compact_threshold_tokens: 900_000,
+      auto_compact_threshold_percent: 90,
+      source: "estimated_current_messages",
+    };
+
+    expect(usage.estimated_input_tokens).toBe(742_000);
+    expect(usage.context_window_tokens).toBe(1_000_000);
+    expect(usage.auto_compact_threshold_percent).toBe(90);
+  });
+
   it("PatchUndoResponse contains patch_result and thread", () => {
     const resp: PatchUndoResponse = {
       patch_result: {
@@ -192,9 +213,13 @@ describe("types.ts - Interface structural conformance", () => {
       threadRetry: true,
       snapshotList: false,
       snapshotRestore: false,
+      agentRunCancel: true,
+      agentRunNudge: true,
     };
     expect(caps.saveSession).toBe(true);
     expect(caps.threadPatchUndo).toBe(false);
+    expect(caps.agentRunCancel).toBe(true);
+    expect(caps.agentRunNudge).toBe(true);
   });
 
   it("AutomationRecord and AutomationRunRecord have required fields", () => {

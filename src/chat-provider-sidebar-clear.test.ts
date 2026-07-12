@@ -118,8 +118,24 @@ describe("Sidebar clearing on thread switch", () => {
   });
 
   describe("loadThread()", () => {
-    it("emits threadLoaded then refreshes task and agent lists for the workspace", async () => {
+    it("emits threadLoaded then refreshes workspace tasks and conversation-scoped agents", async () => {
       const { provider, api, postMessage } = createProvider();
+      (provider as any).loadHistory = vi.fn(async () => {
+        provider.messages = [{
+          id: "m-agent",
+          role: "assistant",
+          content: "",
+          status: "complete",
+          timestamp: 1,
+          toolCalls: [{
+            name: "agent",
+            input: { name: "lane-current", prompt: "do x" },
+            output: "started agent_current",
+            status: "complete",
+          }],
+        }];
+        return 1;
+      });
       api.listTasks.mockResolvedValue({
         tasks: [
           { id: "t1", status: "running", model: "m", thread_id: "thread-2" },
@@ -128,7 +144,10 @@ describe("Sidebar clearing on thread switch", () => {
         counts: { active: 1, completed: 0, failed: 0 },
       } as any);
       api.listAgentRuns.mockResolvedValue({
-        runs: [{ run_id: "r1", status: "running", spec: { objective: "do x" } }],
+        runs: [
+          { status: "running", spec: { worker_id: "agent_current", run_id: "agent_current", session_name: "lane-current", objective: "do x" } },
+          { status: "completed", spec: { worker_id: "agent_other", run_id: "agent_other", session_name: "lane-other", objective: "other" } },
+        ],
       } as any);
 
       await (provider as any).loadThread("thread-2");
@@ -147,7 +166,8 @@ describe("Sidebar clearing on thread switch", () => {
       expect(byType.taskList).toBeDefined();
       expect((byType.taskList[0] as { tasks: unknown[] }).tasks).toHaveLength(2);
       expect(byType.agentRunList).toBeDefined();
-      expect((byType.agentRunList[0] as { runs: unknown[] }).runs).toHaveLength(1);
+      const sentRuns = (byType.agentRunList[0] as { runs: Array<{ spec: { run_id: string } }> }).runs;
+      expect(sentRuns.map((run) => run.spec.run_id)).toEqual(["agent_current"]);
     });
 
     it("shows tasks from all threads in the workspace", async () => {

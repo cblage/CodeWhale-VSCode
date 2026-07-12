@@ -35,9 +35,44 @@ describe("webview-js-messages.ts", () => {
     expect(script).toContain("function addMessage");
   });
 
+  it("renders labeled subagent transcript blocks inside assistant messages", () => {
+    const script = getMessagesScript(makeTr());
+    expect(script).toContain("function renderSubagentTranscriptBlock");
+    expect(script).toContain("function updateSubagentTranscriptBlock");
+    expect(script).toContain("b.type === 'subagent_transcript'");
+    expect(script).toContain("subagent-transcript-block");
+    expect(script).toContain("__i18n.subagent");
+    expect(script).toContain("renderSubagentTranscriptBlock: renderSubagentTranscriptBlock");
+  });
+
+  it("renders interleaved steer blocks inside an active assistant message", () => {
+    const script = getMessagesScript(makeTr());
+    expect(script).toContain("function renderSteerBlock");
+    expect(script).toContain("b.type === 'steer'");
+    expect(script).toContain("steer-block-content");
+    expect(script).toContain("renderSteerBlock: renderSteerBlock");
+  });
+
   it("contains renderToolCall function", () => {
     const script = getMessagesScript(makeTr());
     expect(script).toContain("function renderToolCall");
+  });
+
+  it("marks raw agent tool calls separately and exposes live visibility control", () => {
+    const script = getMessagesScript(makeTr());
+    expect(script).toContain("function applyShowAgentToolCards");
+    expect(script).toContain("delegate-card agent-tool-card");
+    expect(script).toContain("delegate-icon codicon codicon-robot");
+    expect(script).not.toContain("\\\\u2659");
+    expect(script).toContain("applyShowAgentToolCards: applyShowAgentToolCards");
+  });
+
+  it("exposes compact runtime tool-detail settings and status-specific tool classes", () => {
+    const script = getMessagesScript(makeTr());
+    expect(script).toContain("function applyToolDetailSettings(showToolDetails, calmMode)");
+    expect(script).toContain("!showToolDetails || calmMode");
+    expect(script).toContain("applyToolDetailSettings: applyToolDetailSettings");
+    expect(script).toContain("tool-call tool-call-' + __wvEscapeHtml(tc.status || 'unknown')");
   });
 
   it("contains renderFileChangeCard function", () => {

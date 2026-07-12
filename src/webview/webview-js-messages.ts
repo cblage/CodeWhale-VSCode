@@ -22,6 +22,19 @@ export function getMessagesScript(tr: WebviewTranslations): string {
   var userScrolledUp = false;
   var SCROLL_BOTTOM_THRESHOLD = 80;
 
+  function applyShowAgentToolCards(showAgentToolCards) {
+    if (!document.body) return;
+    document.body.classList.toggle('hide-agent-tool-cards', !showAgentToolCards);
+  }
+
+  function applyToolDetailSettings(showToolDetails, calmMode) {
+    if (!document.body) return;
+    // Match the runtime transcript posture: either setting requests a compact
+    // tool summary. Failed tools and approval prompts remain expanded so the
+    // user never loses actionable error or authorization context.
+    document.body.classList.toggle('compact-tool-details', !showToolDetails || calmMode);
+  }
+
   function smartScrollToBottom() {
     if (userScrolledUp) return;
     messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -70,6 +83,7 @@ export function getMessagesScript(tr: WebviewTranslations): string {
       if (btn && btn.dataset.prompt) {
         inputEl.value = btn.dataset.prompt;
         inputEl.focus();
+        window.__wvInput.centerInputTextVertically();
       }
     });
   }
@@ -77,12 +91,14 @@ export function getMessagesScript(tr: WebviewTranslations): string {
   // ── Render Delegate Card (for agent_open / agent_spawn / agent_close / agent_cancel) ──
   function renderDelegateCard(msgId, tc, tcIdx) {
     var toolName = tc.name || '';
-    var isSpawn = (toolName === 'agent_open' || toolName === 'agent_spawn');
-    var isClose = (toolName === 'agent_close');
-    var isCancel = (toolName === 'agent_cancel');
+    var agentAction = tc.input && typeof tc.input === 'object' ? String(tc.input.action || '') : '';
+    var isUnifiedAgent = toolName === 'agent';
+    var isSpawn = (toolName === 'agent_open' || toolName === 'agent_spawn' || (isUnifiedAgent && (!agentAction || agentAction === 'start')));
+    var isClose = (toolName === 'agent_close' || (isUnifiedAgent && agentAction === 'wait'));
+    var isCancel = (toolName === 'agent_cancel' || (isUnifiedAgent && agentAction === 'cancel'));
     var statusIcon = '';
     var statusText = '';
-    var cardClass = 'delegate-card';
+    var cardClass = 'delegate-card agent-tool-card';
 
     if (tc.status === 'running') {
       statusIcon = '\\u27F3';
@@ -128,7 +144,7 @@ export function getMessagesScript(tr: WebviewTranslations): string {
     if (typeof tc.output === 'string') {
       outputStr = tc.output;
     }
-    if (outputStr && isClose && tc.status === 'complete') {
+    if (outputStr && (isClose || isSpawn) && tc.status === 'complete') {
       resultSummary = outputStr.slice(0, 150);
     }
 
@@ -136,7 +152,7 @@ export function getMessagesScript(tr: WebviewTranslations): string {
     // Header
     html += '<div class="delegate-header">';
     if (isSpawn) {
-      html += '<span class="delegate-icon">\\uD83E\\uDDE0</span>';
+      html += '<span class="delegate-icon codicon codicon-robot" aria-hidden="true"></span>';
       html += '<span class="delegate-title">' + __wvEscapeHtml(__i18n.agentSpawned) + '</span>';
     } else if (isCancel) {
       html += '<span class="delegate-icon">\\u2298</span>';
@@ -145,7 +161,7 @@ export function getMessagesScript(tr: WebviewTranslations): string {
       html += '<span class="delegate-icon">\\u2713</span>';
       html += '<span class="delegate-title">' + __wvEscapeHtml(__i18n.agentStatusCompleted) + '</span>';
     } else {
-      html += '<span class="delegate-icon">\\uD83E\\uDDE0</span>';
+      html += '<span class="delegate-icon codicon codicon-robot" aria-hidden="true"></span>';
       html += '<span class="delegate-title">' + __wvEscapeHtml(toolName) + '</span>';
     }
     html += ' <span class="delegate-status" style="color:var(--muted)">' + statusIcon + ' ' + statusText + '</span>';
@@ -182,7 +198,7 @@ export function getMessagesScript(tr: WebviewTranslations): string {
   function renderToolCall(msgId, tc, tcIdx) {
     // Delegate card for agent tools
     var toolName = tc.name || '';
-    if (toolName === 'agent_open' || toolName === 'agent_spawn' || toolName === 'agent_close' || toolName === 'agent_cancel') {
+    if (toolName === 'agent' || toolName === 'agent_open' || toolName === 'agent_spawn' || toolName === 'agent_close' || toolName === 'agent_cancel') {
       return renderDelegateCard(msgId, tc, tcIdx);
     }
 
@@ -206,7 +222,7 @@ export function getMessagesScript(tr: WebviewTranslations): string {
       statusText = 'pending';
     }
 
-    var html = '<div class="tool-call" id="tc-' + msgId + '-' + tcIdx + '">';
+    var html = '<div class="tool-call tool-call-' + __wvEscapeHtml(tc.status || 'unknown') + '" id="tc-' + msgId + '-' + tcIdx + '">';
     html += '<span class="tool-name">\\uD83D\\uDD27 ' + __wvEscapeHtml(tc.displayName || tc.name) + '</span>';
     html += ' <span class="tool-status" style="color:var(--muted)">' + statusIcon + ' ' + statusText + '</span>';
     if (tc.fileChange) {
@@ -267,6 +283,94 @@ export function getMessagesScript(tr: WebviewTranslations): string {
     return html;
   }
 
+  function isSubagentActiveStatus(status) {
+    return ['queued', 'starting', 'running', 'in_progress', 'waiting_for_user', 'model_wait', 'running_tool', 'working', 'pending'].indexOf(String(status || '').toLowerCase()) >= 0;
+  }
+
+  function subagentTranscriptDomId(entryId) {
+    return 'subagent-transcript-' + String(entryId || '').replace(/[^A-Za-z0-9_-]/g, '_');
+  }
+
+  function updateSubagentTranscriptElement(el, entry) {
+    if (!el || !entry) return;
+    var nickname = entry.nickname || entry.agent_id || 'agent';
+    var nameEl = el.querySelector('.subagent-transcript-name');
+    if (nameEl) {
+      var nameIcon = document.createElement('span');
+      nameIcon.className = 'codicon codicon-robot';
+      nameIcon.setAttribute('aria-hidden', 'true');
+      var nameLabel = document.createElement('span');
+      nameLabel.className = 'subagent-transcript-label';
+      nameLabel.textContent = __i18n.subagent + ' "' + nickname + '"';
+      nameEl.replaceChildren(nameIcon, nameLabel);
+    }
+    var metaEl = el.querySelector('.subagent-transcript-meta');
+    if (metaEl) {
+      var meta = [entry.agent_type || '', entry.profile || '', entry.model || '', entry.session_name || ''].filter(Boolean).join(' · ');
+      metaEl.textContent = meta;
+      metaEl.style.display = meta ? '' : 'none';
+    }
+    var active = entry.runtime_available !== false && entry.completed_at_ms == null && isSubagentActiveStatus(entry.status);
+    var statusEl = el.querySelector('.subagent-transcript-status');
+    if (statusEl) {
+      statusEl.textContent = active ? __i18n.agentActive : __i18n.agentInactive;
+      statusEl.className = 'subagent-transcript-status ' + (active ? 'active' : 'inactive');
+    }
+    var contentEl = el.querySelector('.subagent-transcript-content');
+    if (contentEl) {
+      if (entry.contentHtml !== undefined) contentEl.innerHTML = entry.contentHtml;
+      else contentEl.textContent = entry.content || '';
+    }
+  }
+
+  function renderSubagentTranscriptBlock(entry, blockIdx) {
+    var el = document.createElement('div');
+    el.className = 'subagent-transcript-block';
+    el.id = subagentTranscriptDomId(entry && entry.id);
+    if (blockIdx !== undefined) el.setAttribute('data-block-idx', String(blockIdx));
+
+    var header = document.createElement('div');
+    header.className = 'subagent-transcript-header';
+    var name = document.createElement('span');
+    name.className = 'subagent-transcript-name';
+    var meta = document.createElement('span');
+    meta.className = 'subagent-transcript-meta';
+    var status = document.createElement('span');
+    status.className = 'subagent-transcript-status';
+    header.appendChild(name);
+    header.appendChild(meta);
+    header.appendChild(status);
+
+    var content = document.createElement('div');
+    content.className = 'content subagent-transcript-content';
+    el.appendChild(header);
+    el.appendChild(content);
+    updateSubagentTranscriptElement(el, entry || {});
+    return el;
+  }
+
+  function updateSubagentTranscriptBlock(entry) {
+    if (!entry) return;
+    var el = document.getElementById(subagentTranscriptDomId(entry.id));
+    if (el) updateSubagentTranscriptElement(el, entry);
+  }
+
+  function renderSteerBlock(content, blockIdx) {
+    var el = document.createElement('div');
+    el.className = 'steer-block';
+    if (blockIdx !== undefined) el.setAttribute('data-block-idx', String(blockIdx));
+
+    var label = document.createElement('div');
+    label.className = 'steer-block-label';
+    label.textContent = __i18n.steer || 'Steer';
+    var body = document.createElement('div');
+    body.className = 'steer-block-content';
+    body.textContent = content || '';
+    el.appendChild(label);
+    el.appendChild(body);
+    return el;
+  }
+
   // ── Add Message ──
   function addMessage(msg, showRole) {
     var welcomeEl = messagesEl.querySelector('.welcome-screen');
@@ -318,6 +422,10 @@ export function getMessagesScript(tr: WebviewTranslations): string {
           contentEl.setAttribute('data-block-idx', String(bi));
           contentEl.innerHTML = content;
           bodyEl.appendChild(contentEl);
+        } else if (b.type === 'steer') {
+          bodyEl.appendChild(renderSteerBlock(b.content || '', bi));
+        } else if (b.type === 'subagent_transcript' && b.subagent) {
+          bodyEl.appendChild(renderSubagentTranscriptBlock(b.subagent, bi));
         }
       }
     } else {
@@ -474,6 +582,11 @@ export function getMessagesScript(tr: WebviewTranslations): string {
     renderWelcome: renderWelcome,
     renderToolCall: renderToolCall,
     renderFileChangeCard: renderFileChangeCard,
+    renderSteerBlock: renderSteerBlock,
+    renderSubagentTranscriptBlock: renderSubagentTranscriptBlock,
+    updateSubagentTranscriptBlock: updateSubagentTranscriptBlock,
+    applyShowAgentToolCards: applyShowAgentToolCards,
+    applyToolDetailSettings: applyToolDetailSettings,
     smartScrollToBottom: smartScrollToBottom,
     isStreaming: function() { return isStreaming; },
     setStreaming: function(v) { isStreaming = v; },

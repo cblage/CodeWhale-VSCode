@@ -8,11 +8,35 @@
 
 import type { ThreadRecord } from "../types";
 
+export interface SubagentTranscriptEntry {
+  id: string;
+  source_id?: string;
+  segments?: Array<{ source_id: string; content: string }>;
+  agent_id: string;
+  nickname: string;
+  status: string;
+  completed_at_ms?: number | null;
+  runtime_available?: boolean;
+  agent_type: string;
+  profile?: string | null;
+  model: string;
+  session_name?: string | null;
+  content: string;
+  contentHtml?: string;
+  message_index: number;
+  block_index: number;
+  /** Last known transcript update for restore ordering across agents. */
+  last_update_at_ms?: number | null;
+  checkpoint_created_at_ms: number | null;
+}
+
 export interface ContentBlock {
-  type: "text" | "thinking" | "tool_call";
+  type: "text" | "thinking" | "tool_call" | "steer" | "subagent_transcript";
   content?: string;
   contentHtml?: string;
+  sourceId?: string;
   toolCallIdx?: number;
+  subagent?: SubagentTranscriptEntry;
 }
 
 export interface ToolCallInfo {

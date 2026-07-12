@@ -20,6 +20,11 @@ describe("webview-js-input.ts", () => {
     expect(script).toContain("'use strict'");
   });
 
+  it("generates syntactically valid browser JavaScript", () => {
+    const script = getInputScript(makeTr());
+    expect(() => new Function(script)).not.toThrow();
+  });
+
   it("references __wvEscapeHtml from utilities", () => {
     const script = getInputScript(makeTr());
     expect(script).toContain("window.__wvEscapeHtml");
@@ -41,6 +46,32 @@ describe("webview-js-input.ts", () => {
     expect(script).toContain("slashMenuOpen");
   });
 
+  it("supports cyclic arrow navigation and Tab completion", () => {
+    const script = getInputScript(makeTr());
+    expect(script).toContain("function moveSlashMenuSelection(delta)");
+    expect(script).toContain("moveSlashMenuSelection(1)");
+    expect(script).toContain("moveSlashMenuSelection(-1)");
+    expect(script).toContain("function scrollSelectedSlashCommandIntoView()");
+    expect(script).toContain("selected.scrollIntoView({ block: 'nearest' })");
+    expect(script).toContain("e.key === 'Enter' || e.key === 'Tab'");
+    expect(script).toContain("inputEl.setSelectionRange(cursorPosition, cursorPosition)");
+  });
+
+  it("merges dynamic skills without mutating or shadowing built-ins", () => {
+    const script = getInputScript(makeTr());
+    expect(script).toContain("var builtinSlashCommands = [");
+    expect(script).toContain("function setSkillCommands(skills)");
+    expect(script).toContain("slashCommands = builtinSlashCommands.concat(dynamic)");
+    expect(script).toContain("if (seen[key]) return");
+    expect(script).toContain("setSkillCommands: setSkillCommands");
+  });
+
+  it("sends the exact typed slash text alongside normalized command fields", () => {
+    const script = getInputScript(makeTr());
+    expect(script).toContain("var rawCommand = separatorIndex === -1");
+    expect(script).toContain("args: args, text: text");
+  });
+
   it("contains slash commands array with key commands", () => {
     const script = getInputScript(makeTr());
     expect(script).toContain("/mode");
@@ -55,6 +86,15 @@ describe("webview-js-input.ts", () => {
     expect(script).toContain("currentAttachments");
     expect(script).toContain("attachment-chip");
     expect(script).toContain("btn-attach");
+  });
+
+  it("middle-aligns short input while preserving measured multiline layout", () => {
+    const script = getInputScript(makeTr());
+    expect(script).toContain("function centerInputTextVertically");
+    expect(script).toContain("inputTextMeasure");
+    expect(script).toContain("(inputEl.clientHeight - contentHeight) / 2");
+    expect(script).toContain("new ResizeObserver(scheduleInputVerticalCentering)");
+    expect(script).toContain("centerInputTextVertically: scheduleInputVerticalCentering");
   });
 
   it("contains API capabilities handling", () => {
@@ -91,10 +131,11 @@ describe("webview-js-input.ts", () => {
     expect(script).toContain("retryLastTurn");
   });
 
-  it("handles send/stop button click", () => {
+  it("handles send/stop/steer button click", () => {
     const script = getInputScript(makeTr());
     expect(script).toContain("btn-send-stop");
     expect(script).toContain("interrupt");
+    expect(script).toContain("type: 'steer'");
   });
 
   it("handles new thread button click", () => {

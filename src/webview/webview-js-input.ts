@@ -21,6 +21,45 @@ export function getInputScript(tr: WebviewTranslations): string {
   var retryBtn = document.getElementById('btn-retry');
   var undoDefaultTitle = undoBtn ? (undoBtn.getAttribute('title') || '') : '';
   var retryDefaultTitle = retryBtn ? (retryBtn.getAttribute('title') || '') : '';
+  var inputAlignmentFrame = null;
+  var inputTextMeasure = document.createElement('div');
+  inputTextMeasure.setAttribute('aria-hidden', 'true');
+  inputTextMeasure.style.position = 'fixed';
+  inputTextMeasure.style.left = '-10000px';
+  inputTextMeasure.style.top = '-10000px';
+  inputTextMeasure.style.visibility = 'hidden';
+  inputTextMeasure.style.pointerEvents = 'none';
+  inputTextMeasure.style.whiteSpace = 'pre-wrap';
+  inputTextMeasure.style.overflowWrap = 'break-word';
+  inputTextMeasure.style.wordBreak = 'break-word';
+  inputTextMeasure.style.boxSizing = 'content-box';
+  document.body.appendChild(inputTextMeasure);
+
+  function centerInputTextVertically() {
+    inputAlignmentFrame = null;
+    if (!inputEl || inputEl.clientHeight <= 0 || inputEl.clientWidth <= 0) return;
+    var computed = window.getComputedStyle(inputEl);
+    var paddingLeft = parseFloat(computed.paddingLeft) || 0;
+    var paddingRight = parseFloat(computed.paddingRight) || 0;
+    inputTextMeasure.style.width = Math.max(1, inputEl.clientWidth - paddingLeft - paddingRight) + 'px';
+    inputTextMeasure.style.fontFamily = computed.fontFamily;
+    inputTextMeasure.style.fontSize = computed.fontSize;
+    inputTextMeasure.style.fontWeight = computed.fontWeight;
+    inputTextMeasure.style.fontStyle = computed.fontStyle;
+    inputTextMeasure.style.letterSpacing = computed.letterSpacing;
+    inputTextMeasure.style.lineHeight = computed.lineHeight;
+    inputTextMeasure.style.textTransform = computed.textTransform;
+    inputTextMeasure.style.tabSize = computed.tabSize;
+    inputTextMeasure.textContent = (inputEl.value || inputEl.getAttribute('placeholder') || ' ') + String.fromCharCode(8203);
+    var contentHeight = Math.ceil(inputTextMeasure.getBoundingClientRect().height);
+    var topPadding = Math.max(6, Math.floor((inputEl.clientHeight - contentHeight) / 2));
+    inputEl.style.paddingTop = topPadding + 'px';
+  }
+
+  function scheduleInputVerticalCentering() {
+    if (inputAlignmentFrame !== null) cancelAnimationFrame(inputAlignmentFrame);
+    inputAlignmentFrame = requestAnimationFrame(centerInputTextVertically);
+  }
 
   // ── Attachments ──
   var currentAttachments = [];
@@ -40,6 +79,7 @@ export function getInputScript(tr: WebviewTranslations): string {
         vscode.postMessage({ type: 'removeAttachment', index: idx });
       });
     });
+    scheduleInputVerticalCentering();
   }
 
   // ── Slash Menu ──
@@ -47,7 +87,7 @@ export function getInputScript(tr: WebviewTranslations): string {
   var slashMenuSelected = 0;
   var slashMenuCommands = [];
 
-  var slashCommands = [
+  var builtinSlashCommands = [
     { name: '/mode', desc: '${tr.commandMode}', category: 'config' },
     { name: '/model', desc: '${tr.commandModel}', category: 'config' },
     { name: '/models', desc: '${tr.commandModels}', category: 'config' },
@@ -114,6 +154,42 @@ export function getInputScript(tr: WebviewTranslations): string {
     { name: '/statusline', desc: '${tr.commandStatusline}', category: 'debug' },
     { name: '/logout', desc: '${tr.commandLogout}', category: 'config' },
   ];
+  var slashCommands = builtinSlashCommands.slice();
+
+  function setSkillCommands(skills) {
+    var seen = Object.create(null);
+    builtinSlashCommands.forEach(function(cmd) {
+      seen[cmd.name.toLowerCase()] = true;
+    });
+
+    var dynamic = [];
+    (Array.isArray(skills) ? skills : []).forEach(function(skill) {
+      if (!skill || typeof skill.name !== 'string') return;
+
+      var rawName = skill.name.trim().replace(/^\\/+/, '');
+      if (!rawName || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(rawName)) return;
+
+      var name = '/' + rawName;
+      var key = name.toLowerCase();
+      if (seen[key]) return;
+      seen[key] = true;
+
+      var description = typeof skill.description === 'string'
+        ? skill.description.trim()
+        : '';
+      dynamic.push({
+        name: name,
+        desc: description || 'Run ' + rawName + ' skill',
+        category: 'skills'
+      });
+    });
+
+    slashCommands = builtinSlashCommands.concat(dynamic);
+    if (inputEl.value.startsWith('/')) {
+      slashMenuSelected = 0;
+      updateSlashMenu(inputEl.value);
+    }
+  }
 
   function updateSlashMenu(input) {
     if (!input.startsWith('/')) {
@@ -131,6 +207,10 @@ export function getInputScript(tr: WebviewTranslations): string {
       slashMenuEl.classList.remove('open');
       slashMenuOpen = false;
       return;
+    }
+
+    if (slashMenuSelected >= slashMenuCommands.length) {
+      slashMenuSelected = slashMenuCommands.length - 1;
     }
 
     var menuHtml = slashMenuCommands.map(function(cmd, i) {
@@ -151,11 +231,33 @@ export function getInputScript(tr: WebviewTranslations): string {
     slashMenuOpen = true;
   }
 
+  function scrollSelectedSlashCommandIntoView() {
+    requestAnimationFrame(function() {
+      var selected = slashMenuEl.querySelector('.slash-menu-item.selected');
+      if (selected && typeof selected.scrollIntoView === 'function') {
+        selected.scrollIntoView({ block: 'nearest' });
+      }
+    });
+  }
+
+  function moveSlashMenuSelection(delta) {
+    if (slashMenuCommands.length === 0) return;
+    slashMenuSelected = (
+      slashMenuSelected + delta + slashMenuCommands.length
+    ) % slashMenuCommands.length;
+    updateSlashMenu(inputEl.value);
+    scrollSelectedSlashCommandIntoView();
+  }
+
   function applySlashCommand(index) {
     if (index >= 0 && index < slashMenuCommands.length) {
       var cmd = slashMenuCommands[index];
       inputEl.value = cmd.name + ' ';
       inputEl.focus();
+      var cursorPosition = inputEl.value.length;
+      inputEl.setSelectionRange(cursorPosition, cursorPosition);
+      scheduleInputVerticalCentering();
+      updateSendStopButton(window.__wvMessages.isStreaming());
       slashMenuEl.classList.remove('open');
       slashMenuOpen = false;
     }
@@ -177,6 +279,8 @@ export function getInputScript(tr: WebviewTranslations): string {
     if (isStreaming && !text.startsWith('/interrupt') && !text.startsWith('/clear')) return;
     inputEl.value = '';
     inputEl.style.height = 'auto';
+    scheduleInputVerticalCentering();
+    updateSendStopButton(isStreaming);
     window.__wvMessages.setUserScrolledUp(false);
     messageHistory.unshift(text);
     if (messageHistory.length > 200) messageHistory.length = 200;
@@ -184,13 +288,29 @@ export function getInputScript(tr: WebviewTranslations): string {
     draftBeforeHistory = '';
 
     if (text.startsWith('/')) {
-      var parts = text.split(' ');
-      var command = parts[0].toLowerCase();
-      var args = parts.slice(1).join(' ');
-      vscode.postMessage({ type: 'slashCommand', command: command, args: args });
+      var separatorIndex = text.search(/\\s/);
+      var rawCommand = separatorIndex === -1 ? text : text.slice(0, separatorIndex);
+      var command = rawCommand.toLowerCase();
+      var args = separatorIndex === -1 ? '' : text.slice(separatorIndex).trimStart();
+      vscode.postMessage({ type: 'slashCommand', command: command, args: args, text: text });
     } else {
       vscode.postMessage({ type: 'sendMessage', text: text });
     }
+  }
+
+  function sendSteer() {
+    var text = inputEl.value.trim();
+    if (!text || !window.__wvMessages.isStreaming()) return;
+
+    inputEl.value = '';
+    inputEl.style.height = 'auto';
+    scheduleInputVerticalCentering();
+    updateSendStopButton(true);
+    messageHistory.unshift(text);
+    if (messageHistory.length > 200) messageHistory.length = 200;
+    historyIndex = -1;
+    draftBeforeHistory = '';
+    vscode.postMessage({ type: 'steer', text: text });
   }
 
   // ── Button capability state ──
@@ -212,17 +332,17 @@ export function getInputScript(tr: WebviewTranslations): string {
   // ── Send/Stop button toggle ──
   function updateSendStopButton(isStreaming) {
     if (!sendStopBtn) return;
-    if (isStreaming) {
-      sendStopBtn.classList.add('streaming');
-    } else {
-      sendStopBtn.classList.remove('streaming');
-    }
+    var streaming = !!isStreaming;
+    var steering = streaming && !!inputEl.value.trim();
+    sendStopBtn.classList.toggle('streaming', streaming);
+    sendStopBtn.classList.toggle('steering', steering);
   }
 
   // ── Event listeners ──
   sendStopBtn.addEventListener('click', function() {
     if (window.__wvMessages && window.__wvMessages.isStreaming()) {
-      vscode.postMessage({ type: 'interrupt' });
+      if (inputEl.value.trim()) sendSteer();
+      else vscode.postMessage({ type: 'interrupt' });
     } else {
       sendMessage();
     }
@@ -242,12 +362,10 @@ export function getInputScript(tr: WebviewTranslations): string {
     if (slashMenuOpen) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        slashMenuSelected = Math.min(slashMenuSelected + 1, slashMenuCommands.length - 1);
-        updateSlashMenu(inputEl.value);
+        moveSlashMenuSelection(1);
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        slashMenuSelected = Math.max(slashMenuSelected - 1, 0);
-        updateSlashMenu(inputEl.value);
+        moveSlashMenuSelection(-1);
       } else if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
         applySlashCommand(slashMenuSelected);
@@ -268,8 +386,11 @@ export function getInputScript(tr: WebviewTranslations): string {
         historyIndex = Math.min(historyIndex + 1, messageHistory.length - 1);
         inputEl.value = messageHistory[historyIndex];
         inputEl.selectionStart = inputEl.selectionEnd = inputEl.value.length;
+        inputEl.style.paddingTop = '6px';
         inputEl.style.height = 'auto';
         inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+        updateSendStopButton(window.__wvMessages.isStreaming());
+        scheduleInputVerticalCentering();
         return;
       }
     } else if (e.key === 'ArrowDown' && historyIndex !== -1) {
@@ -284,23 +405,30 @@ export function getInputScript(tr: WebviewTranslations): string {
           inputEl.value = messageHistory[historyIndex];
         }
         inputEl.selectionStart = inputEl.selectionEnd = 0;
+        inputEl.style.paddingTop = '6px';
         inputEl.style.height = 'auto';
         inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+        updateSendStopButton(window.__wvMessages.isStreaming());
+        scheduleInputVerticalCentering();
         return;
       }
     }
 
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      if (window.__wvMessages.isStreaming() && inputEl.value.trim()) sendSteer();
+      else sendMessage();
     }
   });
 
   inputEl.addEventListener('input', function() {
+    inputEl.style.paddingTop = '6px';
     inputEl.style.height = 'auto';
     inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
     slashMenuSelected = 0;
     updateSlashMenu(inputEl.value);
+    updateSendStopButton(window.__wvMessages.isStreaming());
+    scheduleInputVerticalCentering();
   });
 
   newThreadBtn.addEventListener('click', function() { vscode.postMessage({ type: 'newThread' }); });
@@ -317,12 +445,20 @@ export function getInputScript(tr: WebviewTranslations): string {
   // ── Expose for event handler module ──
   window.__wvInput = {
     applyApiCapabilities: applyApiCapabilities,
+    setSkillCommands: setSkillCommands,
     renderAttachments: renderAttachments,
     getCurrentAttachments: function() { return currentAttachments; },
     setCurrentAttachments: function(v) { currentAttachments = v; },
     updateSendStopButton: updateSendStopButton,
+    centerInputTextVertically: scheduleInputVerticalCentering,
   };
 
+  var inputResizeObserver = typeof ResizeObserver === 'function'
+    ? new ResizeObserver(scheduleInputVerticalCentering)
+    : null;
+  if (inputResizeObserver) inputResizeObserver.observe(inputEl);
+  window.addEventListener('resize', scheduleInputVerticalCentering);
+  scheduleInputVerticalCentering();
   applyApiCapabilities();
   })();`;
 }

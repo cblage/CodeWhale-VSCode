@@ -12,6 +12,7 @@ interface Translations {
   newThread: string;
   compact: string;
   interrupt: string;
+  steer: string;
   toggleHistory: string;
   send: string;
   inputPlaceholder: string;
@@ -54,6 +55,7 @@ interface Translations {
   completionPct: string;
   readyTimedOut: string;
   note: string;
+  dismissNotification: string;
   noPreviousMessage: string;
   justNow: string;
   minutesAgoPattern: string;
@@ -61,6 +63,8 @@ interface Translations {
   daysAgoPattern: string;
   loadedThread: (title: string) => string;
   contextCompacted: string;
+  contextUsage: string;
+  contextUsageUnavailable: string;
   compactFailed: string;
   sendFailed: string;
   initFailed: string;
@@ -78,7 +82,7 @@ interface Translations {
   threadsCountPattern: string;
   /** "Loaded: {0}" / "已加载: {0}" */
   loadedThreadPattern: string;
-  /** "Show all workspaces" / "显示所有工作区" */
+  /** "All workspaces" / "所有工作区" */
   showAllWorkspaces: string;
   /** "Current workspace only" / "仅当前工作区" */
   filterCurrentWorkspace: string;
@@ -223,6 +227,7 @@ interface Translations {
   agentStatusStarting: string;
   agentStatusRunning: string;
   agentStatusWaitingForUser: string;
+  agentStatusNeedsAction: string;
   agentStatusModelWait: string;
   agentStatusRunningTool: string;
   agentStatusCompleted: string;
@@ -231,6 +236,7 @@ interface Translations {
   agentStatusInterrupted: string;
   agentObjective: string;
   agentModel: string;
+  agentProfile: string;
   agentSteps: string;
   agentResult: string;
   agentError: string;
@@ -240,14 +246,38 @@ interface Translations {
   agentSpawned: string;
   agentDelegating: string;
   agentFanout: string;
+  agentActive: string;
+  agentInactive: string;
+  agentType: string;
+  agentLatestOutput: string;
+  agentDetails: string;
+  stopAgent: string;
+  stopAllAgents: string;
+  stoppingAgent: string;
+  agentTranscript: string;
+  agentEvents: string;
+  agentAssignment: string;
+  agentRunMetadata: string;
+  agentReferences: string;
+  agentNoTranscript: string;
+  agentNoEvents: string;
+  agentPartialTranscript: string;
+  subagent: string;
+  extensionUi: string;
+  showAgentToolCards: string;
+  showAgentToolCardsDescription: string;
+  autoWakeMasterForAgents: string;
+  autoWakeMasterForAgentsDescription: string;
+  agentWakeIntervalSeconds: string;
+  agentWakeIntervalSecondsDescription: string;
 }
 
 const en: Translations = {
   locale: "en",
   history: "History", threads: "Threads", sessions: "Sessions", tasks: "Tasks", work: "Work",
-  newThread: "+ New", compact: "⬒ Compact", interrupt: "■ Stop",
+  newThread: "New", compact: "Compact", interrupt: "■ Stop", steer: "Steer",
   toggleHistory: "Click to toggle history", send: "Send",
-  inputPlaceholder: "Ask CodeWhale...",
+  inputPlaceholder: "Ask Harambe...",
   initializing: "Initializing...", ready: "Ready",
   thinking: "Thinking...", streaming: "Streaming...", processing: "Processing...",
   error: "Error", approvalAwaiting: "⏳ Awaiting approval...",
@@ -256,7 +286,7 @@ const en: Translations = {
   noConversations: "No conversations yet", noTasks: "No tasks",
   threadsCount: (n) => `${n} thread${n !== 1 ? "s" : ""}`,
   modelLabel: "Model", workspaceLabel: "Workspace",
-  modeLabel: "Mode", reasoningEffortLabel: "Reasoning Effort",
+  modeLabel: "Mode", reasoningEffortLabel: "Effort",
   welcomeTitle: "CodeWhale",
   welcomeSubtitle: "Technology serves the enduring mission of civilization",
   welcomeQuote: "To establish the heart for heaven and earth, to secure life for the people, to continue the lost learning of past sages, and to establish peace for all generations.",
@@ -269,7 +299,7 @@ const en: Translations = {
   noActiveWork: "No active work",
   cancel: "Cancel",
   goal: "Goal",
-  checklist: "Checklist",
+  checklist: "To-do",
   strategy: "Strategy",
   cycles: "cycles",
   coherenceHealthy: "Healthy",
@@ -280,13 +310,17 @@ const en: Translations = {
   completionPct: "{n}% complete",
   readyTimedOut: "Ready (stream timed out)",
   note: "Note",
+  dismissNotification: "Dismiss notification",
   noPreviousMessage: "No previous message to edit",
   justNow: "just now",
   minutesAgoPattern: "{n}m ago",
   hoursAgoPattern: "{n}h ago",
   daysAgoPattern: "{n}d ago",
   loadedThread: (title) => `Loaded: ${title}`,
-  contextCompacted: "Context compacted", compactFailed: "Compact failed",
+  contextCompacted: "Context compacted",
+  contextUsage: "Context",
+  contextUsageUnavailable: "Context usage unavailable",
+  compactFailed: "Compact failed",
   sendFailed: "Failed to send message", initFailed: "Failed to initialize",
   eventStreamError: "Event stream error",
   engineRestarted: "CodeWhale engine restarted",
@@ -296,7 +330,7 @@ const en: Translations = {
   thinkingToggle: "▶ Thinking", thinkingOpen: "▼ Thinking", thinkingClose: "▶ Thinking",
   threadsCountPattern: "{n} threads",
   loadedThreadPattern: "Loaded: {0}",
-  showAllWorkspaces: "Show all workspaces",
+  showAllWorkspaces: "All workspaces",
   filterCurrentWorkspace: "Current workspace only",
   commandMode: "/mode - Switch mode (agent/plan/yolo)",
   commandModel: "/model - Switch model",
@@ -438,6 +472,7 @@ const en: Translations = {
   agentStatusStarting: "Starting",
   agentStatusRunning: "Running",
   agentStatusWaitingForUser: "Waiting for input",
+  agentStatusNeedsAction: "Needs parent action",
   agentStatusModelWait: "Waiting for model",
   agentStatusRunningTool: "Running tool",
   agentStatusCompleted: "Completed",
@@ -446,6 +481,7 @@ const en: Translations = {
   agentStatusInterrupted: "Interrupted",
   agentObjective: "Objective",
   agentModel: "Model",
+  agentProfile: "Profile",
   agentSteps: "Steps",
   agentResult: "Result",
   agentError: "Error",
@@ -455,14 +491,38 @@ const en: Translations = {
   agentSpawned: "Spawned",
   agentDelegating: "Delegating",
   agentFanout: "Fan-out",
+  agentActive: "active",
+  agentInactive: "inactive",
+  agentType: "Type",
+  agentLatestOutput: "Latest output",
+  agentDetails: "Details",
+  stopAgent: "Stop",
+  stopAllAgents: "Stop all agents",
+  stoppingAgent: "Stopping…",
+  agentTranscript: "Transcript",
+  agentEvents: "Events",
+  agentAssignment: "Assignment",
+  agentRunMetadata: "Run metadata",
+  agentReferences: "References",
+  agentNoTranscript: "No transcript content is available",
+  agentNoEvents: "No lifecycle events are available",
+  agentPartialTranscript: "Earlier transcript messages were omitted from this bounded checkpoint",
+  subagent: "Subagent",
+  extensionUi: "Extension UI",
+  showAgentToolCards: "Show raw agent tool cards",
+  showAgentToolCardsDescription: "Display the raw agent tool-call cards in chat. Subagent transcript cards remain visible.",
+  autoWakeMasterForAgents: "Wake master while agents run",
+  autoWakeMasterForAgentsDescription: "Periodically prompt the master agent to inspect and recover active subagents that need attention. Watchdog turns can use model tokens.",
+  agentWakeIntervalSeconds: "Wake interval (seconds)",
+  agentWakeIntervalSecondsDescription: "Time between automatic checks while subagents remain active. Minimum 10 seconds.",
 };
 
 const zhCn: Translations = {
   locale: "zh-cn",
   history: "历史", threads: "线程", sessions: "会话", tasks: "任务", work: "工作",
-  newThread: "+ 新建", compact: "⬒ 压缩", interrupt: "■ 停止",
+  newThread: "新建", compact: "压缩", interrupt: "■ 停止", steer: "引导",
   toggleHistory: "点击切换历史", send: "发送",
-  inputPlaceholder: "向 CodeWhale 提问...",
+  inputPlaceholder: "Ask Harambe...",
   initializing: "初始化中...", ready: "就绪",
   thinking: "思考中...", streaming: "输出中...", processing: "处理中...",
   error: "错误", approvalAwaiting: "⏳ 等待审批...",
@@ -484,7 +544,7 @@ const zhCn: Translations = {
   noActiveWork: "暂无进行中的工作",
   cancel: "取消",
   goal: "目标",
-  checklist: "检查清单",
+  checklist: "待办",
   strategy: "策略",
   cycles: "轮次",
   coherenceHealthy: "健康",
@@ -495,13 +555,17 @@ const zhCn: Translations = {
   completionPct: "已完成 {n}%",
   readyTimedOut: "就绪（流超时）",
   note: "提示",
+  dismissNotification: "关闭通知",
   noPreviousMessage: "没有可编辑的上一条消息",
   justNow: "刚刚",
   minutesAgoPattern: "{n}分钟前",
   hoursAgoPattern: "{n}小时前",
   daysAgoPattern: "{n}天前",
   loadedThread: (title) => `已加载: ${title}`,
-  contextCompacted: "上下文已压缩", compactFailed: "压缩失败",
+  contextCompacted: "上下文已压缩",
+  contextUsage: "上下文",
+  contextUsageUnavailable: "上下文用量不可用",
+  compactFailed: "压缩失败",
   sendFailed: "发送消息失败", initFailed: "初始化失败",
   eventStreamError: "事件流错误",
   engineRestarted: "CodeWhale 引擎已重启",
@@ -511,7 +575,7 @@ const zhCn: Translations = {
   thinkingToggle: "▶ 思考过程", thinkingOpen: "▼ 思考过程", thinkingClose: "▶ 思考过程",
   threadsCountPattern: "{n} 个会话",
   loadedThreadPattern: "已加载: {0}",
-  showAllWorkspaces: "显示所有工作区",
+  showAllWorkspaces: "所有工作区",
   filterCurrentWorkspace: "仅当前工作区",
   commandMode: "/mode - 切换模式 (agent/plan/yolo)",
   commandModel: "/model - 切换模型",
@@ -653,6 +717,7 @@ const zhCn: Translations = {
   agentStatusStarting: "启动中",
   agentStatusRunning: "运行中",
   agentStatusWaitingForUser: "等待输入",
+  agentStatusNeedsAction: "需要主代理处理",
   agentStatusModelWait: "等待模型",
   agentStatusRunningTool: "执行工具中",
   agentStatusCompleted: "已完成",
@@ -661,6 +726,7 @@ const zhCn: Translations = {
   agentStatusInterrupted: "已中断",
   agentObjective: "目标",
   agentModel: "模型",
+  agentProfile: "配置档",
   agentSteps: "步骤",
   agentResult: "结果",
   agentError: "错误",
@@ -670,6 +736,30 @@ const zhCn: Translations = {
   agentSpawned: "已启动",
   agentDelegating: "委派中",
   agentFanout: "扇出",
+  agentActive: "活跃",
+  agentInactive: "非活跃",
+  agentType: "类型",
+  agentLatestOutput: "最新输出",
+  agentDetails: "详情",
+  stopAgent: "停止",
+  stopAllAgents: "停止所有子代理",
+  stoppingAgent: "正在停止…",
+  agentTranscript: "对话记录",
+  agentEvents: "事件",
+  agentAssignment: "任务",
+  agentRunMetadata: "运行信息",
+  agentReferences: "引用",
+  agentNoTranscript: "没有可用的对话记录",
+  agentNoEvents: "没有可用的生命周期事件",
+  agentPartialTranscript: "此检查点为有界记录，较早的消息已省略",
+  subagent: "子代理",
+  extensionUi: "扩展界面",
+  showAgentToolCards: "显示原始子代理工具卡片",
+  showAgentToolCardsDescription: "在聊天中显示原始子代理工具调用卡片。子代理对话卡片仍会保持可见。",
+  autoWakeMasterForAgents: "子代理运行时唤醒主代理",
+  autoWakeMasterForAgentsDescription: "定期提示主代理检查并恢复需要处理的活动子代理。看护提示可能会使用模型令牌。",
+  agentWakeIntervalSeconds: "唤醒间隔（秒）",
+  agentWakeIntervalSecondsDescription: "子代理保持活动时自动检查之间的时间。最少 10 秒。",
 };
 
 const translations: Record<string, Translations> = {
@@ -707,6 +797,7 @@ export function webviewTranslations(tr: Translations) {
     newThread: tr.newThread,
     compact: tr.compact,
     interrupt: tr.interrupt,
+    steer: tr.steer,
     toggleHistory: tr.toggleHistory,
     send: tr.send,
     inputPlaceholder: tr.inputPlaceholder,
@@ -734,6 +825,8 @@ export function webviewTranslations(tr: Translations) {
     thinkingOpen: tr.thinkingOpen,
     thinkingClose: tr.thinkingClose,
     contextCompacted: tr.contextCompacted,
+    contextUsage: tr.contextUsage,
+    contextUsageUnavailable: tr.contextUsageUnavailable,
     compactFailed: tr.compactFailed,
     sendFailed: tr.sendFailed,
     initFailed: tr.initFailed,
@@ -766,6 +859,7 @@ export function webviewTranslations(tr: Translations) {
     completionPct: tr.completionPct,
     readyTimedOut: tr.readyTimedOut,
     note: tr.note,
+    dismissNotification: tr.dismissNotification,
     noPreviousMessage: tr.noPreviousMessage,
     justNow: tr.justNow,
     minutesAgoPattern: tr.minutesAgoPattern,
@@ -909,6 +1003,7 @@ export function webviewTranslations(tr: Translations) {
     agentStatusStarting: tr.agentStatusStarting,
     agentStatusRunning: tr.agentStatusRunning,
     agentStatusWaitingForUser: tr.agentStatusWaitingForUser,
+    agentStatusNeedsAction: tr.agentStatusNeedsAction,
     agentStatusModelWait: tr.agentStatusModelWait,
     agentStatusRunningTool: tr.agentStatusRunningTool,
     agentStatusCompleted: tr.agentStatusCompleted,
@@ -917,6 +1012,7 @@ export function webviewTranslations(tr: Translations) {
     agentStatusInterrupted: tr.agentStatusInterrupted,
     agentObjective: tr.agentObjective,
     agentModel: tr.agentModel,
+    agentProfile: tr.agentProfile,
     agentSteps: tr.agentSteps,
     agentResult: tr.agentResult,
     agentError: tr.agentError,
@@ -926,5 +1022,22 @@ export function webviewTranslations(tr: Translations) {
     agentSpawned: tr.agentSpawned,
     agentDelegating: tr.agentDelegating,
     agentFanout: tr.agentFanout,
+    agentActive: tr.agentActive,
+    agentInactive: tr.agentInactive,
+    agentType: tr.agentType,
+    agentLatestOutput: tr.agentLatestOutput,
+    agentDetails: tr.agentDetails,
+    stopAgent: tr.stopAgent,
+    stopAllAgents: tr.stopAllAgents,
+    stoppingAgent: tr.stoppingAgent,
+    agentTranscript: tr.agentTranscript,
+    agentEvents: tr.agentEvents,
+    agentAssignment: tr.agentAssignment,
+    agentRunMetadata: tr.agentRunMetadata,
+    agentReferences: tr.agentReferences,
+    agentNoTranscript: tr.agentNoTranscript,
+    agentNoEvents: tr.agentNoEvents,
+    agentPartialTranscript: tr.agentPartialTranscript,
+    subagent: tr.subagent,
   };
 }

@@ -26,19 +26,78 @@ export function getSidebarScript(tr: WebviewTranslations): string {
 
   // ── Work state ──
   var workState = { goal: null, checklist: [], checklistCompletionPct: 0, strategy: [], cycleCount: 0, coherenceState: 'healthy', coherenceLabel: '' };
+  var workPopoverOpen = false;
 
   // ── Changes state ──
   var changesState = [];
+  var changesPopoverOpen = false;
 
   // ── Agent runs state ──
   var agentRuns = [];
+  var expandedAgentRunIds = {};
+  var agentRunOrder = {};
+  var nextAgentRunOrder = 0;
+  var agentPopoverOpen = false;
+  var agentRefreshTimer = null;
+  var pendingAgentStopIds = {};
+  var stopAllAgentsPending = false;
+
+  function isAgentActiveStatus(status) {
+    status = String(status || '').toLowerCase();
+    return ['queued', 'starting', 'running', 'in_progress', 'waiting_for_user', 'model_wait', 'running_tool', 'working', 'pending'].indexOf(status) >= 0;
+  }
+
+  function isAgentActive(run) {
+    return !!run && run.runtime_available !== false && run.completed_at_ms == null && isAgentActiveStatus(run.status);
+  }
+
+  function agentRunId(run) {
+    var spec = run && run.spec ? run.spec : {};
+    return spec.run_id || spec.worker_id || '';
+  }
+
+  function agentNickname(run) {
+    var spec = run && run.spec ? run.spec : {};
+    var id = agentRunId(run);
+    return run.nickname || spec.session_name || spec.role || spec.agent_type || (id ? 'Agent ' + id.slice(-8) : 'Agent');
+  }
+
+  function agentLatestOutput(run) {
+    if (!run) return '';
+    if (run.latest_output) return String(run.latest_output);
+    if (isAgentActive(run) && run.latest_message) return String(run.latest_message);
+    return String(run.result_summary || run.persisted_result || run.latest_message || run.error || '');
+  }
+
+  function sortAgentRuns(runs) {
+    var unseen = (runs || []).filter(function(run) {
+      var id = agentRunId(run);
+      return id && agentRunOrder[id] === undefined;
+    }).sort(function(a, b) {
+      var createdDiff = (a.created_at_ms || Number.MAX_SAFE_INTEGER) - (b.created_at_ms || Number.MAX_SAFE_INTEGER);
+      if (createdDiff !== 0) return createdDiff;
+      return agentRunId(a).localeCompare(agentRunId(b));
+    });
+    for (var unseenIdx = 0; unseenIdx < unseen.length; unseenIdx++) {
+      agentRunOrder[agentRunId(unseen[unseenIdx])] = nextAgentRunOrder++;
+    }
+    return (runs || []).slice().sort(function(a, b) {
+      var aOrder = agentRunOrder[agentRunId(a)];
+      var bOrder = agentRunOrder[agentRunId(b)];
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return agentRunId(a).localeCompare(agentRunId(b));
+    });
+  }
 
   // ── Agent status label helper ──
   function agentStatusLabel(status) {
     var map = {
       queued: __i18n.agentStatusQueued,
+      pending: __i18n.agentStatusQueued,
       starting: __i18n.agentStatusStarting,
       running: __i18n.agentStatusRunning,
+      in_progress: __i18n.agentStatusRunning,
+      working: __i18n.agentStatusRunning,
       waiting_for_user: __i18n.agentStatusWaitingForUser,
       model_wait: __i18n.agentStatusModelWait,
       running_tool: __i18n.agentStatusRunningTool,
@@ -48,6 +107,13 @@ export function getSidebarScript(tr: WebviewTranslations): string {
       interrupted: __i18n.agentStatusInterrupted,
     };
     return map[status] || status;
+  }
+
+  function agentStatusLabelForRun(run) {
+    if (run && run.completed_at_ms != null && String(run.status || '').toLowerCase() === 'waiting_for_user') {
+      return __i18n.agentStatusNeedsAction || 'Needs parent action';
+    }
+    return agentStatusLabel(run && run.status);
   }
 
   function agentStatusIcon(status) {
@@ -73,9 +139,12 @@ export function getSidebarScript(tr: WebviewTranslations): string {
 
   function formatAgentTokenUsage(usage) {
     if (!usage) return '';
-    var inp = usage.input_tokens || 0;
-    var out = usage.output_tokens || 0;
-    if (inp === 0 && out === 0) return '';
+    var hasInput = typeof usage.input_tokens === 'number';
+    var hasOutput = typeof usage.output_tokens === 'number';
+    if (!hasInput && !hasOutput) return '';
+    var inp = hasInput ? usage.input_tokens : 0;
+    var out = hasOutput ? usage.output_tokens : 0;
+    if (inp === 0 && out === 0 && usage.status !== 'reported') return '';
     var inpK = inp >= 1000 ? (inp / 1000).toFixed(1) + 'k' : String(inp);
     var outK = out >= 1000 ? (out / 1000).toFixed(1) + 'k' : String(out);
     return inpK + ' / ' + outK;
@@ -194,8 +263,10 @@ export function getSidebarScript(tr: WebviewTranslations): string {
 
     var filterToggle = document.getElementById('workspace-filter-toggle');
     if (filterToggle) {
-      filterToggle.textContent = showAllWorkspaces ? '\\uD83C\\uDF0D' : '\\uD83C\\uDF10';
-      filterToggle.title = showAllWorkspaces ? __i18n.filterCurrentWorkspace : __i18n.showAllWorkspaces;
+      filterToggle.innerHTML = '<span class="codicon ' + (showAllWorkspaces ? 'codicon-save-all' : 'codicon-save') + '" aria-hidden="true"></span>';
+      var scopeLabel = showAllWorkspaces ? __i18n.showAllWorkspaces : __i18n.filterCurrentWorkspace;
+      filterToggle.setAttribute('title', scopeLabel);
+      filterToggle.setAttribute('aria-label', scopeLabel);
       filterToggle.style.opacity = showAllWorkspaces ? '1' : '0.5';
     }
 
@@ -210,9 +281,9 @@ export function getSidebarScript(tr: WebviewTranslations): string {
 
     if (count === 0) {
       var el = document.createElement('div');
-      el.className = 'work-empty';
+      el.className = 'work-empty session-empty-msg';
       var msg = sessionSearchQuery ? __i18n.noSearchResults : __i18n.noConversations;
-      el.innerHTML = '<div class="work-empty-icon">\\uD83D\\uDCCB</div><div class="work-empty-text">' + __wvEscapeHtml(msg) + '</div>';
+      el.innerHTML = '<div class="work-empty-icon">\\uD83D\\uDDE8</div><div class="work-empty-text">' + __wvEscapeHtml(msg) + '</div>';
       container.appendChild(el);
       return;
     }
@@ -220,7 +291,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     for (var i = 0; i < sessions.length; i++) {
       var s = sessions[i];
       var el = document.createElement('div');
-      el.className = 'thread-item' + (s.id === activeSessionId ? ' active' : '');
+      el.className = 'thread-item session-item' + (s.id === activeSessionId ? ' active' : '');
 
       var titleEl = document.createElement('div');
       titleEl.className = 'thread-title';
@@ -281,7 +352,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
       // Delete button
       var deleteBtn = document.createElement('button');
       deleteBtn.className = 'session-delete-btn';
-      deleteBtn.textContent = '\\u2715';
+      deleteBtn.innerHTML = '<span class="codicon codicon-trash" aria-hidden="true"></span>';
       deleteBtn.title = __i18n.deleteSession;
       (function(sessionId, sessionTitle) {
         deleteBtn.addEventListener('click', function(e) {
@@ -468,6 +539,295 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     }
   }
 
+  // ── Floating Agent Inspector ──
+  function stopAgentRefreshTimer() {
+    if (agentRefreshTimer) {
+      clearInterval(agentRefreshTimer);
+      agentRefreshTimer = null;
+    }
+  }
+
+  function startAgentRefreshTimer() {
+    stopAgentRefreshTimer();
+    agentRefreshTimer = setInterval(function() {
+      if (agentPopoverOpen) vscode.postMessage({ type: 'refreshAgentRuns' });
+    }, 1000);
+  }
+
+  function setAgentPopoverOpen(open) {
+    var button = document.getElementById('btn-agents');
+    var popover = document.getElementById('agent-popover');
+    agentPopoverOpen = !!open && agentRuns.length > 0;
+    if (agentPopoverOpen) {
+      setWorkPopoverOpen(false);
+      setChangesPopoverOpen(false);
+    }
+    if (button) button.setAttribute('aria-expanded', agentPopoverOpen ? 'true' : 'false');
+    if (popover) {
+      popover.classList.toggle('open', agentPopoverOpen);
+      popover.setAttribute('aria-hidden', agentPopoverOpen ? 'false' : 'true');
+    }
+    if (agentPopoverOpen) {
+      renderAgentPopover();
+      vscode.postMessage({ type: 'refreshAgentRuns' });
+      startAgentRefreshTimer();
+    } else {
+      stopAgentRefreshTimer();
+    }
+  }
+
+  function toggleAgentPopover() {
+    if (agentRuns.length === 0) return;
+    setAgentPopoverOpen(!agentPopoverOpen);
+  }
+
+  // ── Floating Work Checklist ──
+  function checklistItems() {
+    return workState && Array.isArray(workState.checklist) ? workState.checklist : [];
+  }
+
+  function pendingChecklistCount() {
+    return checklistItems().filter(function(item) {
+      return String(item && item.status || '').toLowerCase() !== 'completed';
+    }).length;
+  }
+
+  function setWorkPopoverOpen(open) {
+    var items = checklistItems();
+    var button = document.getElementById('btn-work-popover');
+    var popover = document.getElementById('work-popover');
+    workPopoverOpen = !!open && items.length > 0;
+    if (workPopoverOpen) {
+      setAgentPopoverOpen(false);
+      setChangesPopoverOpen(false);
+    }
+    if (button) button.setAttribute('aria-expanded', workPopoverOpen ? 'true' : 'false');
+    if (popover) {
+      popover.classList.toggle('open', workPopoverOpen);
+      popover.setAttribute('aria-hidden', workPopoverOpen ? 'false' : 'true');
+    }
+    if (workPopoverOpen) renderWorkPopover();
+  }
+
+  function toggleWorkPopover() {
+    if (checklistItems().length === 0) return;
+    setWorkPopoverOpen(!workPopoverOpen);
+  }
+
+  // ── Floating File Changes ──
+  function setChangesPopoverOpen(open) {
+    var count = Array.isArray(changesState) ? changesState.length : 0;
+    var button = document.getElementById('btn-changes');
+    var popover = document.getElementById('changes-popover');
+    changesPopoverOpen = !!open && count > 0;
+    if (changesPopoverOpen) {
+      setWorkPopoverOpen(false);
+      setAgentPopoverOpen(false);
+    }
+    if (button) button.setAttribute('aria-expanded', changesPopoverOpen ? 'true' : 'false');
+    if (popover) {
+      popover.classList.toggle('open', changesPopoverOpen);
+      popover.setAttribute('aria-hidden', changesPopoverOpen ? 'false' : 'true');
+    }
+    if (changesPopoverOpen) renderChanges();
+  }
+
+  function toggleChangesPopover() {
+    if (!Array.isArray(changesState) || changesState.length === 0) return;
+    setChangesPopoverOpen(!changesPopoverOpen);
+  }
+
+  function renderWorkPopover() {
+    var items = checklistItems();
+    var pending = pendingChecklistCount();
+    var button = document.getElementById('btn-work-popover');
+    var badge = document.getElementById('work-pending-badge');
+    var list = document.getElementById('work-popover-list');
+
+    if (button) {
+      button.disabled = items.length === 0;
+      button.classList.toggle('has-pending', pending > 0);
+      button.setAttribute('aria-label', __i18n.checklist + (pending > 0 ? ' (' + pending + ')' : ''));
+      button.setAttribute('title', __i18n.checklist + (pending > 0 ? ' (' + pending + ')' : ''));
+      if (items.length === 0) button.setAttribute('aria-expanded', 'false');
+    }
+    if (badge) badge.textContent = pending > 99 ? '99+' : String(pending);
+    if (items.length === 0 && workPopoverOpen) setWorkPopoverOpen(false);
+    if (!list) return;
+
+    list.innerHTML = '';
+    // Preserve the exact ordering supplied by the Work checklist state.
+    for (var index = 0; index < items.length; index++) {
+      var item = items[index] || {};
+      var status = String(item.status || '').toLowerCase();
+      var completed = status === 'completed';
+      var inProgress = status === 'in_progress';
+      var row = document.createElement('div');
+      row.className = 'work-popover-item' + (completed ? ' completed' : '') + (inProgress ? ' in-progress' : '');
+      row.innerHTML = '<span class="work-popover-item-icon" aria-hidden="true"><span class="codicon ' +
+        (completed ? 'codicon-check' : inProgress ? 'codicon-broadcast' : 'codicon-circle') + '"></span></span>' +
+        '<span class="work-popover-item-text">' + __wvEscapeHtml(item.content || '') + '</span>';
+      list.appendChild(row);
+    }
+  }
+
+  function hasPendingAgentStops() {
+    return Object.keys(pendingAgentStopIds).length > 0;
+  }
+
+  function activeAgentRuns() {
+    return agentRuns.filter(function(run) {
+      return !!agentRunId(run) && isAgentActive(run);
+    });
+  }
+
+  function canStopAgents() {
+    return !!(window.__wvApiCapabilities && window.__wvApiCapabilities.stopAgents);
+  }
+
+  function renderStopAllAgentsButton() {
+    var button = document.getElementById('btn-stop-agents');
+    if (!button) return;
+    var pending = stopAllAgentsPending || hasPendingAgentStops();
+    button.disabled = !canStopAgents() || activeAgentRuns().length === 0 || pending;
+    button.classList.toggle('pending', pending);
+    button.setAttribute('aria-busy', pending ? 'true' : 'false');
+    button.innerHTML = '<span class="codicon codicon-debug-stop" aria-hidden="true"></span>' +
+      __wvEscapeHtml(pending ? __i18n.stoppingAgent : __i18n.stopAllAgents);
+  }
+
+  function requestStopAgent(runId) {
+    if (!canStopAgents() || !runId || pendingAgentStopIds[runId]) return;
+    var run = agentRuns.find(function(candidate) { return agentRunId(candidate) === runId; });
+    if (!run || !isAgentActive(run)) return;
+    pendingAgentStopIds[runId] = true;
+    renderAgentPopover();
+    renderStopAllAgentsButton();
+    vscode.postMessage({ type: 'stopAgent', runId: runId });
+  }
+
+  function requestStopAllAgents() {
+    var active = activeAgentRuns();
+    if (!canStopAgents() || active.length === 0 || stopAllAgentsPending || hasPendingAgentStops()) return;
+    stopAllAgentsPending = true;
+    for (var index = 0; index < active.length; index++) {
+      pendingAgentStopIds[agentRunId(active[index])] = true;
+    }
+    renderAgentPopover();
+    renderStopAllAgentsButton();
+    vscode.postMessage({ type: 'stopAllAgents' });
+  }
+
+  function finishAgentStop(runIds) {
+    if (Array.isArray(runIds) && runIds.length > 0) {
+      for (var index = 0; index < runIds.length; index++) delete pendingAgentStopIds[runIds[index]];
+    } else if (typeof runIds === 'string' && runIds) {
+      delete pendingAgentStopIds[runIds];
+    } else {
+      pendingAgentStopIds = {};
+    }
+    if (!runIds || !hasPendingAgentStops()) stopAllAgentsPending = false;
+    renderAgentPopover();
+    renderStopAllAgentsButton();
+  }
+
+  function applyAgentStopCapabilities() {
+    renderAgentPopover();
+    renderStopAllAgentsButton();
+  }
+
+  function reconcilePendingAgentStops(runs) {
+    var byId = {};
+    for (var index = 0; index < runs.length; index++) {
+      var id = agentRunId(runs[index]);
+      if (id) byId[id] = runs[index];
+    }
+    Object.keys(pendingAgentStopIds).forEach(function(id) {
+      if (!byId[id] || !isAgentActive(byId[id])) delete pendingAgentStopIds[id];
+    });
+    if (!hasPendingAgentStops()) stopAllAgentsPending = false;
+  }
+
+  function renderAgentPopover() {
+    var button = document.getElementById('btn-agents');
+    var badge = document.getElementById('agent-count-badge');
+    var countEl = document.getElementById('agent-popover-count');
+    var list = document.getElementById('agent-popover-list');
+    var count = agentRuns.length;
+    var activeCount = activeAgentRuns().length;
+
+    if (button) {
+      button.disabled = count === 0;
+      if (count === 0) button.setAttribute('aria-expanded', 'false');
+      button.classList.toggle('has-agents', activeCount > 0);
+      button.setAttribute('aria-label', __i18n.agents + (activeCount > 0 ? ' (' + activeCount + ' active)' : ''));
+    }
+    if (badge) badge.textContent = activeCount === 0 ? '' : (activeCount > 99 ? '99+' : String(activeCount));
+    if (countEl) countEl.textContent = String(count);
+    if (!list) return;
+
+    list.innerHTML = '';
+    if (count === 0) {
+      var empty = document.createElement('div');
+      empty.className = 'agent-popover-empty';
+      empty.textContent = __i18n.noAgentRuns;
+      list.appendChild(empty);
+      return;
+    }
+
+    var sorted = sortAgentRuns(agentRuns);
+    for (var index = 0; index < sorted.length; index++) {
+      var run = sorted[index];
+      var spec = run.spec || {};
+      var runId = agentRunId(run);
+      var expanded = !!expandedAgentRunIds[runId];
+      var active = isAgentActive(run);
+      var stopPending = !!pendingAgentStopIds[runId];
+      var latestOutput = agentLatestOutput(run);
+      if (latestOutput.length > 1600) latestOutput = latestOutput.slice(0, 1600) + '\\u2026';
+      var item = document.createElement('div');
+      item.className = 'agent-popover-item';
+      item.setAttribute('data-run-id', runId);
+      var html = '<button type="button" class="agent-popover-toggle" data-run-id="' + __wvEscapeHtml(runId) + '" aria-expanded="' + (expanded ? 'true' : 'false') + '">';
+      html += '<span class="agent-popover-arrow">' + (expanded ? '\\u25BC' : '\\u25B6') + '</span>';
+      html += '<span class="agent-popover-name">' + __wvEscapeHtml(agentNickname(run)) + '</span>';
+      html += '<span class="agent-popover-activity ' + (active ? 'active' : '') + '">(' + __wvEscapeHtml(active ? __i18n.agentActive : __i18n.agentInactive) + ')</span>';
+      html += '</button>';
+      if (expanded) {
+        html += '<div class="agent-popover-body">';
+        html += '<div class="agent-popover-field"><span class="agent-popover-field-label">Status</span><span class="agent-popover-field-value" style="color:' + agentStatusColor(run.status) + '">' + __wvEscapeHtml(agentStatusLabelForRun(run)) + '</span></div>';
+        html += '<div class="agent-popover-field"><span class="agent-popover-field-label">' + __wvEscapeHtml(__i18n.agentType) + '</span><span class="agent-popover-field-value">' + __wvEscapeHtml(spec.agent_type || '-') + '</span></div>';
+        html += '<div class="agent-popover-field"><span class="agent-popover-field-label">' + __wvEscapeHtml(__i18n.agentProfile) + '</span><span class="agent-popover-field-value">' + __wvEscapeHtml(spec.profile || '-') + '</span></div>';
+        html += '<div class="agent-popover-field"><span class="agent-popover-field-label">' + __wvEscapeHtml(__i18n.agentModel) + '</span><span class="agent-popover-field-value">' + __wvEscapeHtml(spec.model || '-') + '</span></div>';
+        html += '<div class="agent-popover-field"><span class="agent-popover-field-label">Session</span><span class="agent-popover-field-value">' + __wvEscapeHtml(spec.session_name || '-') + '</span></div>';
+        html += '<div class="agent-popover-output"><div class="agent-popover-output-label">' + __wvEscapeHtml(__i18n.agentLatestOutput) + '</div>' + __wvEscapeHtml(latestOutput || '-') + '</div>';
+        html += '<div class="agent-popover-actions">';
+        if (active && canStopAgents()) {
+          html += '<button type="button" class="agent-popover-stop' + (stopPending ? ' pending' : '') + '" data-run-id="' + __wvEscapeHtml(runId) + '"' + (stopPending ? ' disabled aria-busy="true"' : '') + '><span class="codicon codicon-debug-stop" aria-hidden="true"></span>' + __wvEscapeHtml(stopPending ? __i18n.stoppingAgent : __i18n.stopAgent) + '</button>';
+        }
+        html += '<button type="button" class="agent-popover-details" data-run-id="' + __wvEscapeHtml(runId) + '">' + __wvEscapeHtml(__i18n.agentDetails) + '</button>';
+        html += '</div>';
+        html += '</div>';
+      }
+      item.innerHTML = html;
+      list.appendChild(item);
+    }
+  }
+
+  function updateAgentRuns(runs) {
+    agentRuns = Array.isArray(runs) ? runs : [];
+    reconcilePendingAgentStops(agentRuns);
+    if (agentRuns.length === 0) {
+      agentRunOrder = {};
+      nextAgentRunOrder = 0;
+      expandedAgentRunIds = {};
+    }
+    if (agentRuns.length === 0 && agentPopoverOpen) setAgentPopoverOpen(false);
+    renderAgents(agentRuns);
+    renderAgentPopover();
+    renderStopAllAgentsButton();
+  }
+
   // ── Render Agent Runs ──
   function renderAgents(runs) {
     var container = document.getElementById('tab-agents');
@@ -476,26 +836,21 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     if (!runs || runs.length === 0) {
       var el = document.createElement('div');
       el.className = 'work-empty';
-      el.innerHTML = '<div class="work-empty-icon">\\uD83E\\uDD16</div><div class="work-empty-text">' + __wvEscapeHtml(__i18n.noAgentRuns) + '</div>';
+      el.innerHTML = '<div class="work-empty-icon"><span class="codicon codicon-robot" aria-hidden="true"></span></div><div class="work-empty-text">' + __wvEscapeHtml(__i18n.noAgentRuns) + '</div>';
       container.appendChild(el);
       return;
     }
-    // Sort: running first, then by updated_at desc
-    var sorted = runs.slice().sort(function(a, b) {
-      var aActive = (a.status === 'running' || a.status === 'starting' || a.status === 'running_tool' || a.status === 'model_wait' || a.status === 'queued' || a.status === 'waiting_for_user') ? 0 : 1;
-      var bActive = (b.status === 'running' || b.status === 'starting' || b.status === 'running_tool' || b.status === 'model_wait' || b.status === 'queued' || b.status === 'waiting_for_user') ? 0 : 1;
-      if (aActive !== bActive) return aActive - bActive;
-      return (b.updated_at_ms || 0) - (a.updated_at_ms || 0);
-    });
+    // Keep one stable spawn-order slot per agent for this conversation.
+    var sorted = sortAgentRuns(runs);
     for (var i = 0; i < sorted.length; i++) {
       var r = sorted[i];
       var spec = r.spec || {};
       var card = document.createElement('div');
-      card.className = 'agent-card' + (r.status === 'running' || r.status === 'starting' || r.status === 'running_tool' || r.status === 'model_wait' ? ' agent-active' : '');
+      card.className = 'agent-card' + (isAgentActive(r) ? ' agent-active' : '');
       var icon = agentStatusIcon(r.status);
       var color = agentStatusColor(r.status);
-      var statusLabel = agentStatusLabel(r.status);
-      var objective = (spec.objective || r.spec.run_id || '').slice(0, 60);
+      var statusLabel = agentStatusLabelForRun(r);
+      var objective = agentNickname(r).slice(0, 60);
       var role = spec.role || '';
       var model = spec.model || '';
       var steps = r.steps_taken || 0;
@@ -531,7 +886,8 @@ export function getSidebarScript(tr: WebviewTranslations): string {
         html += '<div class="agent-artifacts">';
         for (var ai = 0; ai < r.artifacts.length && ai < 3; ai++) {
           var art = r.artifacts[ai];
-          var artPath = (art.path || '').split('/').pop() || art.path || '';
+          var artLabel = art.name || art.path || art.kind || '';
+          var artPath = String(artLabel).split('/').pop() || artLabel;
           html += '<span class="agent-artifact-chip">' + __wvEscapeHtml(artPath) + '</span>';
         }
         if (r.artifacts.length > 3) {
@@ -639,7 +995,21 @@ export function getSidebarScript(tr: WebviewTranslations): string {
 
   // ── Render Changes ──
   function renderChanges() {
-    var container = document.getElementById('tab-changes');
+    var count = Array.isArray(changesState) ? changesState.length : 0;
+    var button = document.getElementById('btn-changes');
+    var badge = document.getElementById('changes-count-badge');
+    var countEl = document.getElementById('changes-popover-count');
+    var container = document.getElementById('changes-popover-list');
+    if (button) {
+      button.disabled = count === 0;
+      button.classList.toggle('has-changes', count > 0);
+      button.setAttribute('aria-label', __i18n.changes + (count > 0 ? ' (' + count + ')' : ''));
+      button.setAttribute('title', __i18n.changes + (count > 0 ? ' (' + count + ')' : ''));
+      if (count === 0) button.setAttribute('aria-expanded', 'false');
+    }
+    if (badge) badge.textContent = count === 0 ? '' : (count > 99 ? '99+' : String(count));
+    if (countEl) countEl.textContent = String(count);
+    if (count === 0 && changesPopoverOpen) setChangesPopoverOpen(false);
     if (!container) return;
     container.innerHTML = '';
     // NOTE: Do NOT clear _diffStore or reset _diffIdCounter here.
@@ -647,10 +1017,10 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     // their diff keys (especially during real-time inference where
     // fileChangeDetected is sent before refreshWorkPanel).
     // The store is cleared on loadHistory/clearChat instead.
-    if (!changesState || changesState.length === 0) {
+    if (count === 0) {
       var el = document.createElement('div');
       el.className = 'work-empty';
-      el.innerHTML = '<div class="work-empty-icon">\\uD83D\\uDCC4</div><div class="work-empty-text">' + __wvEscapeHtml(__i18n.noFileChanges) + '</div>';
+      el.innerHTML = '<div class="work-empty-icon">\\u26F6</div><div class="work-empty-text">' + __wvEscapeHtml(__i18n.noFileChanges) + '</div>';
       container.appendChild(el);
       return;
     }
@@ -673,7 +1043,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     if (totalAdded > 0 || totalRemoved > 0) {
       summaryParts.push('<span class="change-summary-item change-summary-lines"><span class="change-added">+' + totalAdded + '</span> <span class="change-removed">-' + totalRemoved + '</span></span>');
     }
-    header.innerHTML = '<div class="work-section-title"><span class="work-section-title-icon">\\uD83D\\uDCC1</span>' + __wvEscapeHtml(__i18n.fileChanges) + ' <span class="work-section-subtitle">(' + changesState.length + ')</span></div><div class="change-summary-row">' + summaryParts.join(' ') + '</div>';
+    header.innerHTML = '<div class="change-summary-row">' + summaryParts.join(' ') + '</div>';
     container.appendChild(header);
 
     // File list
@@ -907,141 +1277,261 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     }
   }
 
+  function compactJson(value, maxLength) {
+    try {
+      var text = JSON.stringify(value, null, 2);
+      if (maxLength && text.length > maxLength) return text.slice(0, maxLength) + '\\u2026';
+      return text;
+    } catch(e) {
+      return String(value || '');
+    }
+  }
+
+  function transcriptContentText(content) {
+    if (typeof content === 'string') return content.trim();
+    if (!Array.isArray(content)) return '';
+    var parts = [];
+    for (var ci = 0; ci < content.length; ci++) {
+      var block = content[ci];
+      if (typeof block === 'string') {
+        if (block.trim()) parts.push(block.trim());
+        continue;
+      }
+      if (!block || typeof block !== 'object') continue;
+      if (block.type === 'text' && block.text) {
+        parts.push(String(block.text));
+      } else if (block.type === 'tool_use') {
+        var toolLine = 'Tool: ' + String(block.name || 'unknown');
+        if (hasOwnData(block.input)) toolLine += '\\n' + compactJson(block.input, 900);
+        parts.push(toolLine);
+      } else if (block.type === 'tool_result') {
+        var resultText = transcriptContentText(block.content);
+        if (!resultText && block.content != null) resultText = compactJson(block.content, 1200);
+        parts.push('Tool result' + (resultText ? ':\\n' + resultText : ''));
+      } else if (block.message || block.summary || block.text) {
+        parts.push(String(block.message || block.summary || block.text));
+      }
+    }
+    return parts.join('\\n\\n').trim();
+  }
+
+  function normalizeAgentTranscript(run) {
+    var raw = run ? run.transcript : null;
+    var messages = [];
+    var omitted = 0;
+    var messageCount = 0;
+    if (raw && !Array.isArray(raw) && typeof raw === 'object') {
+      messages = Array.isArray(raw.messages) ? raw.messages : [];
+      omitted = Number(raw.omitted_messages || 0);
+      messageCount = Number(raw.message_count || messages.length);
+    } else if (Array.isArray(raw)) {
+      messages = raw;
+      messageCount = raw.length;
+    } else if (Array.isArray(run.transcript_messages)) {
+      messages = run.transcript_messages;
+      messageCount = messages.length;
+    } else if (Array.isArray(run.messages)) {
+      messages = run.messages;
+      messageCount = messages.length;
+    }
+
+    var entries = [];
+    for (var mi = 0; mi < messages.length; mi++) {
+      var message = messages[mi];
+      if (typeof message === 'string') {
+        if (message.trim()) entries.push({ role: 'message', text: message.trim() });
+        continue;
+      }
+      if (!message || typeof message !== 'object') continue;
+      var text = transcriptContentText(message.content);
+      if (!text && (message.text || message.message || message.summary)) {
+        text = String(message.text || message.message || message.summary);
+      }
+      if (!text) continue;
+      entries.push({ role: String(message.role || message.type || message.kind || 'message'), text: text });
+    }
+
+    if (entries.length === 0) {
+      if (run.latest_message) entries.push({ role: 'activity', text: String(run.latest_message) });
+      if (run.result_summary || run.persisted_result) entries.push({ role: 'result', text: String(run.result_summary || run.persisted_result) });
+      if (run.error) entries.push({ role: 'error', text: String(run.error) });
+      messageCount = entries.length;
+    }
+    return { entries: entries, omitted: omitted, messageCount: messageCount || entries.length };
+  }
+
+  function normalizedAgentEvent(event, index) {
+    var ev = event && typeof event === 'object' ? event : {};
+    var status = String(ev.status || ev.kind || ev.type || 'event');
+    var message = ev.message || ev.summary || ev.detail || '';
+    if (!message) {
+      var extra = {};
+      var keys = Object.keys(ev);
+      for (var ki = 0; ki < keys.length; ki++) {
+        var key = keys[ki];
+        if (['seq', 'worker_id', 'status', 'kind', 'type', 'timestamp_ms', 'timestamp', 'created_at', 'step', 'tool_name'].indexOf(key) < 0) {
+          extra[key] = ev[key];
+        }
+      }
+      if (Object.keys(extra).length > 0) message = compactJson(extra, 1200);
+    }
+    if (!message) message = agentStatusLabel(status) || ('Event ' + (index + 1));
+    return {
+      seq: ev.seq != null ? ev.seq : index + 1,
+      timestamp: ev.timestamp_ms || ev.timestamp || ev.created_at || null,
+      status: status,
+      message: String(message),
+      step: ev.step,
+      tool: ev.tool_name || ev.tool || '',
+    };
+  }
+
+  function renderAgentDetailGroup(className, title, countLabel, body) {
+    var html = '<details class="agent-detail-group ' + className + '">';
+    html += '<summary><span>' + __wvEscapeHtml(title) + '</span>';
+    if (countLabel !== '') html += '<span class="agent-detail-group-count">' + __wvEscapeHtml(String(countLabel)) + '</span>';
+    html += '</summary><div class="agent-detail-group-body">' + body + '</div></details>';
+    return html;
+  }
+
   function showAgentDetail(run) {
     var overlay = document.getElementById('agent-detail-overlay');
     if (!overlay) return;
     var spec = run.spec || {};
-    var statusIcon = agentStatusIcon(run.status);
     var statusColor = agentStatusColor(run.status);
-    var statusLabel = agentStatusLabel(run.status);
-    var objective = spec.objective || '';
-    var role = spec.role || '';
-    var model = spec.model || '';
+    var statusLabel = agentStatusLabelForRun(run);
+    var nickname = agentNickname(run);
+    var objective = String(spec.objective || '');
+    var role = String(spec.role || '');
+    var agentType = String(spec.agent_type || '-');
+    var profile = String(spec.profile || '-');
+    var model = String(spec.model || '-');
     var steps = run.steps_taken || 0;
     var tokenUsage = formatAgentTokenUsage(run.usage);
-    var runId = spec.run_id || spec.worker_id || '';
+    var runId = agentRunId(run);
     var parentId = run.parent_run_id || '';
-    var createdAt = run.created_at_ms ? new Date(run.created_at_ms).toLocaleString() : '-';
-    var updatedAt = run.updated_at_ms ? new Date(run.updated_at_ms).toLocaleString() : '-';
-    var startedAt = run.started_at_ms ? new Date(run.started_at_ms).toLocaleString() : '-';
-    var completedAt = run.completed_at_ms ? new Date(run.completed_at_ms).toLocaleString() : '-';
+    var createdAt = formatDetailTime(run.created_at_ms);
+    var updatedAt = formatDetailTime(run.updated_at_ms);
+    var startedAt = formatDetailTime(run.started_at_ms);
+    var completedAt = formatDetailTime(run.completed_at_ms);
     var events = Array.isArray(run.events) ? run.events : [];
+    var transcript = normalizeAgentTranscript(run);
+    var latestOutput = agentLatestOutput(run);
+    var html = '<div class="task-detail-panel agent-detail-panel">';
+    html += '<div class="agent-detail-header"><button class="close-btn" type="button">\\u2715</button>';
+    html += '<h3><span class="codicon codicon-robot" aria-hidden="true"></span> ' + __wvEscapeHtml(nickname) + '</h3>';
+    var subtitle = [agentType, profile === '-' ? '' : profile, model].filter(Boolean).join(' \\u00B7 ');
+    html += '<div class="agent-detail-subtitle">' + __wvEscapeHtml(subtitle) + '</div></div>';
+    html += '<div class="agent-detail-content">';
 
-    var html = '<div class="task-detail-panel">';
-    html += '<button class="close-btn" type="button">\\u2715</button>';
-    html += '<h3>' + statusIcon + ' ' + __wvEscapeHtml(__i18n.agents) + '</h3>';
-
-    // Status
-    html += '<div class="detail-section"><div class="detail-label">Status</div>';
-    html += '<div class="detail-value" style="color:' + statusColor + '">' + __wvEscapeHtml(statusLabel) + '</div></div>';
-
-    // Run ID
-    if (runId) {
-      html += '<div class="detail-section"><div class="detail-label">Run ID</div>';
-      html += '<div class="detail-value" style="font-family:monospace;font-size:0.85em">' + __wvEscapeHtml(runId) + '</div></div>';
-    }
-
-    // Objective
-    if (objective) {
-      html += '<div class="detail-section"><div class="detail-label">' + __wvEscapeHtml(__i18n.agentObjective) + '</div>';
-      html += '<div class="detail-value">' + __wvEscapeHtml(objective) + '</div></div>';
-    }
-
-    // Role & Model
-    if (role || model) {
-      html += '<div class="detail-section"><div class="detail-label">' + __wvEscapeHtml(__i18n.agentRole) + ' / ' + __wvEscapeHtml(__i18n.agentModel) + '</div>';
-      html += '<div class="detail-value">';
-      if (role) html += __wvEscapeHtml(role);
-      if (role && model) html += ' \\u00B7 ';
-      if (model) html += __wvEscapeHtml(model);
-      html += '</div></div>';
-    }
-
-    // Steps & tokens
-    html += '<div class="detail-section"><div class="detail-label">' + __wvEscapeHtml(__i18n.agentSteps) + ' / ' + __wvEscapeHtml(__i18n.agentUsage) + '</div>';
-    html += '<div class="detail-value">' + steps;
-    if (tokenUsage) html += ' \\u00B7 ' + __wvEscapeHtml(tokenUsage);
-    html += '</div></div>';
-
-    // Parent run
-    if (parentId) {
-      html += '<div class="detail-section"><div class="detail-label">Parent Run</div>';
-      html += '<div class="detail-value" style="font-family:monospace;font-size:0.85em">' + __wvEscapeHtml(parentId) + '</div></div>';
-    }
-
-    // Timestamps
-    html += '<div class="detail-section"><div class="detail-label">Created</div>';
-    html += '<div class="detail-value">' + __wvEscapeHtml(createdAt) + '</div></div>';
-    html += '<div class="detail-section"><div class="detail-label">Started</div>';
-    html += '<div class="detail-value">' + __wvEscapeHtml(startedAt) + '</div></div>';
-    html += '<div class="detail-section"><div class="detail-label">Updated</div>';
-    html += '<div class="detail-value">' + __wvEscapeHtml(updatedAt) + '</div></div>';
-    html += '<div class="detail-section"><div class="detail-label">Completed</div>';
-    html += '<div class="detail-value">' + __wvEscapeHtml(completedAt) + '</div></div>';
-
-    if (run.latest_message) {
-      html += '<div class="detail-section"><div class="detail-label">Latest Activity</div>';
-      html += '<div class="detail-value">' + __wvEscapeHtml(run.latest_message) + '</div></div>';
-    }
-
-    // Result
-    if (run.result_summary) {
-      html += '<div class="detail-section"><div class="detail-label">' + __wvEscapeHtml(__i18n.agentResult) + '</div>';
-      html += '<div class="detail-value result">' + __wvEscapeHtml(run.result_summary) + '</div></div>';
-    }
-
-    // Error
-    if (run.error) {
-      html += '<div class="detail-section"><div class="detail-label">' + __wvEscapeHtml(__i18n.agentError) + '</div>';
-      html += '<div class="detail-value error">' + __wvEscapeHtml(run.error) + '</div></div>';
-    }
-
-    // Artifacts
-    if (run.artifacts && run.artifacts.length > 0) {
-      html += '<div class="detail-section"><div class="detail-label">' + __wvEscapeHtml(__i18n.agentArtifacts) + ' (' + run.artifacts.length + ')</div>';
-      for (var ai = 0; ai < run.artifacts.length; ai++) {
-        var art = run.artifacts[ai];
-        var artPath = art.path || '';
-        var artKind = art.kind || '';
-        html += '<div class="tool-call-item">\\u00B7 ' + __wvEscapeHtml(artPath);
-        if (artKind) html += ' <span style="color:var(--muted)">(' + __wvEscapeHtml(artKind) + ')</span>';
-        html += '</div>';
-      }
-      html += '</div>';
-    }
-
-    if (events.length > 0) {
-      html += '<div class="detail-section"><div class="detail-label">Events</div>';
-      for (var ei = 0; ei < events.length; ei++) {
-        var ev = events[ei];
-        html += '<div class="timeline-item">[' + __wvEscapeHtml(formatDetailTime(ev.timestamp_ms)) + '] ' + __wvEscapeHtml(timelineKindLabel(ev.kind)) + ': ' + __wvEscapeHtml(ev.summary || '') + '</div>';
-      }
-      html += '</div>';
-    }
-
-    if (hasOwnData(run.follow_up)) {
-      html += '<div class="detail-section"><div class="detail-label">Follow Up</div><div class="detail-value">' + renderJsonBlock(run.follow_up) + '</div></div>';
-    }
-
-    if (hasOwnData(run.recommended_action)) {
-      html += '<div class="detail-section"><div class="detail-label">Recommended Action</div><div class="detail-value">' + renderJsonBlock(run.recommended_action) + '</div></div>';
-    }
-
-    if (hasOwnData(run.verification)) {
-      html += '<div class="detail-section"><div class="detail-label">Verification</div><div class="detail-value">' + renderJsonBlock(run.verification) + '</div></div>';
-    }
-
+    html += '<div class="agent-overview-grid">';
+    html += '<div class="agent-overview-card"><div class="agent-overview-label">Status</div><div class="agent-overview-value" style="color:' + statusColor + '">' + __wvEscapeHtml(statusLabel) + '</div></div>';
+    html += '<div class="agent-overview-card"><div class="agent-overview-label">' + __wvEscapeHtml(__i18n.agentType) + '</div><div class="agent-overview-value">' + __wvEscapeHtml(agentType) + '</div></div>';
+    html += '<div class="agent-overview-card"><div class="agent-overview-label">' + __wvEscapeHtml(__i18n.agentProfile) + '</div><div class="agent-overview-value">' + __wvEscapeHtml(profile) + '</div></div>';
+    html += '<div class="agent-overview-card"><div class="agent-overview-label">' + __wvEscapeHtml(__i18n.agentModel) + '</div><div class="agent-overview-value">' + __wvEscapeHtml(model) + '</div></div>';
+    html += '<div class="agent-overview-card"><div class="agent-overview-label">' + __wvEscapeHtml(__i18n.agentRole) + '</div><div class="agent-overview-value">' + __wvEscapeHtml(role || '-') + '</div></div>';
+    html += '<div class="agent-overview-card"><div class="agent-overview-label">' + __wvEscapeHtml(__i18n.agentSteps) + '</div><div class="agent-overview-value">' + steps + '</div></div>';
+    html += '<div class="agent-overview-card"><div class="agent-overview-label">' + __wvEscapeHtml(__i18n.agentUsage) + '</div><div class="agent-overview-value">' + __wvEscapeHtml(tokenUsage || '-') + '</div></div>';
     html += '</div>';
+
+    if (latestOutput) {
+      html += '<div class="agent-latest-card"><div class="agent-overview-label">' + __wvEscapeHtml(__i18n.agentLatestOutput) + '</div><div class="agent-latest-text">' + __wvEscapeHtml(latestOutput) + '</div></div>';
+    }
+
+    if (objective) {
+      var assignmentBody = '<div class="agent-transcript-text">' + __wvEscapeHtml(objective) + '</div>';
+      html += renderAgentDetailGroup('agent-assignment-group', __i18n.agentAssignment, '', assignmentBody);
+    }
+
+    var transcriptBody = '';
+    if (transcript.omitted > 0) {
+      transcriptBody += '<div class="agent-detail-note">' + __wvEscapeHtml(__i18n.agentPartialTranscript) + ' (' + transcript.omitted + ')</div>';
+    }
+    if (transcript.entries.length > 0) {
+      transcriptBody += '<div class="agent-transcript-list">';
+      for (var ti = 0; ti < transcript.entries.length; ti++) {
+        var entry = transcript.entries[ti];
+        transcriptBody += '<div class="agent-transcript-entry"><div class="agent-transcript-role">' + __wvEscapeHtml(timelineKindLabel(entry.role)) + '</div><div class="agent-transcript-text">' + __wvEscapeHtml(entry.text) + '</div></div>';
+      }
+      transcriptBody += '</div>';
+    } else {
+      transcriptBody += '<div class="agent-detail-note">' + __wvEscapeHtml(__i18n.agentNoTranscript) + '</div>';
+    }
+    html += renderAgentDetailGroup('agent-transcript-group', __i18n.agentTranscript, transcript.messageCount, transcriptBody);
+
+    var eventsBody = '';
+    if (events.length > 0) {
+      eventsBody += '<div class="agent-event-list">';
+      for (var ei = 0; ei < events.length; ei++) {
+        var ev = normalizedAgentEvent(events[ei], ei);
+        eventsBody += '<div class="agent-event-row"><div class="agent-event-meta">';
+        eventsBody += '<span>#' + __wvEscapeHtml(String(ev.seq)) + '</span><span>' + __wvEscapeHtml(formatDetailTime(ev.timestamp)) + '</span>';
+        eventsBody += '<span class="agent-event-status">' + __wvEscapeHtml(agentStatusLabel(ev.status) || timelineKindLabel(ev.status)) + '</span>';
+        if (ev.step != null) eventsBody += '<span>step ' + __wvEscapeHtml(String(ev.step)) + '</span>';
+        if (ev.tool) eventsBody += '<span>' + __wvEscapeHtml(String(ev.tool)) + '</span>';
+        eventsBody += '</div><div class="agent-event-message">' + __wvEscapeHtml(ev.message) + '</div></div>';
+      }
+      eventsBody += '</div>';
+    } else {
+      eventsBody = '<div class="agent-detail-note">' + __wvEscapeHtml(__i18n.agentNoEvents) + '</div>';
+    }
+    html += renderAgentDetailGroup('agent-events-group', __i18n.agentEvents, events.length, eventsBody);
+
+    var artifacts = Array.isArray(run.artifacts) ? run.artifacts : [];
+    if (artifacts.length > 0) {
+      var referencesBody = '';
+      for (var ai = 0; ai < artifacts.length; ai++) {
+        var art = artifacts[ai] || {};
+        var artName = art.name || art.path || art.kind || 'reference';
+        referencesBody += '<div class="agent-reference"><div class="agent-reference-title">' + __wvEscapeHtml(artName) + ' <span class="detail-chip">' + __wvEscapeHtml(art.kind || '') + '</span></div>';
+        if (art.target || art.path) referencesBody += '<div class="agent-reference-target">' + __wvEscapeHtml(art.target || art.path) + '</div>';
+        if (art.description) referencesBody += '<div class="agent-reference-description">' + __wvEscapeHtml(art.description) + '</div>';
+        referencesBody += '</div>';
+      }
+      html += renderAgentDetailGroup('agent-references-group', __i18n.agentReferences, artifacts.length, referencesBody);
+    }
+
+    var metadataBody = '<div class="agent-metadata-grid">';
+    metadataBody += '<span class="agent-metadata-label">Run ID</span><span class="agent-metadata-value">' + __wvEscapeHtml(runId || '-') + '</span>';
+    metadataBody += '<span class="agent-metadata-label">Worker ID</span><span class="agent-metadata-value">' + __wvEscapeHtml(spec.worker_id || '-') + '</span>';
+    if (parentId) metadataBody += '<span class="agent-metadata-label">Parent run</span><span class="agent-metadata-value">' + __wvEscapeHtml(parentId) + '</span>';
+    metadataBody += '<span class="agent-metadata-label">Created</span><span class="agent-metadata-value">' + __wvEscapeHtml(createdAt) + '</span>';
+    metadataBody += '<span class="agent-metadata-label">Started</span><span class="agent-metadata-value">' + __wvEscapeHtml(startedAt) + '</span>';
+    metadataBody += '<span class="agent-metadata-label">Updated</span><span class="agent-metadata-value">' + __wvEscapeHtml(updatedAt) + '</span>';
+    metadataBody += '<span class="agent-metadata-label">Completed</span><span class="agent-metadata-value">' + __wvEscapeHtml(completedAt) + '</span>';
+    metadataBody += '</div>';
+    html += renderAgentDetailGroup('agent-metadata-group', __i18n.agentRunMetadata, '', metadataBody);
+
+    var handoffParts = [];
+    if (hasOwnData(run.follow_up)) handoffParts.push('<div class="detail-section"><div class="detail-label">Follow Up</div>' + renderJsonBlock(run.follow_up) + '</div>');
+    if (hasOwnData(run.takeover)) handoffParts.push('<div class="detail-section"><div class="detail-label">Takeover</div>' + renderJsonBlock(run.takeover) + '</div>');
+    if (hasOwnData(run.verification)) handoffParts.push('<div class="detail-section"><div class="detail-label">Verification</div>' + renderJsonBlock(run.verification) + '</div>');
+    if (hasOwnData(run.recommended_action)) handoffParts.push('<div class="detail-section"><div class="detail-label">Recommended Action</div>' + renderJsonBlock(run.recommended_action) + '</div>');
+    if (handoffParts.length > 0) html += renderAgentDetailGroup('agent-handoff-group', 'Handoff', handoffParts.length, handoffParts.join(''));
+
+    html += '</div></div>';
     overlay.innerHTML = html;
     overlay.style.display = 'flex';
     attachDetailOverlayActions(overlay, closeAgentDetail);
   }
 
   // ── Sidebar toggle ──
+  function renderThreadsPanelToggle() {
+    var threadsPanel = document.getElementById('threads-panel');
+    var button = document.getElementById('btn-threads');
+    if (!threadsPanel || !button) return;
+    var open = threadsPanel.classList.contains('open');
+    button.innerHTML = '<span class="codicon ' + (open
+      ? 'codicon-layout-sidebar-left-off'
+      : 'codicon-layout-sidebar-left') + '" aria-hidden="true"></span>';
+    button.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
   function toggleThreadsPanel() {
     var threadsPanel = document.getElementById('threads-panel');
     var opening = !threadsPanel.classList.contains('open');
     threadsPanel.classList.toggle('open');
+    renderThreadsPanelToggle();
     if (opening) {
       void threadsPanel.offsetHeight;
       vscode.postMessage({ type: 'refreshSidebar' });
@@ -1074,14 +1564,65 @@ export function getSidebarScript(tr: WebviewTranslations): string {
   document.getElementById('btn-threads').addEventListener('click', toggleThreadsPanel);
   if (threadCountEl) threadCountEl.addEventListener('click', toggleThreadsPanel);
 
+  // ── Floating agent inspector ──
+  var agentButton = document.getElementById('btn-agents');
+  if (agentButton) agentButton.addEventListener('click', toggleAgentPopover);
+  var workPopoverButton = document.getElementById('btn-work-popover');
+  if (workPopoverButton) workPopoverButton.addEventListener('click', toggleWorkPopover);
+  var changesPopoverButton = document.getElementById('btn-changes');
+  if (changesPopoverButton) changesPopoverButton.addEventListener('click', toggleChangesPopover);
+  var stopAllAgentsButton = document.getElementById('btn-stop-agents');
+  if (stopAllAgentsButton) stopAllAgentsButton.addEventListener('click', requestStopAllAgents);
+  renderStopAllAgentsButton();
+  var agentPopover = document.getElementById('agent-popover');
+  if (agentPopover) {
+    agentPopover.addEventListener('click', function(e) {
+      var target = e.target;
+      var stopButton = target.closest && target.closest('.agent-popover-stop');
+      if (stopButton) {
+        e.stopPropagation();
+        if (stopButton.disabled) return;
+        var stopRunId = stopButton.getAttribute('data-run-id');
+        if (stopRunId) requestStopAgent(stopRunId);
+        return;
+      }
+      var detailsButton = target.closest && target.closest('.agent-popover-details');
+      if (detailsButton) {
+        e.stopPropagation();
+        var detailRunId = detailsButton.getAttribute('data-run-id');
+        if (detailRunId) vscode.postMessage({ type: 'showAgentSessions', runId: detailRunId });
+        return;
+      }
+      var toggle = target.closest && target.closest('.agent-popover-toggle');
+      if (!toggle) return;
+      var runId = toggle.getAttribute('data-run-id');
+      if (!runId) return;
+      expandedAgentRunIds[runId] = !expandedAgentRunIds[runId];
+      renderAgentPopover();
+    });
+  }
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && agentPopoverOpen) setAgentPopoverOpen(false);
+    if (e.key === 'Escape' && workPopoverOpen) setWorkPopoverOpen(false);
+    if (e.key === 'Escape' && changesPopoverOpen) setChangesPopoverOpen(false);
+  });
+
   // ── Expose for event handler module ──
   window.__wvSidebar = {
     renderSessions: renderSessions,
     renderThreads: renderThreads,
     renderTasks: renderTasks,
     renderAgents: renderAgents,
-    renderWork: renderWork,
+    renderAgentPopover: renderAgentPopover,
+    updateAgentRuns: updateAgentRuns,
+    finishAgentStop: finishAgentStop,
+    applyAgentStopCapabilities: applyAgentStopCapabilities,
+    toggleAgentPopover: toggleAgentPopover,
+    renderWorkPopover: renderWorkPopover,
+    toggleWorkPopover: toggleWorkPopover,
     renderChanges: renderChanges,
+    toggleChangesPopover: toggleChangesPopover,
+    renderWork: renderWork,
     switchSidebarTab: switchSidebarTab,
     applyShowThreadList: applyShowThreadList,
     closeTaskDetail: closeTaskDetail,
@@ -1099,16 +1640,20 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     getShowAllWorkspaces: function() { return showAllWorkspaces; },
     setShowAllWorkspaces: function(v) { showAllWorkspaces = v; },
     getWorkState: function() { return workState; },
-    setWorkState: function(v) { workState = v; },
+    setWorkState: function(v) { workState = v; renderWorkPopover(); },
     getChangesState: function() { return changesState; },
     setChangesState: function(v) { changesState = v; },
     getAgentRuns: function() { return agentRuns; },
-    setAgentRuns: function(v) { agentRuns = v; },
+    setAgentRuns: updateAgentRuns,
     getSessionSearchQuery: function() { return sessionSearchQuery; },
     setSessionSearchQuery: function(v) { sessionSearchQuery = v; },
   };
 
   closeTaskDetail();
   closeAgentDetail();
+  renderThreadsPanelToggle();
+  renderWorkPopover();
+  renderChanges();
+  renderAgentPopover();
   })();`;
 }
