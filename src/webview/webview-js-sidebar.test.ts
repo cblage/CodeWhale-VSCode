@@ -127,6 +127,18 @@ describe("webview-js-sidebar.ts", () => {
     expect(script).toContain("renderWorkPopover: renderWorkPopover");
   });
 
+  it("keeps the dashboard popover mutually exclusive with Work, Changes, and Agents", () => {
+    const script = getSidebarScript(makeTr());
+    const agentSetter = script.slice(script.indexOf("function setAgentPopoverOpen"), script.indexOf("function toggleAgentPopover"));
+    const workSetter = script.slice(script.indexOf("function setWorkPopoverOpen"), script.indexOf("function toggleWorkPopover"));
+    const changesSetter = script.slice(script.indexOf("function setChangesPopoverOpen"), script.indexOf("function toggleChangesPopover"));
+    expect(agentSetter).toContain("window.__wvSessionControls.close()");
+    expect(workSetter).toContain("window.__wvSessionControls.close()");
+    expect(changesSetter).toContain("window.__wvSessionControls.close()");
+    expect(script).toContain("function closeFloatingPopovers()");
+    expect(script).toContain("closeFloatingPopovers: closeFloatingPopovers");
+  });
+
   it("uses one active-status definition for the sidebar and popover", () => {
     const script = getSidebarScript(makeTr());
     expect(script).toContain("function isAgentActiveStatus");
@@ -181,9 +193,10 @@ describe("webview-js-sidebar.ts", () => {
     expect(script).toContain("window.__wvFormatRelativeTime");
   });
 
-  it("uses __wvFormatThreadsCount for thread count display", () => {
+  it("does not retain removed toolbar thread-count wiring", () => {
     const script = getSidebarScript(makeTr());
-    expect(script).toContain("window.__wvFormatThreadsCount");
+    expect(script).not.toContain("thread-count");
+    expect(script).not.toContain("window.__wvFormatThreadsCount");
   });
 
   it("does not render file changes in work panel (TUI design: file changes are shown inline, not in Work sidebar)", () => {

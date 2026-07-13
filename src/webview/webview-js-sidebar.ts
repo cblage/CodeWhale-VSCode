@@ -10,7 +10,6 @@ export function getSidebarScript(tr: WebviewTranslations): string {
   var __i18n = window.__wvI18n;
   var __wvEscapeHtml = window.__wvEscapeHtml;
   var __wvFormatRelativeTime = window.__wvFormatRelativeTime;
-  var __wvFormatThreadsCount = window.__wvFormatThreadsCount;
   var vscode = window.__wvVscode;
 
   // ── Sidebar state ──
@@ -21,7 +20,6 @@ export function getSidebarScript(tr: WebviewTranslations): string {
   var showAllWorkspaces = false;
   var sidebarTab = 'sessions';
   var showThreadList = false;
-  var threadCountEl = document.getElementById('thread-count');
   var sessionSearchQuery = '';
 
   // ── Work state ──
@@ -259,7 +257,6 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     var container = document.getElementById('tab-sessions');
     if (!container) return;
     var count = sessions.length;
-    if (threadCountEl) threadCountEl.textContent = __wvFormatThreadsCount(count, 'sessions');
 
     var filterToggle = document.getElementById('workspace-filter-toggle');
     if (filterToggle) {
@@ -377,10 +374,6 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     var container = document.getElementById('tab-threads-list');
     if (!container) return;
     var count = threads.length;
-    if (sidebarTab === 'threads' && threadCountEl) {
-      threadCountEl.textContent = __wvFormatThreadsCount(count, 'threads');
-    }
-
     container.innerHTML = '';
 
     if (count === 0) {
@@ -455,14 +448,12 @@ export function getSidebarScript(tr: WebviewTranslations): string {
       if (section) section.setAttribute('data-active-tab', 'sessions');
       sessionsContainer.style.display = '';
       threadsContainer.style.display = '';
-      if (threadCountEl) threadCountEl.textContent = __wvFormatThreadsCount(sessions.length, 'sessions');
     } else {
       sessionsBtn.classList.remove('active');
       threadsBtn.classList.add('active');
       if (section) section.setAttribute('data-active-tab', 'threads');
       sessionsContainer.style.display = '';
       threadsContainer.style.display = '';
-      if (threadCountEl) threadCountEl.textContent = __wvFormatThreadsCount(threads.length, 'threads');
     }
   }
 
@@ -561,6 +552,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     if (agentPopoverOpen) {
       setWorkPopoverOpen(false);
       setChangesPopoverOpen(false);
+      if (window.__wvSessionControls) window.__wvSessionControls.close();
     }
     if (button) button.setAttribute('aria-expanded', agentPopoverOpen ? 'true' : 'false');
     if (popover) {
@@ -600,6 +592,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     if (workPopoverOpen) {
       setAgentPopoverOpen(false);
       setChangesPopoverOpen(false);
+      if (window.__wvSessionControls) window.__wvSessionControls.close();
     }
     if (button) button.setAttribute('aria-expanded', workPopoverOpen ? 'true' : 'false');
     if (popover) {
@@ -623,6 +616,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     if (changesPopoverOpen) {
       setWorkPopoverOpen(false);
       setAgentPopoverOpen(false);
+      if (window.__wvSessionControls) window.__wvSessionControls.close();
     }
     if (button) button.setAttribute('aria-expanded', changesPopoverOpen ? 'true' : 'false');
     if (popover) {
@@ -1562,7 +1556,6 @@ export function getSidebarScript(tr: WebviewTranslations): string {
 
   // ── Threads panel toggle buttons ──
   document.getElementById('btn-threads').addEventListener('click', toggleThreadsPanel);
-  if (threadCountEl) threadCountEl.addEventListener('click', toggleThreadsPanel);
 
   // ── Floating agent inspector ──
   var agentButton = document.getElementById('btn-agents');
@@ -1607,6 +1600,12 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     if (e.key === 'Escape' && changesPopoverOpen) setChangesPopoverOpen(false);
   });
 
+  function closeFloatingPopovers() {
+    setAgentPopoverOpen(false);
+    setWorkPopoverOpen(false);
+    setChangesPopoverOpen(false);
+  }
+
   // ── Expose for event handler module ──
   window.__wvSidebar = {
     renderSessions: renderSessions,
@@ -1622,6 +1621,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     toggleWorkPopover: toggleWorkPopover,
     renderChanges: renderChanges,
     toggleChangesPopover: toggleChangesPopover,
+    closeFloatingPopovers: closeFloatingPopovers,
     renderWork: renderWork,
     switchSidebarTab: switchSidebarTab,
     applyShowThreadList: applyShowThreadList,

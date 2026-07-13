@@ -183,23 +183,34 @@ describe("webview-css.ts", () => {
     expect(css).toMatch(/\.session-delete-btn\s*\{[^}]*color:\s*var\(--vscode-errorForeground, #f14c4c\);[^}]*font-size:\s*14px;/s);
   });
 
-  it("vertically centers settings labels, values, and dropdown arrows", () => {
+  it("vertically centers session-control labels, values, and dropdown arrows", () => {
     const css = getWebviewCss();
     expect(css).toMatch(
-      /#settings-bar \.setting-item\s*\{[^}]*display:\s*inline-flex;[^}]*align-items:\s*center;[^}]*height:\s*24px;[^}]*line-height:\s*1;/s
+      /#session-controls-popover \.setting-item\s*\{[^}]*display:\s*inline-flex;[^}]*align-items:\s*center;[^}]*justify-content:\s*space-between;[^}]*min-height:\s*28px;[^}]*line-height:\s*1;/s
     );
     expect(css).toMatch(
-      /#settings-bar \.setting-label\s*\{[^}]*display:\s*inline-flex;[^}]*align-items:\s*center;[^}]*height:\s*20px;[^}]*line-height:\s*1;/s
+      /#session-controls-popover \.setting-label\s*\{[^}]*display:\s*inline-flex;[^}]*align-items:\s*center;[^}]*height:\s*20px;[^}]*line-height:\s*1;/s
     );
     expect(css).toMatch(
-      /#settings-bar \.setting-value\s*\{[^}]*min-height:\s*20px;[^}]*display:\s*inline-flex;[^}]*align-items:\s*center;[^}]*line-height:\s*1;/s
+      /#session-controls-popover \.setting-value\s*\{[^}]*min-height:\s*20px;[^}]*display:\s*inline-flex;[^}]*align-items:\s*center;[^}]*line-height:\s*1;/s
     );
     expect(css).toMatch(
-      /#settings-bar \.setting-dropdown\s*\{[^}]*height:\s*20px;[^}]*display:\s*inline-flex;[^}]*align-items:\s*center;/s
+      /#session-controls-popover \.setting-dropdown\s*\{[^}]*height:\s*20px;[^}]*display:\s*inline-flex;[^}]*align-items:\s*center;/s
     );
     expect(css).toMatch(
-      /#settings-bar \.setting-value::after\s*\{[^}]*content:\s*'▾';[^}]*display:\s*inline-flex;[^}]*align-items:\s*center;[^}]*line-height:\s*1;/s
+      /#session-controls-popover \.setting-value::after\s*\{[^}]*content:\s*'▾';[^}]*display:\s*inline-flex;[^}]*align-items:\s*center;[^}]*line-height:\s*1;/s
     );
+  });
+
+  it("styles the bottom-right session controls dashboard and upward popover", () => {
+    const css = getWebviewCss();
+    expect(css).toMatch(/#toolbar #btn-session-controls\s*\{[^}]*margin-left:\s*auto;[^}]*width:\s*26px;[^}]*flex:\s*0 0 26px;[^}]*padding:\s*0;[^}]*font-size:\s*16px;/s);
+    expect(css).toMatch(/#toolbar #btn-session-controls \.codicon\s*\{[^}]*margin-right:\s*0;[^}]*font-size:\s*inherit;/s);
+    expect(css).toContain('#toolbar #btn-session-controls[aria-expanded="true"]');
+    expect(css).toMatch(/#session-controls-popover\s*\{[^}]*display:\s*none;[^}]*position:\s*fixed;[^}]*right:\s*8px;[^}]*bottom:\s*48px;[^}]*z-index:\s*1100;/s);
+    expect(css).toContain("#session-controls-popover.open { display: flex; }");
+    expect(css).toMatch(/#session-controls-popover #btn-compact\s*\{[^}]*width:\s*100%;[^}]*justify-content:\s*flex-start;/s);
+    expect(css).not.toContain("#toolbar .thread-count");
   });
 
   it("vertically centers every toolbar button in one shared height", () => {
@@ -224,7 +235,8 @@ describe("webview-css.ts", () => {
     );
     expect(css).toContain("#toolbar::-webkit-scrollbar { display: none; }");
     expect(css).toMatch(/#toolbar button\s*\{[^}]*flex:\s*0 0 auto;[^}]*white-space:\s*nowrap;/s);
-    expect(css).toMatch(/#toolbar \.thread-count\s*\{[^}]*flex:\s*0 0 auto;[^}]*white-space:\s*nowrap;/s);
+    expect(css).toMatch(/#toolbar #btn-session-controls\s*\{[^}]*flex:\s*0 0 26px;/s);
+    expect(css).not.toContain("#toolbar .thread-count");
   });
 
   it("styles enabled and pending agent stop controls", () => {

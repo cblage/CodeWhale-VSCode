@@ -182,14 +182,38 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
     }
   });
 
-  // ── Settings dropdown handlers ──
+  // ── Session controls dashboard ──
   (function(){
-    var settingsBar = document.getElementById('settings-bar');
-    if (!settingsBar) return;
+    var sessionControlsButton = document.getElementById('btn-session-controls');
+    var sessionControlsPopover = document.getElementById('session-controls-popover');
+    if (!sessionControlsButton || !sessionControlsPopover) return;
+    var sessionControlsOpen = false;
 
     function closeAllDropdowns() {
-      var menus = settingsBar.querySelectorAll('.dropdown-menu');
+      var menus = sessionControlsPopover.querySelectorAll('.dropdown-menu');
       for (var i = 0; i < menus.length; i++) { menus[i].classList.remove('open'); }
+    }
+
+    function positionSessionControlsPopover() {
+      if (!sessionControlsOpen) return;
+      var rect = sessionControlsButton.getBoundingClientRect();
+      var viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+      var viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+      sessionControlsPopover.style.right = Math.max(8, viewportWidth - rect.right) + 'px';
+      sessionControlsPopover.style.bottom = Math.max(8, viewportHeight - rect.top + 6) + 'px';
+      sessionControlsPopover.style.maxHeight = Math.max(120, rect.top - 14) + 'px';
+    }
+
+    function setSessionControlsOpen(open) {
+      sessionControlsOpen = !!open;
+      if (sessionControlsOpen && window.__wvSidebar && window.__wvSidebar.closeFloatingPopovers) {
+        window.__wvSidebar.closeFloatingPopovers();
+      }
+      sessionControlsButton.setAttribute('aria-expanded', sessionControlsOpen ? 'true' : 'false');
+      sessionControlsPopover.classList.toggle('open', sessionControlsOpen);
+      sessionControlsPopover.setAttribute('aria-hidden', sessionControlsOpen ? 'false' : 'true');
+      if (sessionControlsOpen) positionSessionControlsPopover();
+      else closeAllDropdowns();
     }
 
     function highlightCurrent(dropdown) {
@@ -200,7 +224,12 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
       }
     }
 
-    settingsBar.addEventListener('click', function(e) {
+    sessionControlsButton.addEventListener('click', function(e) {
+      setSessionControlsOpen(!sessionControlsOpen);
+      e.stopPropagation();
+    });
+
+    sessionControlsPopover.addEventListener('click', function(e) {
       var target = e.target;
 
       // Toggle dropdown on setting-value click
@@ -233,24 +262,39 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
             vscode.postMessage({ type: 'slashCommand', command: '/reasoning', args: val });
           }
         }
-      }
-
-      // Config button
-      if (target.id === 'btn-config' || target.closest('#btn-config')) {
-        vscode.postMessage({ type: 'openConfigPanel' });
         e.stopPropagation();
         return;
       }
+
+      if (target.id === 'btn-compact' || (target.closest && target.closest('#btn-compact'))) {
+        setSessionControlsOpen(false);
+        e.stopPropagation();
+        return;
+      }
+
+      e.stopPropagation();
     });
+
+    document.addEventListener('click', function() {
+      if (sessionControlsOpen) setSessionControlsOpen(false);
+    });
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && sessionControlsOpen) setSessionControlsOpen(false);
+    });
+    window.addEventListener('resize', positionSessionControlsPopover);
+    window.__wvSessionControls = {
+      close: function() { setSessionControlsOpen(false); },
+      reposition: positionSessionControlsPopover,
+    };
   })();
 
-  // Close dropdowns when clicking elsewhere
-  document.addEventListener('click', function() {
-    var settingsBar = document.getElementById('settings-bar');
-    if (!settingsBar) return;
-    var menus = settingsBar.querySelectorAll('.dropdown-menu');
-    for (var i = 0; i < menus.length; i++) { menus[i].classList.remove('open'); }
-  });
+  var configButton = document.getElementById('btn-config');
+  if (configButton) {
+    configButton.addEventListener('click', function(e) {
+      vscode.postMessage({ type: 'openConfigPanel' });
+      e.stopPropagation();
+    });
+  }
 
   // ── Main message handler ──
   window.addEventListener('message', function(event) {

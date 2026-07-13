@@ -82,6 +82,29 @@ describe("webview-js-event-handler.ts", () => {
     expect(script).toContain("Number(msg.usage.output_tokens || 0).toLocaleString('en-US')");
   });
 
+  it("drives Mode, Model, Effort, and Compact from an exclusive dashboard popover", () => {
+    const script = getEventHandlerScript(makeTr());
+    expect(script).toContain("document.getElementById('btn-session-controls')");
+    expect(script).toContain("document.getElementById('session-controls-popover')");
+    expect(script).toContain("function setSessionControlsOpen(open)");
+    expect(script).toContain("sessionControlsPopover.classList.toggle('open', sessionControlsOpen)");
+    expect(script).toContain("sessionControlsButton.setAttribute('aria-expanded', sessionControlsOpen ? 'true' : 'false')");
+    expect(script).toContain("window.__wvSidebar.closeFloatingPopovers()");
+    expect(script).toContain("command: '/mode'");
+    expect(script).toContain("command: '/model'");
+    expect(script).toContain("command: '/reasoning'");
+    expect(script).toContain("target.closest('#btn-compact')");
+    expect(script).toContain("if (e.key === 'Escape' && sessionControlsOpen) setSessionControlsOpen(false)");
+    expect(script).toContain("window.__wvSessionControls = {");
+    expect(script).not.toContain("settingsBar.querySelectorAll('.dropdown-menu')");
+  });
+
+  it("keeps the Config action wired after moving settings out of the top bar", () => {
+    const script = getEventHandlerScript(makeTr());
+    expect(script).toContain("document.getElementById('btn-config')");
+    expect(script).toContain("type: 'openConfigPanel'");
+  });
+
   it("handles 'sessionList' message type", () => {
     const script = getEventHandlerScript(makeTr());
     expect(script).toContain("case 'sessionList'");

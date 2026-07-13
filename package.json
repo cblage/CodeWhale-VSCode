@@ -2,7 +2,7 @@
   "name": "codewhale-vscode",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.4.40",
+  "version": "0.4.44",
   "publisher": "cblage",
   "repository": "https://github.com/HengQuWorld/CodeWhale-VSCode",
   "engines": {

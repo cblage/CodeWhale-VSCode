@@ -267,47 +267,10 @@ ${css}
     <div id="chat-area">
       <div id="settings-bar">
         <button id="btn-threads" title="${tr.toggleHistory}"><span class="codicon codicon-layout-sidebar-left" aria-hidden="true"></span></button>
-        <button id="btn-new-thread" title="New session" aria-label="New session"><span class="codicon codicon-new-session" aria-hidden="true"></span></button>
-        <div class="setting-item">
-          <span class="setting-label">${tr.modeLabel}:</span>
-          <div class="setting-dropdown" data-setting="mode">
-            <span class="setting-value" id="current-mode">agent</span>
-            <div class="dropdown-menu" id="dropdown-mode">
-              <div class="dropdown-item" data-value="agent">agent</div>
-              <div class="dropdown-item" data-value="plan">plan</div>
-              <div class="dropdown-item" data-value="yolo">yolo</div>
-            </div>
-          </div>
-        </div>
-        <div class="setting-item">
-          <span class="setting-label">${tr.modelLabel}:</span>
-          <div class="setting-dropdown" data-setting="model">
-            <span class="setting-value" id="current-model">deepseek-v4-pro</span>
-            <div class="dropdown-menu" id="dropdown-model">
-              <div class="dropdown-item" data-value="deepseek-v4-pro">deepseek-v4-pro</div>
-              <div class="dropdown-item" data-value="deepseek-v4-flash">deepseek-v4-flash</div>
-              <div class="dropdown-item" data-value="deepseek-chat">deepseek-chat</div>
-              <div class="dropdown-item" data-value="deepseek-reasoner">deepseek-reasoner</div>
-            </div>
-          </div>
-        </div>
-        <div class="setting-item">
-          <span class="setting-label">${tr.reasoningEffortLabel}:</span>
-          <div class="setting-dropdown" data-setting="reasoning">
-            <span class="setting-value" id="current-reasoning">auto</span>
-            <div class="dropdown-menu" id="dropdown-reasoning">
-              <div class="dropdown-item" data-value="auto">auto</div>
-              <div class="dropdown-item" data-value="off">off</div>
-              <div class="dropdown-item" data-value="low">low</div>
-              <div class="dropdown-item" data-value="medium">medium</div>
-              <div class="dropdown-item" data-value="high">high</div>
-              <div class="dropdown-item" data-value="max">max</div>
-            </div>
-          </div>
-        </div>
         <button id="btn-work-popover" title="${tr.checklist}" aria-label="${tr.checklist}" aria-expanded="false" aria-controls="work-popover" disabled><span class="codicon codicon-checklist" aria-hidden="true"></span><span id="work-pending-badge" aria-hidden="true"></span></button>
         <button id="btn-changes" title="${tr.changes}" aria-label="${tr.changes}" aria-expanded="false" aria-controls="changes-popover" disabled><span class="codicon codicon-diff-multiple" aria-hidden="true"></span><span id="changes-count-badge" aria-hidden="true"></span></button>
         <button id="btn-agents" title="${tr.agents}" aria-label="${tr.agents}" aria-expanded="false" aria-controls="agent-popover" disabled><span class="codicon codicon-robot" aria-hidden="true"></span><span id="agent-count-badge" aria-hidden="true"></span></button>
+        <button id="btn-new-thread" title="New session" aria-label="New session"><span class="codicon codicon-new-session" aria-hidden="true"></span></button>
         <button id="btn-config" title="Open Config Panel"><span class="codicon codicon-settings-gear" aria-hidden="true"></span></button>
       </div>
       <div id="work-popover" role="dialog" aria-label="${tr.checklist}" aria-hidden="true">
@@ -332,17 +295,61 @@ ${css}
       </div>
       <div id="messages"></div>
       <div id="toolbar">
+        <button id="btn-undo" title="Undo last turn"><span class="codicon codicon-discard" aria-hidden="true"></span>Undo</button>
+        <button id="btn-retry" title="Retry last turn"><span class="codicon codicon-history" aria-hidden="true"></span>Retry</button>
+        <button id="btn-stop-agents" title="${tr.stopAllAgents}" disabled><span class="codicon codicon-debug-stop" aria-hidden="true"></span>${tr.stopAllAgents}</button>
+        <button id="btn-session-controls" title="Session controls" aria-label="Session controls" aria-expanded="false" aria-controls="session-controls-popover"><span class="codicon codicon-dashboard" aria-hidden="true"></span></button>
         <div id="context-usage-gauge" class="context-usage-gauge unavailable" role="img" tabindex="0" aria-label="${tr.contextUsageUnavailable}" data-tooltip="${tr.contextUsageUnavailable}">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <circle class="context-usage-track" cx="12" cy="12" r="9" pathLength="100"></circle>
             <circle class="context-usage-value" cx="12" cy="12" r="9" pathLength="100"></circle>
           </svg>
         </div>
-        <button id="btn-compact"><span class="codicon codicon-fold" aria-hidden="true"></span>${tr.compact}</button>
-        <button id="btn-undo" title="Undo last turn"><span class="codicon codicon-discard" aria-hidden="true"></span>Undo</button>
-        <button id="btn-retry" title="Retry last turn"><span class="codicon codicon-history" aria-hidden="true"></span>Retry</button>
-        <button id="btn-stop-agents" title="${tr.stopAllAgents}" disabled><span class="codicon codicon-debug-stop" aria-hidden="true"></span>${tr.stopAllAgents}</button>
-        <span class="thread-count" id="thread-count" title="${tr.toggleHistory}">0 sessions</span>
+      </div>
+      <div id="session-controls-popover" role="dialog" aria-label="Session controls" aria-hidden="true">
+        <div class="session-controls-header">
+          <span>Session controls</span>
+        </div>
+        <div class="session-controls-body">
+          <div class="setting-item">
+            <span class="setting-label">${tr.modeLabel}:</span>
+            <div class="setting-dropdown" data-setting="mode">
+              <span class="setting-value" id="current-mode">agent</span>
+              <div class="dropdown-menu" id="dropdown-mode">
+                <div class="dropdown-item" data-value="agent">agent</div>
+                <div class="dropdown-item" data-value="plan">plan</div>
+                <div class="dropdown-item" data-value="yolo">yolo</div>
+              </div>
+            </div>
+          </div>
+          <div class="setting-item">
+            <span class="setting-label">${tr.modelLabel}:</span>
+            <div class="setting-dropdown" data-setting="model">
+              <span class="setting-value" id="current-model">deepseek-v4-pro</span>
+              <div class="dropdown-menu" id="dropdown-model">
+                <div class="dropdown-item" data-value="deepseek-v4-pro">deepseek-v4-pro</div>
+                <div class="dropdown-item" data-value="deepseek-v4-flash">deepseek-v4-flash</div>
+                <div class="dropdown-item" data-value="deepseek-chat">deepseek-chat</div>
+                <div class="dropdown-item" data-value="deepseek-reasoner">deepseek-reasoner</div>
+              </div>
+            </div>
+          </div>
+          <div class="setting-item">
+            <span class="setting-label">${tr.reasoningEffortLabel}:</span>
+            <div class="setting-dropdown" data-setting="reasoning">
+              <span class="setting-value" id="current-reasoning">auto</span>
+              <div class="dropdown-menu" id="dropdown-reasoning">
+                <div class="dropdown-item" data-value="auto">auto</div>
+                <div class="dropdown-item" data-value="off">off</div>
+                <div class="dropdown-item" data-value="low">low</div>
+                <div class="dropdown-item" data-value="medium">medium</div>
+                <div class="dropdown-item" data-value="high">high</div>
+                <div class="dropdown-item" data-value="max">max</div>
+              </div>
+            </div>
+          </div>
+          <button id="btn-compact"><span class="codicon codicon-fold" aria-hidden="true"></span>${tr.compact}</button>
+        </div>
       </div>
       <div id="input-resize-handle" title="Drag to resize input area"></div>
       <div id="input-area">

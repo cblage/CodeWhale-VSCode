@@ -319,13 +319,21 @@ describe("webview-html.ts assembler", () => {
     expect(html).toContain('<circle class="context-usage-value"');
     const sidebarButtonIndex = html.indexOf('id="btn-threads"');
     const newSessionButtonIndex = html.indexOf('id="btn-new-thread"');
-    const firstSettingIndex = html.indexOf('<div class="setting-item">');
-    expect(sidebarButtonIndex).toBeLessThan(newSessionButtonIndex);
-    expect(newSessionButtonIndex).toBeLessThan(firstSettingIndex);
+    const firstTopActionIndex = html.indexOf('id="btn-work-popover"');
+    const agentButtonIndex = html.indexOf('id="btn-agents"');
+    const configButtonIndex = html.indexOf('id="btn-config"');
+    expect(sidebarButtonIndex).toBeLessThan(firstTopActionIndex);
+    expect(agentButtonIndex).toBeLessThan(newSessionButtonIndex);
+    expect(newSessionButtonIndex).toBeLessThan(configButtonIndex);
     expect(html.match(/id="btn-new-thread"/g)).toHaveLength(1);
     expect(html).toContain('id="btn-new-thread" title="New session" aria-label="New session"><span class="codicon codicon-new-session" aria-hidden="true"></span></button>');
-    const toolbarHtml = html.slice(html.indexOf('<div id="toolbar">'), html.indexOf('<div id="input-resize-handle"'));
+    const toolbarHtml = html.slice(html.indexOf('<div id="toolbar">'), html.indexOf('<div id="session-controls-popover"'));
     expect(toolbarHtml).not.toContain('id="btn-new-thread"');
+    expect(toolbarHtml).not.toContain('id="btn-compact"');
+    expect(toolbarHtml).toContain('id="btn-session-controls" title="Session controls" aria-label="Session controls"');
+    expect(toolbarHtml).toContain('codicon codicon-dashboard');
+    expect(toolbarHtml.indexOf('id="btn-session-controls"')).toBeLessThan(toolbarHtml.indexOf('id="context-usage-gauge"'));
+    expect(toolbarHtml).not.toContain('id="thread-count"');
     expect(html).toContain('id="btn-threads" title="Toggle History"><span class="codicon codicon-layout-sidebar-left"');
     expect(html).not.toContain(">📋</button>");
     expect(html).toContain('id="btn-compact"><span class="codicon codicon-fold" aria-hidden="true"></span>Compact</button>');
@@ -502,12 +510,21 @@ describe("webview-html.ts assembler", () => {
     expect(html).toContain('id="task-detail-overlay"');
   });
 
-  it("contains settings bar with mode, model, reasoning", () => {
+  it("moves mode, model, effort, and Compact into the session controls popover", () => {
     const html = getWebviewHtml(makeMockWebview(), makeMockExtensionUri(), makeTr());
-    expect(html).toContain('id="current-mode"');
-    expect(html).toContain('id="current-model"');
-    expect(html).toContain('id="current-reasoning"');
-    expect(html).toContain('<span class="setting-label">Effort:</span>');
+    const topBarHtml = html.slice(html.indexOf('<div id="settings-bar">'), html.indexOf('<div id="work-popover"'));
+    const sessionControlsHtml = html.slice(html.indexOf('<div id="session-controls-popover"'), html.indexOf('<div id="input-resize-handle"'));
+    expect(topBarHtml).not.toContain('class="setting-item"');
+    expect(topBarHtml).not.toContain('id="current-mode"');
+    expect(sessionControlsHtml).toContain('role="dialog" aria-label="Session controls" aria-hidden="true"');
+    expect(sessionControlsHtml).toContain('<span>Session controls</span>');
+    expect(sessionControlsHtml).not.toContain('codicon codicon-dashboard');
+    expect(sessionControlsHtml).toContain('id="current-mode"');
+    expect(sessionControlsHtml).toContain('id="current-model"');
+    expect(sessionControlsHtml).toContain('id="current-reasoning"');
+    expect(sessionControlsHtml).toContain('<span class="setting-label">Effort:</span>');
+    expect(sessionControlsHtml).toContain('id="btn-compact"');
+    expect(html.match(/id="btn-compact"/g)).toHaveLength(1);
   });
 
   it("contains status bar with status text and stats", () => {
@@ -516,9 +533,11 @@ describe("webview-html.ts assembler", () => {
     expect(html).toContain('id="status-stats"');
   });
 
-  it("contains thread count element", () => {
+  it("replaces the thread count with a dashboard session-controls trigger", () => {
     const html = getWebviewHtml(makeMockWebview(), makeMockExtensionUri(), makeTr());
-    expect(html).toContain('id="thread-count"');
+    expect(html).not.toContain('id="thread-count"');
+    expect(html).toContain('id="btn-session-controls"');
+    expect(html).toContain('aria-controls="session-controls-popover"');
   });
 
   it("contains workspace filter toggle", () => {

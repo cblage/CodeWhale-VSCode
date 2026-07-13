@@ -1248,17 +1248,22 @@ export function getWebviewCss(): string {
       pointer-events: none;
     }
 
-    #toolbar .thread-count {
+    #toolbar #btn-session-controls {
       margin-left: auto;
-      flex: 0 0 auto;
-      white-space: nowrap;
-      font-size: 0.75em;
-      color: var(--muted);
-      cursor: pointer;
-      padding: 2px 8px;
-      border-radius: 3px;
+      width: 26px;
+      flex: 0 0 26px;
+      padding: 0;
+      font-size: 16px;
     }
-    #toolbar .thread-count:hover { color: var(--fg); background: var(--card-bg); }
+    #toolbar #btn-session-controls .codicon {
+      margin-right: 0;
+      font-size: inherit;
+    }
+    #toolbar #btn-session-controls[aria-expanded="true"] {
+      color: var(--fg);
+      border-color: var(--vscode-focusBorder, var(--brand-primary));
+      background: color-mix(in srgb, var(--brand-primary) 18%, transparent);
+    }
 
     #settings-bar {
       padding: 4px 8px 4px 2px;
@@ -1270,21 +1275,58 @@ export function getWebviewCss(): string {
       color: var(--muted);
       background: var(--card-bg);
     }
-    #settings-bar .setting-item {
+    #session-controls-popover {
+      display: none;
+      position: fixed;
+      right: 8px;
+      bottom: 48px;
+      width: min(300px, calc(100vw - 16px));
+      max-height: calc(100vh - 24px);
+      flex-direction: column;
+      overflow: visible;
+      z-index: 1100;
+      color: var(--fg);
+      background: var(--vscode-editorWidget-background, var(--card-bg));
+      border: 1px solid var(--vscode-widget-border, var(--border));
+      border-radius: 7px;
+      box-shadow: 0 10px 30px var(--vscode-widget-shadow, rgba(0,0,0,0.38));
+    }
+    #session-controls-popover.open { display: flex; }
+    .session-controls-header {
+      display: flex;
+      align-items: center;
+      min-height: 34px;
+      padding: 0 10px;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.75em;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .session-controls-body {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 8px;
+    }
+    #session-controls-popover .setting-item {
       display: inline-flex;
       align-items: center;
+      justify-content: space-between;
       gap: 4px;
-      height: 24px;
+      min-height: 28px;
       line-height: 1;
     }
-    #settings-bar .setting-label {
+    #session-controls-popover .setting-label {
       display: inline-flex;
       align-items: center;
       height: 20px;
       font-weight: 600;
       line-height: 1;
+      color: var(--muted);
     }
-    #settings-bar .setting-value {
+    #session-controls-popover .setting-value {
       color: var(--fg);
       cursor: pointer;
       padding: 1px 4px;
@@ -1294,7 +1336,7 @@ export function getWebviewCss(): string {
       align-items: center;
       line-height: 1;
     }
-    #settings-bar .setting-value::after {
+    #session-controls-popover .setting-value::after {
       content: '▾';
       display: inline-flex;
       align-items: center;
@@ -1303,23 +1345,23 @@ export function getWebviewCss(): string {
       line-height: 1;
       opacity: 0.5;
     }
-    #settings-bar .setting-value:hover {
+    #session-controls-popover .setting-value:hover {
       background: var(--brand-primary);
       color: var(--brand-primary-foreground);
     }
 
-    /* ── Settings Dropdown ── */
-    #settings-bar .setting-dropdown {
+    /* ── Session Controls Dropdown ── */
+    #session-controls-popover .setting-dropdown {
       position: relative;
       height: 20px;
       display: inline-flex;
       align-items: center;
     }
-    #settings-bar .dropdown-menu {
+    #session-controls-popover .dropdown-menu {
       display: none;
       position: absolute;
       top: 100%;
-      left: 0;
+      right: 0;
       margin-top: 2px;
       background: var(--card-bg);
       border: 1px solid var(--border);
@@ -1329,20 +1371,41 @@ export function getWebviewCss(): string {
       box-shadow: 0 4px 12px rgba(0,0,0,0.25);
       overflow: hidden;
     }
-    #settings-bar .dropdown-menu.open {
+    #session-controls-popover .dropdown-menu.open {
       display: block;
     }
-    #settings-bar .dropdown-item {
+    #session-controls-popover .dropdown-item {
       padding: 4px 12px;
       white-space: nowrap;
       cursor: pointer;
       font-size: 0.95em;
       color: var(--fg);
     }
-    #settings-bar .dropdown-item:hover,
-    #settings-bar .dropdown-item.selected {
+    #session-controls-popover .dropdown-item:hover,
+    #session-controls-popover .dropdown-item.selected {
       background: var(--brand-primary);
       color: var(--brand-primary-foreground);
+    }
+    #session-controls-popover #btn-compact {
+      width: 100%;
+      min-height: 28px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 6px;
+      margin-top: 4px;
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font: inherit;
+    }
+    #session-controls-popover #btn-compact:hover {
+      color: var(--fg);
+      border-color: var(--fg);
+      background: color-mix(in srgb, var(--brand-primary) 12%, transparent);
     }
 
     #settings-bar #btn-threads,
@@ -1383,7 +1446,7 @@ export function getWebviewCss(): string {
     #settings-bar .codicon { font-size: inherit; }
     /* new-session extends one unit above the common Codicon visual box.
        Lower it optically so its ink, not merely its font baseline, aligns
-       with the adjacent sidebar glyph. */
+       with the surrounding top-bar glyphs. */
     #settings-bar #btn-new-thread .codicon { transform: translateY(1px); }
     #settings-bar #btn-changes,
     #settings-bar #btn-agents { position: relative; }

@@ -1,5 +1,34 @@
 # Change Log
 
+## 0.4.44
+
+### Interface
+
+- **Top-Right New Session** — Move New Session between the Agents and Settings
+  controls in the top-right action group.
+
+## 0.4.43
+
+### Interface
+
+- **Right-Aligned Context Donut** — Move context occupancy to the far-right end
+  of the bottom toolbar, immediately after the Session Controls dashboard.
+
+## 0.4.42
+
+### Interface
+
+- **Cleaner Session Controls Header** — Remove the redundant dashboard glyph
+  from the popover header while retaining it on the toolbar trigger.
+
+## 0.4.41
+
+### Interface
+
+- **Session Controls Dashboard** — Consolidate Mode, Model, Effort, and Compact
+  into an upward-opening dashboard popover in the bottom toolbar, replacing the
+  session count and removing the selectors from the top bar.
+
 ## 0.4.40
 
 ### Interface
