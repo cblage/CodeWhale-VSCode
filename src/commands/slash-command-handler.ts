@@ -18,6 +18,11 @@ import {
   isRegisteredSlashCommand,
 } from "./slash-commands";
 import { formatError, getErrorMessage } from "../utils/error-handler";
+import {
+  behavioralModeDisplayName,
+  isLegacyBypassMode,
+  normalizeBehavioralMode,
+} from "../utils/runtime-mode";
 import type {
   CodeWhaleApiClient,
   CodeWhaleEngine,
@@ -100,27 +105,33 @@ function mergeThreadUpdate(
 
 async function handleMode(ctx: SlashCommandContext, args: string): Promise<void> {
   const mode = args.trim().toLowerCase();
-  if (["agent", "plan", "yolo", "1", "2", "3"].includes(mode)) {
-    const modeMap: Record<string, string> = { "1": "agent", "2": "plan", "3": "yolo" };
-    const actualMode = modeMap[mode] || mode;
-    const isYolo = actualMode === "yolo";
+  const accepted = [
+    "act", "agent", "auto", "plan", "planner", "operate", "operation", "ops", "orchestrator",
+    "yolo", "bypass", "bypass-permissions", "bypasspermissions", "1", "2", "3", "4",
+  ];
+  if (accepted.includes(mode)) {
+    const actualMode = normalizeBehavioralMode(mode);
+    const isYolo = isLegacyBypassMode(mode);
     const defaultModel = cfg().get<string>("defaultModel", "deepseek-v4-pro");
     const reasoningEffort = cfg().get<string>("reasoningEffort", "auto");
     const autoApprove = isYolo || cfg().get<boolean>("autoApprove", false);
     await cfg().update("defaultMode", actualMode, vscode.ConfigurationTarget.Global);
-    let modeForUi = actualMode;
+    if (isYolo) {
+      await cfg().update("autoApprove", true, vscode.ConfigurationTarget.Global);
+    }
+    let modeForUi: string = actualMode;
     let modelForUi = defaultModel;
-    let infoMessage = `Mode changed to ${actualMode}`;
+    let infoMessage = `Mode changed to ${behavioralModeDisplayName(actualMode)}`;
     if (ctx.currentThread) {
       try {
         const updatedThread = await ctx.api.updateThread(ctx.currentThread.id, {
           mode: actualMode,
-          trust_mode: isYolo,
+          trust_mode: isYolo || ctx.currentThread.trust_mode,
           auto_approve: autoApprove,
         });
         mergeThreadUpdate(ctx, updatedThread, {
           mode: actualMode,
-          trust_mode: isYolo,
+          trust_mode: isYolo || ctx.currentThread.trust_mode,
           auto_approve: autoApprove,
         });
         modeForUi = ctx.currentThread.mode;
@@ -132,13 +143,16 @@ async function handleMode(ctx: SlashCommandContext, args: string): Promise<void>
         });
         modeForUi = ctx.currentThread.mode;
         modelForUi = ctx.currentThread.model;
-        infoMessage = `Default mode changed to ${actualMode}; current thread remains ${ctx.currentThread.mode}`;
+        infoMessage = `Default mode changed to ${behavioralModeDisplayName(actualMode)}; current thread remains ${behavioralModeDisplayName(ctx.currentThread.mode)}`;
       }
     }
     ctx.postMessage({ type: "settingsUpdated", mode: modeForUi, model: modelForUi, reasoningEffort });
     ctx.postMessage({ type: "info", message: infoMessage });
   } else {
-    ctx.postMessage({ type: "info", message: `Current mode: ${cfg().get<string>("defaultMode", "agent")}\nUsage: /mode [agent|plan|yolo|1|2|3]` });
+    ctx.postMessage({
+      type: "info",
+      message: `Current mode: ${behavioralModeDisplayName(cfg().get<string>("defaultMode", "act"))}\nUsage: /mode [agent|planner|orchestrator|1|2|3]`,
+    });
   }
 }
 
@@ -146,9 +160,9 @@ async function handleModel(ctx: SlashCommandContext, args: string): Promise<void
   const model = args.trim();
   if (model) {
     await cfg().update("defaultModel", model, vscode.ConfigurationTarget.Global);
-    const defaultMode = cfg().get<string>("defaultMode", "agent");
+    const defaultMode = normalizeBehavioralMode(cfg().get<string>("defaultMode", "act"));
     const reasoningEffort = cfg().get<string>("reasoningEffort", "auto");
-    let modeForUi = defaultMode;
+    let modeForUi: string = defaultMode;
     let modelForUi = model;
     let infoMessage = `Model changed to ${model}`;
     if (ctx.currentThread) {
@@ -175,14 +189,27 @@ async function handleModel(ctx: SlashCommandContext, args: string): Promise<void
 }
 
 async function handleModels(ctx: SlashCommandContext, _args: string): Promise<void> {
-  ctx.postMessage({ type: "info", message: "Available models:\n- deepseek-v4-pro\n- deepseek-v4-flash\n- deepseek-chat (alias for deepseek-v4-flash)\n- deepseek-reasoner (alias for deepseek-v4-flash)" });
+  try {
+    const catalog = await ctx.api.listModels();
+    const heading = catalog.provider_display_name || catalog.provider || "active provider";
+    const models = catalog.models.length > 0 ? catalog.models : [ctx.getCurrentModel()];
+    ctx.postMessage({
+      type: "info",
+      message: `Available models for ${heading}:\n${models.map(model => `- ${model}`).join("\n")}`,
+    });
+  } catch (err) {
+    ctx.postMessage({
+      type: "error",
+      message: formatError("Unable to load the runtime model catalog", err),
+    });
+  }
 }
 
 async function handleReasoning(ctx: SlashCommandContext, args: string): Promise<void> {
   const effort = args.trim().toLowerCase();
   if (["auto", "off", "low", "medium", "high", "max"].includes(effort)) {
     await cfg().update("reasoningEffort", effort, vscode.ConfigurationTarget.Global);
-    ctx.postMessage({ type: "settingsUpdated", mode: cfg().get<string>("defaultMode", "agent"), model: cfg().get<string>("defaultModel", "deepseek-v4-pro"), reasoningEffort: effort });
+    ctx.postMessage({ type: "settingsUpdated", mode: normalizeBehavioralMode(cfg().get<string>("defaultMode", "act")), model: cfg().get<string>("defaultModel", "deepseek-v4-pro"), reasoningEffort: effort });
     ctx.postMessage({ type: "info", message: `Reasoning effort changed to ${effort}` });
   } else {
     ctx.postMessage({ type: "info", message: `Current reasoning effort: ${cfg().get<string>("reasoningEffort", "auto")}\nUsage: /reasoning [auto|off|low|medium|high|max]` });
@@ -231,7 +258,7 @@ async function handleConfig(ctx: SlashCommandContext, args: string): Promise<voi
 }
 
 async function handleSettings(ctx: SlashCommandContext, _args: string): Promise<void> {
-  ctx.postMessage({ type: "info", message: `Current settings:\n- Mode: ${cfg().get<string>("defaultMode", "agent")}\n- Model: ${cfg().get<string>("defaultModel", "deepseek-v4-pro")}\n- Effort: ${cfg().get<string>("reasoningEffort", "auto")}\n- Engine Path: ${cfg().get<string>("enginePath", "codewhale")}\n- Auto Start Engine: ${cfg().get<boolean>("autoStartEngine", true)}` });
+  ctx.postMessage({ type: "info", message: `Current settings:\n- Mode: ${behavioralModeDisplayName(cfg().get<string>("defaultMode", "act"))}\n- Model: ${cfg().get<string>("defaultModel", "deepseek-v4-pro")}\n- Effort: ${cfg().get<string>("reasoningEffort", "auto")}\n- Engine Path: ${cfg().get<string>("enginePath", "codewhale")}\n- Auto Start Engine: ${cfg().get<boolean>("autoStartEngine", true)}` });
 }
 
 async function handleInterrupt(ctx: SlashCommandContext, _args: string): Promise<void> {
@@ -303,7 +330,7 @@ async function handleExport(ctx: SlashCommandContext, _args: string): Promise<vo
 
 async function handleContext(ctx: SlashCommandContext, _args: string): Promise<void> {
   if (ctx.currentThread) {
-    ctx.postMessage({ type: "info", message: `Thread: ${ctx.currentThread.id.slice(0, 12)}...\nMessages: ${ctx.messages.length}\nMode: ${cfg().get<string>("defaultMode", "agent")}\nModel: ${cfg().get<string>("defaultModel", "deepseek-v4-pro")}` });
+    ctx.postMessage({ type: "info", message: `Thread: ${ctx.currentThread.id.slice(0, 12)}...\nMessages: ${ctx.messages.length}\nMode: ${behavioralModeDisplayName(cfg().get<string>("defaultMode", "act"))}\nModel: ${cfg().get<string>("defaultModel", "deepseek-v4-pro")}` });
   } else {
     ctx.postMessage({ type: "info", message: "No active thread" });
   }
@@ -448,23 +475,24 @@ async function handleStatus(ctx: SlashCommandContext, _args: string): Promise<vo
       message: `Runtime Status:
   Engine: ${running ? "Running ✓" : "Stopped ✗"}
   Host: ${runtimeInfo.bind_host}:${runtimeInfo.port}
-  Version: ${runtimeInfo.version}
+  Version: ${runtimeInfo.codewhale_version || runtimeInfo.version}
+  Runtime API: ${runtimeInfo.runtime_api_version || "legacy"}
   Auth: ${authInfo}
   Thread: ${ctx.currentThread ? ctx.currentThread.id.slice(0, 12) + "..." : "None"}
-  Mode: ${cfg().get<string>("defaultMode", "agent")}
+  Mode: ${behavioralModeDisplayName(cfg().get<string>("defaultMode", "act"))}
   Model: ${cfg().get<string>("defaultModel", "deepseek-v4-pro")}`
     });
   } catch (err) {
     const running = ctx.engine.isRunning;
     ctx.postMessage({
       type: "info",
-      message: `Engine: ${running ? "Running" : "Stopped"}\nPort: ${ctx.engine.port}\nThread: ${ctx.currentThread ? ctx.currentThread.id.slice(0, 12) + "..." : "None"}\nMode: ${cfg().get<string>("defaultMode", "agent")}\nModel: ${cfg().get<string>("defaultModel", "deepseek-v4-pro")}\n(${formatError("Runtime info unavailable", err)})`
+      message: `Engine: ${running ? "Running" : "Stopped"}\nPort: ${ctx.engine.port}\nThread: ${ctx.currentThread ? ctx.currentThread.id.slice(0, 12) + "..." : "None"}\nMode: ${behavioralModeDisplayName(cfg().get<string>("defaultMode", "act"))}\nModel: ${cfg().get<string>("defaultModel", "deepseek-v4-pro")}\n(${formatError("Runtime info unavailable", err)})`
     });
   }
 }
 
 async function handleHome(ctx: SlashCommandContext, _args: string): Promise<void> {
-  ctx.postMessage({ type: "info", message: `Dashboard:\n- Threads: see sidebar\n- Mode: ${cfg().get<string>("defaultMode", "agent")}\n- Model: ${cfg().get<string>("defaultModel", "deepseek-v4-pro")}\n- Reasoning: ${cfg().get<string>("reasoningEffort", "auto")}` });
+  ctx.postMessage({ type: "info", message: `Dashboard:\n- Threads: see sidebar\n- Mode: ${behavioralModeDisplayName(cfg().get<string>("defaultMode", "act"))}\n- Model: ${cfg().get<string>("defaultModel", "deepseek-v4-pro")}\n- Reasoning: ${cfg().get<string>("reasoningEffort", "auto")}` });
 }
 
 async function handleWorkspace(ctx: SlashCommandContext, _args: string): Promise<void> {
@@ -497,7 +525,7 @@ async function handleTask(ctx: SlashCommandContext, args: string): Promise<void>
       const task = await ctx.api.createTask({
         prompt: taskRest,
         model: taskCfg.get<string>("defaultModel", "deepseek-v4-pro"),
-        mode: taskCfg.get<string>("defaultMode", "agent"),
+        mode: normalizeBehavioralMode(taskCfg.get<string>("defaultMode", "act")),
         workspace: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
         auto_approve: taskCfg.get<boolean>("autoApprove", false),
       });
@@ -539,11 +567,10 @@ async function handleTrust(ctx: SlashCommandContext, args: string): Promise<void
     }
     ctx.postMessage({ type: "info", message: "Trust mode enabled (auto-approve)" });
   } else if (sub === "off") {
-    const isYolo = cfg().get<string>("defaultMode", "agent") === "yolo";
     await cfg().update("autoApprove", false, vscode.ConfigurationTarget.Global);
     if (ctx.currentThread) {
       try {
-        await ctx.api.updateThread(ctx.currentThread.id, { auto_approve: isYolo, trust_mode: isYolo });
+        await ctx.api.updateThread(ctx.currentThread.id, { auto_approve: false, trust_mode: false });
       } catch { /* non-critical */ }
     }
     ctx.postMessage({ type: "info", message: "Trust mode disabled" });
@@ -589,7 +616,7 @@ async function handleFeedback(_ctx: SlashCommandContext, _args: string): Promise
 
 async function handleHelp(ctx: SlashCommandContext, _args: string): Promise<void> {
   ctx.postMessage({ type: "info", message: `Available commands:
-/mode [agent|plan|yolo|1|2|3] - Switch mode
+/mode [agent|planner|orchestrator|1|2|3] - Switch mode
 /model [name] - Switch model
 /models - List available models
 /reasoning [auto|off|low|medium|high|max] - Set reasoning effort
@@ -855,7 +882,7 @@ async function handleSessions(ctx: SlashCommandContext, args: string): Promise<v
       const lines = sessions.map((s) => {
         const date = new Date(s.updated_at).toLocaleDateString();
         const tokens = s.total_tokens > 0 ? ` (${s.total_tokens.toLocaleString()} tokens)` : "";
-        const mode = s.mode || "agent";
+        const mode = behavioralModeDisplayName(s.mode);
         const costUsd = s.cost?.session_cost_usd ?? 0;
         const cost = costUsd > 0 ? ` $${costUsd.toFixed(2)}` : "";
         const shortId = s.id.slice(0, 8);
@@ -988,7 +1015,7 @@ async function handleSystem(ctx: SlashCommandContext, _args: string): Promise<vo
       const display = sysPrompt.length > 500
         ? sysPrompt.slice(0, 500) + `...\n\n(truncated, ${sysPrompt.length} chars total)`
         : sysPrompt;
-      ctx.postMessage({ type: "info", message: `System Prompt (${cfg().get<string>("defaultMode", "agent")} mode):\n─────────────────────────────\n${display}` });
+      ctx.postMessage({ type: "info", message: `System Prompt (${behavioralModeDisplayName(cfg().get<string>("defaultMode", "act"))} mode):\n─────────────────────────────\n${display}` });
     } catch (err) {
       ctx.postMessage({ type: "error", message: formatError("Failed to get system prompt", err) });
     }

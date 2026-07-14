@@ -1,6 +1,6 @@
 # CodeWhale for VS Code — GUI Frontend for the CodeWhale AI Agent
 
-[![Version](https://img.shields.io/badge/version-0.4.31-blue)](https://github.com/HengQuWorld/CodeWhale-VSCode)
+[![Version](https://img.shields.io/github/package-json/v/cblage/CodeWhale-VSCode?filename=package.json)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.85+-informational)](https://code.visualstudio.com/)
 
@@ -40,7 +40,7 @@ The extension will attempt to locate the `codewhale` binary automatically from s
 
 ### Agentic AI in Your Sidebar
 - **Full coding agent** — CodeWhale reads, writes, and patches files, runs shell commands, searches code, and browses the web to complete your goal.
-- **Three modes**: `agent` (autonomous with approval), `plan` (propose before acting), `yolo` (fully autonomous).
+- **Three behaviors**: **Agent** (direct execution), **Planner** (research and design), and **Orchestrator** (multi-agent coordination). Permissions are configured separately.
 - **Model of your choice** — switch between models at any time (`/model`).
 - **Reasoning effort control** — from `off` to `max` to balance speed and depth.
 
@@ -134,7 +134,7 @@ That's it. The agent reads your workspace and responds.
 
 | Command | Action |
 |---|---|
-| `/mode [agent\|plan\|yolo]` | Switch mode |
+| `/mode [agent\|planner\|orchestrator]` | Switch behavior |
 | `/model [name]` | Switch model |
 | `/reasoning [auto\|off\|low\|medium\|high\|max]` | Set reasoning effort |
 | `/task add <prompt>` | Create a background task |
@@ -163,10 +163,10 @@ CodeWhale is configurable via VS Code settings (`Cmd+,` → search "cblage.codew
 | `cblage.codewhale.enginePath` | `"codewhale"` | Path to the codewhale binary |
 | `cblage.codewhale.enginePort` | `7878` | Port for the CodeWhale runtime API |
 | `cblage.codewhale.defaultModel` | `"deepseek-v4-pro"` | Default model for new threads |
-| `cblage.codewhale.defaultMode` | `"agent"` | Default mode (agent / plan / yolo) |
+| `cblage.codewhale.defaultMode` | `"act"` | Default behavior (Agent / Planner / Orchestrator); permission posture is configured separately |
 | `cblage.codewhale.reasoningEffort` | `"auto"` | Reasoning effort level |
 | `cblage.codewhale.autoStartEngine` | `true` | Auto-start engine on activation |
-| `cblage.codewhale.autoApprove` | `false` | Auto-approve tool calls in agent mode |
+| `cblage.codewhale.autoApprove` | `false` | Auto-approve tool calls independently of behavioral mode |
 | `cblage.codewhale.showAgentToolCards` | `false` | Show raw agent tool-call cards; subagent transcript cards remain visible |
 | `cblage.codewhale.autoWakeMasterForAgents` | `true` | Periodically nudge an active master turn to inspect running subagents; can use model tokens |
 | `cblage.codewhale.agentWakeIntervalSeconds` | `30` | Seconds between agent watchdog nudges (10–3600) |
@@ -191,12 +191,12 @@ CodeWhale is configurable via VS Code settings (`Cmd+,` → search "cblage.codew
 
 ### Installing the VSIX
 ```bash
-code --install-extension /path/to/cblage-codewhale-vscode-0.4.31-secondary-sidebar.vsix --force
+code --install-extension /path/to/generated-extension.vsix --force
 ```
 
 > **Trae CN users**: if `code` is not available, use the full path:
 > ```bash
-> "/Applications/Trae CN.app/Contents/Resources/app/bin/code" --install-extension /path/to/cblage-codewhale-vscode-0.4.31-secondary-sidebar.vsix --force
+> "/Applications/Trae CN.app/Contents/Resources/app/bin/code" --install-extension /path/to/generated-extension.vsix --force
 > ```
 
 Custom extension ID: `cblage.codewhale-vscode`

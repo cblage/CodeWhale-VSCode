@@ -55,10 +55,14 @@ function makeUsage(threadId = "thread-1"): ThreadContextUsageResponse {
   };
 }
 
-function createProvider(getThreadContext = vi.fn(async () => makeUsage())) {
+function createProvider(
+  getThreadContext = vi.fn(async () => makeUsage()),
+  getSessionContext = vi.fn(async (sessionId: string) => makeUsage(sessionId)),
+) {
   const api = {
     bindEngine: vi.fn(),
     getThreadContext,
+    getSessionContext,
     compactThread: vi.fn(async () => undefined),
   };
   const provider = new ChatProvider({} as any, {} as any, api as any);
@@ -137,5 +141,38 @@ describe("ChatProvider context usage bridge", () => {
     await (provider as any).refreshContextUsage();
 
     expect(postMessage).toHaveBeenCalledWith({ type: "contextUsage", available: false });
+  });
+
+  it("loads context occupancy for the selected saved session", async () => {
+    const getSessionContext = vi.fn(async () => makeUsage("session-2"));
+    const { provider, postMessage } = createProvider(undefined, getSessionContext);
+    provider.currentThread = null;
+    (provider as any).viewingSessionId = "session-2";
+
+    await (provider as any).refreshContextUsage();
+
+    expect(getSessionContext).toHaveBeenCalledWith("session-2");
+    expect(postMessage).toHaveBeenCalledWith({
+      type: "contextUsage",
+      available: true,
+      usage: makeUsage("session-2"),
+    });
+  });
+
+  it("discards a late saved-session estimate after another session is selected", async () => {
+    let resolveUsage!: (usage: ThreadContextUsageResponse) => void;
+    const request = new Promise<ThreadContextUsageResponse>((resolve) => {
+      resolveUsage = resolve;
+    });
+    const { provider, postMessage } = createProvider(undefined, vi.fn(() => request));
+    provider.currentThread = null;
+    (provider as any).viewingSessionId = "session-1";
+
+    const refresh = (provider as any).refreshContextUsage();
+    (provider as any).viewingSessionId = "session-2";
+    resolveUsage(makeUsage("session-1"));
+    await refresh;
+
+    expect(postMessage).not.toHaveBeenCalled();
   });
 });

@@ -71,7 +71,7 @@ export function getDebugScript(_tr: WebviewTranslations): string {
             __wvProbeHitTarget('inputArea', document.getElementById('input-area')),
             __wvProbeHitTarget('input', document.getElementById('input')),
             __wvProbeHitTarget('sendStopBtn', document.getElementById('btn-send-stop')),
-            __wvProbeHitTarget('threadsBtn', document.getElementById('btn-threads')),
+            __wvProbeHitTarget('historyBtn', document.getElementById('btn-history')),
             __wvProbeHitTarget('sessionControls', document.getElementById('btn-session-controls')),
             __wvProbeHitTarget('status', document.getElementById('status')),
             __wvProbeHitTarget('taskDetailOverlay', document.getElementById('task-detail-overlay')),

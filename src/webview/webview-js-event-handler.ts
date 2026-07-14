@@ -20,12 +20,34 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
   var currentReasoningEl = document.getElementById('current-reasoning');
   var contextUsageGaugeEl = document.getElementById('context-usage-gauge');
   var contextUsageValueEl = contextUsageGaugeEl ? contextUsageGaugeEl.querySelector('.context-usage-value') : null;
+  var contextUsageCircumference = Math.round(2 * Math.PI * 9 * 1000) / 1000;
   var _diffStore = window.__wvDiffStore;
   var _diffIdCounter = window.__wvDiffIdCounter;
 
   var apiCapabilities = window.__wvApiCapabilities || {};
   var runtimeVersion = '';
   var sessionStats = null;
+
+  function normalizeModeValue(value) {
+    var mode = String(value || '').trim().toLowerCase();
+    if (mode === 'plan' || mode === 'planner' || mode === '2') return 'plan';
+    if (mode === 'operate' || mode === 'operation' || mode === 'ops' || mode === 'orchestrator' || mode === '3') return 'operate';
+    return 'act';
+  }
+
+  function modeDisplayName(value) {
+    var mode = normalizeModeValue(value);
+    if (mode === 'plan') return 'Planner';
+    if (mode === 'operate') return 'Orchestrator';
+    return 'Agent';
+  }
+
+  function setCurrentMode(value) {
+    if (!currentModeEl) return;
+    var mode = normalizeModeValue(value);
+    currentModeEl.setAttribute('data-value', mode);
+    currentModeEl.textContent = modeDisplayName(mode);
+  }
 
   // ── Streaming state helpers ──
   var statusBarEl = document.getElementById('status');
@@ -138,7 +160,8 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
       var unavailableLabel = __i18n.contextUsageUnavailable || 'Context usage unavailable';
       contextUsageGaugeEl.classList.remove('warning', 'critical');
       contextUsageGaugeEl.classList.add('unavailable');
-      contextUsageValueEl.setAttribute('stroke-dashoffset', '100');
+      contextUsageValueEl.setAttribute('stroke-dasharray', String(contextUsageCircumference));
+      contextUsageValueEl.setAttribute('stroke-dashoffset', String(contextUsageCircumference));
       contextUsageGaugeEl.setAttribute('data-tooltip', unavailableLabel);
       contextUsageGaugeEl.setAttribute('aria-label', unavailableLabel);
       return;
@@ -157,7 +180,9 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
     contextUsageGaugeEl.classList.remove('unavailable', 'warning', 'critical');
     if (percent >= threshold) contextUsageGaugeEl.classList.add('critical');
     else if (percent >= warningAt) contextUsageGaugeEl.classList.add('warning');
-    contextUsageValueEl.setAttribute('stroke-dashoffset', String(100 - percent));
+    var dashOffset = Math.round(contextUsageCircumference * (1 - percent / 100) * 1000) / 1000;
+    contextUsageValueEl.setAttribute('stroke-dasharray', String(contextUsageCircumference));
+    contextUsageValueEl.setAttribute('stroke-dashoffset', String(dashOffset));
 
     var contextLabel = __i18n.contextUsage || 'Context';
     var tooltip = contextLabel + ': '
@@ -199,7 +224,12 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
       var rect = sessionControlsButton.getBoundingClientRect();
       var viewportHeight = window.innerHeight || document.documentElement.clientHeight;
       var viewportWidth = window.innerWidth || document.documentElement.clientWidth;
-      sessionControlsPopover.style.right = Math.max(8, viewportWidth - rect.right) + 'px';
+      var popoverWidth = Math.min(300, Math.max(0, viewportWidth - 16));
+      sessionControlsPopover.style.left = Math.min(
+        Math.max(8, rect.left),
+        Math.max(8, viewportWidth - popoverWidth - 8)
+      ) + 'px';
+      sessionControlsPopover.style.right = 'auto';
       sessionControlsPopover.style.bottom = Math.max(8, viewportHeight - rect.top + 6) + 'px';
       sessionControlsPopover.style.maxHeight = Math.max(120, rect.top - 14) + 'px';
     }
@@ -217,7 +247,8 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
     }
 
     function highlightCurrent(dropdown) {
-      var currentVal = dropdown.parentElement.querySelector('.setting-value').textContent.trim();
+      var currentEl = dropdown.parentElement.querySelector('.setting-value');
+      var currentVal = currentEl.getAttribute('data-value') || currentEl.textContent.trim();
       var items = dropdown.querySelectorAll('.dropdown-item');
       for (var i = 0; i < items.length; i++) {
         items[i].classList.toggle('selected', items[i].getAttribute('data-value') === currentVal);
@@ -311,7 +342,7 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
             ? __i18n.processing
             : '${tr.ready} (' + (msg.model || 'deepseek-v4-pro') + ')'
         );
-        if (msg.mode) currentModeEl.textContent = msg.mode;
+        if (msg.mode) setCurrentMode(msg.mode);
         if (msg.model) currentModelEl.textContent = msg.model;
         if (msg.reasoningEffort) currentReasoningEl.textContent = msg.reasoningEffort;
         runtimeVersion = msg.runtimeVersion || runtimeVersion || '';
@@ -331,9 +362,28 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
         break;
 
       case 'settingsUpdated':
-        if (msg.mode) currentModeEl.textContent = msg.mode;
+        if (msg.mode) setCurrentMode(msg.mode);
         if (msg.model) currentModelEl.textContent = msg.model;
         if (msg.reasoningEffort) currentReasoningEl.textContent = msg.reasoningEffort;
+        break;
+
+      case 'modelsUpdated':
+        var modelDropdown = document.getElementById('dropdown-model');
+        if (modelDropdown) {
+          var models = Array.isArray(msg.models) ? msg.models : [];
+          var selectedModel = currentModelEl.textContent.trim();
+          if (selectedModel && models.indexOf(selectedModel) < 0) models.unshift(selectedModel);
+          modelDropdown.textContent = '';
+          for (var modelIndex = 0; modelIndex < models.length; modelIndex++) {
+            var modelName = String(models[modelIndex] || '').trim();
+            if (!modelName) continue;
+            var modelItem = document.createElement('div');
+            modelItem.className = 'dropdown-item';
+            modelItem.setAttribute('data-value', modelName);
+            modelItem.textContent = modelName;
+            modelDropdown.appendChild(modelItem);
+          }
+        }
         break;
 
       case 'sessionList':
@@ -349,8 +399,10 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
         break;
 
       case 'sessionLoaded':
+        renderContextUsage(false, null);
         window.__wvSidebar.setActiveSessionId(msg.sessionId || null);
         window.__wvSidebar.renderSessions();
+        vscode.postMessage({ type: 'refreshContextUsage' });
         break;
 
       case 'threadLoaded':

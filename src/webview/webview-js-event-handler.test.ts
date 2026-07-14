@@ -74,6 +74,8 @@ describe("webview-js-event-handler.ts", () => {
     expect(script).toContain("type: 'refreshContextUsage'");
     expect(script).toContain("used.toLocaleString(__i18n.locale || undefined)");
     expect(script).toContain("percent.toFixed(1) + '%)'");
+    expect(script).toContain("setAttribute('stroke-dashoffset', String(dashOffset))");
+    expect(script).not.toContain("setAttribute('style'");
   });
 
   it("formats per-message token usage with locale separators", () => {
@@ -89,6 +91,8 @@ describe("webview-js-event-handler.ts", () => {
     expect(script).toContain("function setSessionControlsOpen(open)");
     expect(script).toContain("sessionControlsPopover.classList.toggle('open', sessionControlsOpen)");
     expect(script).toContain("sessionControlsButton.setAttribute('aria-expanded', sessionControlsOpen ? 'true' : 'false')");
+    expect(script).toContain("sessionControlsPopover.style.left = Math.min(");
+    expect(script).toContain("sessionControlsPopover.style.right = 'auto'");
     expect(script).toContain("window.__wvSidebar.closeFloatingPopovers()");
     expect(script).toContain("command: '/mode'");
     expect(script).toContain("command: '/model'");
@@ -212,6 +216,12 @@ describe("webview-js-event-handler.ts", () => {
   it("handles 'sessionLoaded' message type", () => {
     const script = getEventHandlerScript(makeTr());
     expect(script).toContain("case 'sessionLoaded'");
+    const sessionLoaded = script.slice(
+      script.indexOf("case 'sessionLoaded'"),
+      script.indexOf("case 'threadLoaded'"),
+    );
+    expect(sessionLoaded).toContain("renderContextUsage(false, null)");
+    expect(sessionLoaded).toContain("type: 'refreshContextUsage'");
   });
 
   it("handles 'threadLoaded' message type", () => {

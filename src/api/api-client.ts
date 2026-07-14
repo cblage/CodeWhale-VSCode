@@ -30,6 +30,7 @@ import type {
   SaveThreadAsSessionResponse,
   WorkspaceStatusResponse,
   RuntimeInfoResponse,
+  RuntimeModelsResponse,
   RuntimeApiCapabilities,
   UsageTotals,
   UsageBucket,
@@ -83,6 +84,7 @@ export type {
   SaveThreadAsSessionResponse,
   WorkspaceStatusResponse,
   RuntimeInfoResponse,
+  RuntimeModelsResponse,
   RuntimeApiCapabilities,
   UsageTotals,
   UsageBucket,
@@ -356,6 +358,12 @@ export class CodeWhaleApiClient {
     )) as ThreadContextUsageResponse;
   }
 
+  async getSessionContext(sessionId: string): Promise<ThreadContextUsageResponse> {
+    return (await this.get(
+      `/v1/sessions/${encodeURIComponent(sessionId)}/context`
+    )) as ThreadContextUsageResponse;
+  }
+
   // ── Health ──
 
   async health(): Promise<{ status: string; service: string; mode: string }> {
@@ -479,7 +487,11 @@ export class CodeWhaleApiClient {
     return (await this.get("/v1/runtime/info")) as RuntimeInfoResponse;
   }
 
-  async probeRuntimeCapabilities(): Promise<RuntimeApiCapabilities> {
+  async listModels(): Promise<RuntimeModelsResponse> {
+    return (await this.get("/v1/models")) as RuntimeModelsResponse;
+  }
+
+  async probeRuntimeCapabilities(runtimeInfo?: RuntimeInfoResponse | null): Promise<RuntimeApiCapabilities> {
     const [
       saveSession,
       threadUndo,
@@ -511,8 +523,8 @@ export class CodeWhaleApiClient {
       threadRetry,
       snapshotList,
       snapshotRestore,
-      agentRunCancel,
-      agentRunNudge,
+      agentRunCancel: runtimeInfo?.experimental?.agent_run_cancel ?? agentRunCancel,
+      agentRunNudge: runtimeInfo?.experimental?.agent_run_nudge ?? agentRunNudge,
     };
   }
 

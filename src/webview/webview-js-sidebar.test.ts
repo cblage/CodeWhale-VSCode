@@ -148,24 +148,30 @@ describe("webview-js-sidebar.ts", () => {
     expect(script).toContain("agentStatusNeedsAction");
   });
 
-  it("contains threads panel toggle", () => {
+  it("contains the full-chat history popover toggle", () => {
     const script = getSidebarScript(makeTr());
-    expect(script).toContain("function toggleThreadsPanel");
+    expect(script).toContain("function toggleHistoryPopover");
+    expect(script).toContain("setHistoryPopoverOpen");
+    expect(script).not.toContain("toggleThreadsPanel");
   });
 
   it("handles workspace filter toggle", () => {
     const script = getSidebarScript(makeTr());
-    expect(script).toContain("workspace-filter-toggle");
-    expect(script).toContain("toggleAllWorkspaces");
-    expect(script).toContain("codicon-save-all");
-    expect(script).toContain("codicon-save");
+    expect(script).toContain("session-scope-workspace");
+    expect(script).toContain("session-scope-all");
+    expect(script).toContain("setAllWorkspaces");
+    expect(script).toContain("showAllWorkspaces: false");
+    expect(script).toContain("showAllWorkspaces: true");
+    expect(script).not.toContain("workspace-filter-toggle");
+    expect(script).not.toContain("toggleAllWorkspaces");
+    expect(script).not.toContain("codicon-save-all");
     expect(script).toContain("codicon-trash");
   });
 
-  it("contains section collapse/expand via sidebar-section-header", () => {
+  it("removes obsolete sidebar section collapsing", () => {
     const script = getSidebarScript(makeTr());
-    expect(script).toContain("sidebar-section-header");
-    expect(script).toContain("collapsed");
+    expect(script).not.toContain("sidebar-section-header");
+    expect(script).not.toContain("classList.toggle('collapsed')");
   });
 
   it("wires render functions to window.__wvSidebar", () => {
@@ -229,11 +235,11 @@ describe("webview-js-sidebar.ts", () => {
     expect(script).not.toContain("workState.fileChanges");
   });
 
-  it("switches the history toggle icon with the sidebar state", () => {
+  it("tracks History popover accessibility state without sidebar icons", () => {
     const script = getSidebarScript(makeTr());
-    expect(script).toContain("function renderThreadsPanelToggle");
-    expect(script).toContain("codicon-layout-sidebar-left-off");
-    expect(script).toContain("codicon-layout-sidebar-left");
+    expect(script).toContain("button.setAttribute('aria-expanded', historyPopoverOpen ? 'true' : 'false')");
+    expect(script).not.toContain("renderThreadsPanelToggle");
+    expect(script).not.toContain("codicon-layout-sidebar-left-off");
   });
 
   it("does not repeat the Changes heading inside the Changes popover list", () => {

@@ -103,7 +103,27 @@ describe("ChatProvider mode regression", () => {
     vscodeState.workspaceFolders = undefined;
   });
 
-  it("keeps sending new turns in agent mode after /mode agent updates the active thread", async () => {
+  it("sets session scope idempotently instead of toggling stale UI state", async () => {
+    const { provider } = createProvider();
+
+    await (provider as any).handleWebviewMessage({
+      type: "setAllWorkspaces",
+      showAllWorkspaces: true,
+    });
+    await (provider as any).handleWebviewMessage({
+      type: "setAllWorkspaces",
+      showAllWorkspaces: true,
+    });
+    expect((provider as any).showAllWorkspaces).toBe(true);
+
+    await (provider as any).handleWebviewMessage({
+      type: "setAllWorkspaces",
+      showAllWorkspaces: false,
+    });
+    expect((provider as any).showAllWorkspaces).toBe(false);
+  });
+
+  it("keeps sending new turns in Act mode after the legacy /mode agent alias", async () => {
     const { api, provider } = createProvider();
 
     await (provider as any).handleWebviewMessage({
@@ -117,13 +137,13 @@ describe("ChatProvider mode regression", () => {
     });
 
     expect(api.updateThread).toHaveBeenCalledWith("thread-1", {
-      mode: "agent",
+      mode: "act",
       trust_mode: false,
       auto_approve: false,
     });
-    expect(provider.currentThread?.mode).toBe("agent");
+    expect(provider.currentThread?.mode).toBe("act");
     expect(api.startTurn).toHaveBeenCalledWith("thread-1", "use write_file", {
-      mode: "agent",
+      mode: "act",
       model: "deepseek-v4-pro",
       reasoning_effort: "auto",
       auto_approve: false,

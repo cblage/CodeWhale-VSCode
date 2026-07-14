@@ -21,6 +21,18 @@ export function getSidebarScript(tr: WebviewTranslations): string {
   var sidebarTab = 'sessions';
   var showThreadList = false;
   var sessionSearchQuery = '';
+  var historyPopoverOpen = false;
+
+  // ── Background task state ──
+  var tasksState = [];
+  var tasksPopoverOpen = false;
+
+  function modeDisplayName(value) {
+    var mode = String(value || '').trim().toLowerCase();
+    if (mode === 'plan' || mode === 'planner' || mode === '2') return 'Planner';
+    if (mode === 'operate' || mode === 'operation' || mode === 'ops' || mode === 'orchestrator' || mode === '3') return 'Orchestrator';
+    return 'Agent';
+  }
 
   // ── Work state ──
   var workState = { goal: null, checklist: [], checklistCompletionPct: 0, strategy: [], cycleCount: 0, coherenceState: 'healthy', coherenceLabel: '' };
@@ -258,14 +270,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     if (!container) return;
     var count = sessions.length;
 
-    var filterToggle = document.getElementById('workspace-filter-toggle');
-    if (filterToggle) {
-      filterToggle.innerHTML = '<span class="codicon ' + (showAllWorkspaces ? 'codicon-save-all' : 'codicon-save') + '" aria-hidden="true"></span>';
-      var scopeLabel = showAllWorkspaces ? __i18n.showAllWorkspaces : __i18n.filterCurrentWorkspace;
-      filterToggle.setAttribute('title', scopeLabel);
-      filterToggle.setAttribute('aria-label', scopeLabel);
-      filterToggle.style.opacity = showAllWorkspaces ? '1' : '0.5';
-    }
+    renderSessionScopeButtons();
 
     // Ensure search bar exists (only created once)
     initSessionSearch();
@@ -300,7 +305,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
 
       var modeEl = document.createElement('span');
       modeEl.className = 'session-mode-badge';
-      modeEl.textContent = s.mode || 'agent';
+      modeEl.textContent = modeDisplayName(s.mode);
       metaEl.appendChild(modeEl);
 
       if (showAllWorkspaces && s.workspace) {
@@ -362,6 +367,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
       (function(sessionId) {
         el.addEventListener('click', function() {
           vscode.postMessage({ type: 'loadSession', sessionId: sessionId });
+          setHistoryPopoverOpen(false);
         });
       })(s.id);
 
@@ -412,7 +418,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
       }
 
       var modeEl = document.createElement('span');
-      modeEl.textContent = t.mode || '';
+      modeEl.textContent = t.mode ? modeDisplayName(t.mode) : '';
       metaEl.appendChild(modeEl);
 
       if (t.updated_at) {
@@ -426,6 +432,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
       (function(threadId) {
         el.addEventListener('click', function() {
           vscode.postMessage({ type: 'loadThread', threadId: threadId });
+          setHistoryPopoverOpen(false);
         });
       })(t.id);
 
@@ -434,27 +441,41 @@ export function getSidebarScript(tr: WebviewTranslations): string {
   }
 
   // ── Switch Sidebar Tab ──
+  function renderSessionScopeButtons() {
+    var workspaceBtn = document.getElementById('session-scope-workspace');
+    var allBtn = document.getElementById('session-scope-all');
+    var sessionsActive = sidebarTab === 'sessions';
+    if (workspaceBtn) {
+      var workspaceActive = sessionsActive && !showAllWorkspaces;
+      workspaceBtn.classList.toggle('active', workspaceActive);
+      workspaceBtn.setAttribute('aria-pressed', workspaceActive ? 'true' : 'false');
+    }
+    if (allBtn) {
+      var allActive = sessionsActive && showAllWorkspaces;
+      allBtn.classList.toggle('active', allActive);
+      allBtn.setAttribute('aria-pressed', allActive ? 'true' : 'false');
+    }
+  }
+
   function switchSidebarTab(tab) {
     sidebarTab = tab;
-    var sessionsBtn = document.getElementById('tab-sessions-btn');
     var threadsBtn = document.getElementById('tab-threads-btn');
     var sessionsContainer = document.getElementById('tab-sessions');
     var threadsContainer = document.getElementById('tab-threads-list');
     var section = document.getElementById('sidebar-threads');
 
     if (tab === 'sessions') {
-      sessionsBtn.classList.add('active');
       threadsBtn.classList.remove('active');
       if (section) section.setAttribute('data-active-tab', 'sessions');
       sessionsContainer.style.display = '';
       threadsContainer.style.display = '';
     } else {
-      sessionsBtn.classList.remove('active');
       threadsBtn.classList.add('active');
       if (section) section.setAttribute('data-active-tab', 'threads');
       sessionsContainer.style.display = '';
       threadsContainer.style.display = '';
     }
+    renderSessionScopeButtons();
   }
 
   // ── Apply showThreadList setting ──
@@ -470,20 +491,55 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     }
   }
 
-  // ── Render Tasks ──
+  // ── Floating Background Tasks ──
+  function setTasksPopoverOpen(open) {
+    var button = document.getElementById('btn-tasks-popover');
+    var popover = document.getElementById('tasks-popover');
+    tasksPopoverOpen = !!open && tasksState.length > 0;
+    if (tasksPopoverOpen) {
+      setHistoryPopoverOpen(false);
+      setWorkPopoverOpen(false);
+      setChangesPopoverOpen(false);
+      setAgentPopoverOpen(false);
+      if (window.__wvSessionControls) window.__wvSessionControls.close();
+    }
+    if (button) button.setAttribute('aria-expanded', tasksPopoverOpen ? 'true' : 'false');
+    if (popover) {
+      popover.classList.toggle('open', tasksPopoverOpen);
+      popover.setAttribute('aria-hidden', tasksPopoverOpen ? 'false' : 'true');
+    }
+    if (tasksPopoverOpen) renderTasksPopover();
+  }
+
+  function toggleTasksPopover() {
+    if (tasksState.length === 0) return;
+    setTasksPopoverOpen(!tasksPopoverOpen);
+  }
+
   function renderTasks(tasks) {
-    var container = document.getElementById('tab-tasks');
+    tasksState = Array.isArray(tasks) ? tasks : [];
+    renderTasksPopover();
+  }
+
+  function renderTasksPopover() {
+    var button = document.getElementById('btn-tasks-popover');
+    var container = document.getElementById('tasks-popover-list');
+    if (button) {
+      button.disabled = tasksState.length === 0;
+      if (tasksState.length === 0) button.setAttribute('aria-expanded', 'false');
+    }
+    if (tasksState.length === 0 && tasksPopoverOpen) setTasksPopoverOpen(false);
     if (!container) return;
     container.innerHTML = '';
-    if (!tasks || tasks.length === 0) {
+    if (tasksState.length === 0) {
       var el = document.createElement('div');
       el.className = 'work-empty';
       el.innerHTML = '<div class="work-empty-icon">\\u2699</div><div class="work-empty-text">' + __wvEscapeHtml(__i18n.noTasks) + '</div>';
       container.appendChild(el);
       return;
     }
-    for (var i = 0; i < tasks.length; i++) {
-      var t = tasks[i];
+    for (var i = 0; i < tasksState.length; i++) {
+      var t = tasksState[i];
       var card = document.createElement('div');
       card.className = 'task-card';
       var statusIcon = t.status === 'completed' ? '\\u2713' : t.status === 'running' ? '\\u27F3' : t.status === 'failed' ? '\\u2717' : t.status === 'queued' ? '\\u23F3' : '\\u00B7';
@@ -550,6 +606,8 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     var popover = document.getElementById('agent-popover');
     agentPopoverOpen = !!open && agentRuns.length > 0;
     if (agentPopoverOpen) {
+      setHistoryPopoverOpen(false);
+      setTasksPopoverOpen(false);
       setWorkPopoverOpen(false);
       setChangesPopoverOpen(false);
       if (window.__wvSessionControls) window.__wvSessionControls.close();
@@ -590,6 +648,8 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     var popover = document.getElementById('work-popover');
     workPopoverOpen = !!open && items.length > 0;
     if (workPopoverOpen) {
+      setHistoryPopoverOpen(false);
+      setTasksPopoverOpen(false);
       setAgentPopoverOpen(false);
       setChangesPopoverOpen(false);
       if (window.__wvSessionControls) window.__wvSessionControls.close();
@@ -614,6 +674,8 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     var popover = document.getElementById('changes-popover');
     changesPopoverOpen = !!open && count > 0;
     if (changesPopoverOpen) {
+      setHistoryPopoverOpen(false);
+      setTasksPopoverOpen(false);
       setWorkPopoverOpen(false);
       setAgentPopoverOpen(false);
       if (window.__wvSessionControls) window.__wvSessionControls.close();
@@ -686,8 +748,10 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     button.disabled = !canStopAgents() || activeAgentRuns().length === 0 || pending;
     button.classList.toggle('pending', pending);
     button.setAttribute('aria-busy', pending ? 'true' : 'false');
-    button.innerHTML = '<span class="codicon codicon-debug-stop" aria-hidden="true"></span>' +
-      __wvEscapeHtml(pending ? __i18n.stoppingAgent : __i18n.stopAllAgents);
+    var label = pending ? __i18n.stoppingAgent : __i18n.stopAllAgents;
+    button.setAttribute('title', label);
+    button.setAttribute('aria-label', label);
+    button.innerHTML = '<span class="codicon codicon-debug-stop" aria-hidden="true"></span>';
   }
 
   function requestStopAgent(runId) {
@@ -1509,57 +1573,57 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     attachDetailOverlayActions(overlay, closeAgentDetail);
   }
 
-  // ── Sidebar toggle ──
-  function renderThreadsPanelToggle() {
-    var threadsPanel = document.getElementById('threads-panel');
-    var button = document.getElementById('btn-threads');
-    if (!threadsPanel || !button) return;
-    var open = threadsPanel.classList.contains('open');
-    button.innerHTML = '<span class="codicon ' + (open
-      ? 'codicon-layout-sidebar-left-off'
-      : 'codicon-layout-sidebar-left') + '" aria-hidden="true"></span>';
-    button.setAttribute('aria-expanded', open ? 'true' : 'false');
-  }
-
-  function toggleThreadsPanel() {
-    var threadsPanel = document.getElementById('threads-panel');
-    var opening = !threadsPanel.classList.contains('open');
-    threadsPanel.classList.toggle('open');
-    renderThreadsPanelToggle();
-    if (opening) {
-      void threadsPanel.offsetHeight;
+  // ── Full-chat History popover ──
+  function setHistoryPopoverOpen(open) {
+    var button = document.getElementById('btn-history');
+    var popover = document.getElementById('history-popover');
+    historyPopoverOpen = !!open;
+    if (historyPopoverOpen) {
+      setTasksPopoverOpen(false);
+      setWorkPopoverOpen(false);
+      setChangesPopoverOpen(false);
+      setAgentPopoverOpen(false);
+      if (window.__wvSessionControls) window.__wvSessionControls.close();
+    }
+    if (button) button.setAttribute('aria-expanded', historyPopoverOpen ? 'true' : 'false');
+    if (popover) {
+      popover.classList.toggle('open', historyPopoverOpen);
+      popover.setAttribute('aria-hidden', historyPopoverOpen ? 'false' : 'true');
+    }
+    if (historyPopoverOpen) {
+      void popover.offsetHeight;
       vscode.postMessage({ type: 'refreshSidebar' });
     }
   }
 
-  // ── Sidebar section collapse toggle ──
-  document.querySelectorAll('.sidebar-section-header').forEach(function(header) {
-    header.addEventListener('click', function() {
-      var section = header.parentElement;
-      section.classList.toggle('collapsed');
-    });
-  });
+  function toggleHistoryPopover() {
+    setHistoryPopoverOpen(!historyPopoverOpen);
+  }
 
   // ── Tab switching ──
-  document.getElementById('tab-sessions-btn').addEventListener('click', function() {
+  document.getElementById('session-scope-workspace').addEventListener('click', function() {
+    showAllWorkspaces = false;
     switchSidebarTab('sessions');
+    vscode.postMessage({ type: 'setAllWorkspaces', showAllWorkspaces: false });
+  });
+  document.getElementById('session-scope-all').addEventListener('click', function() {
+    showAllWorkspaces = true;
+    switchSidebarTab('sessions');
+    vscode.postMessage({ type: 'setAllWorkspaces', showAllWorkspaces: true });
   });
   document.getElementById('tab-threads-btn').addEventListener('click', function() {
     switchSidebarTab('threads');
   });
 
-  // ── Workspace filter toggle ──
-  document.getElementById('workspace-filter-toggle').addEventListener('click', function(e) {
-    e.stopPropagation();
-    vscode.postMessage({ type: 'toggleAllWorkspaces' });
-  });
-
-  // ── Threads panel toggle buttons ──
-  document.getElementById('btn-threads').addEventListener('click', toggleThreadsPanel);
+  // ── History popover toggle ──
+  document.getElementById('btn-history').addEventListener('click', toggleHistoryPopover);
 
   // ── Floating agent inspector ──
   var agentButton = document.getElementById('btn-agents');
   if (agentButton) agentButton.addEventListener('click', toggleAgentPopover);
+  var tasksPopoverButton = document.getElementById('btn-tasks-popover');
+  if (tasksPopoverButton) tasksPopoverButton.addEventListener('click', toggleTasksPopover);
+  renderTasksPopover();
   var workPopoverButton = document.getElementById('btn-work-popover');
   if (workPopoverButton) workPopoverButton.addEventListener('click', toggleWorkPopover);
   var changesPopoverButton = document.getElementById('btn-changes');
@@ -1595,12 +1659,16 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     });
   }
   document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && historyPopoverOpen) setHistoryPopoverOpen(false);
+    if (e.key === 'Escape' && tasksPopoverOpen) setTasksPopoverOpen(false);
     if (e.key === 'Escape' && agentPopoverOpen) setAgentPopoverOpen(false);
     if (e.key === 'Escape' && workPopoverOpen) setWorkPopoverOpen(false);
     if (e.key === 'Escape' && changesPopoverOpen) setChangesPopoverOpen(false);
   });
 
   function closeFloatingPopovers() {
+    setHistoryPopoverOpen(false);
+    setTasksPopoverOpen(false);
     setAgentPopoverOpen(false);
     setWorkPopoverOpen(false);
     setChangesPopoverOpen(false);
@@ -1611,6 +1679,8 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     renderSessions: renderSessions,
     renderThreads: renderThreads,
     renderTasks: renderTasks,
+    toggleHistoryPopover: toggleHistoryPopover,
+    toggleTasksPopover: toggleTasksPopover,
     renderAgents: renderAgents,
     renderAgentPopover: renderAgentPopover,
     updateAgentRuns: updateAgentRuns,
@@ -1651,7 +1721,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
 
   closeTaskDetail();
   closeAgentDetail();
-  renderThreadsPanelToggle();
+  setHistoryPopoverOpen(false);
   renderWorkPopover();
   renderChanges();
   renderAgentPopover();

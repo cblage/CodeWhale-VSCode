@@ -56,43 +56,31 @@ export function getWebviewCss(): string {
 
     #layout { display: flex; flex: 1; overflow: hidden; }
 
-    /* ── Sidebar / Threads Panel ── */
+    /* ── Full-chat History Popover ── */
 
-    #threads-panel {
-      width: 220px;
-      min-width: 160px;
-      max-width: 600px;
-      border-right: 1px solid var(--border);
-      overflow: hidden;
-      padding: 0;
+    #history-popover {
       display: none;
-      flex-direction: column;
-    }
-    #threads-panel.open { display: flex; }
-    #threads-panel:not(.open) + #sidebar-resize-handle { display: none; }
-
-    /* ── Sidebar Resize Handle ── */
-
-    #sidebar-resize-handle {
-      width: 4px;
-      cursor: col-resize;
-      flex-shrink: 0;
-      background: transparent;
-      position: relative;
-      z-index: 10;
-      transition: background 0.15s;
-    }
-    #sidebar-resize-handle:hover,
-    #sidebar-resize-handle.active {
-      background: var(--vscode-panel-border, var(--border));
-    }
-    #sidebar-resize-handle::after {
-      content: '';
       position: absolute;
-      left: -3px;
-      right: -3px;
-      top: 0;
-      bottom: 0;
+      inset: 31px 0 0;
+      z-index: 850;
+      overflow: hidden;
+      color: var(--fg);
+      background: var(--bg);
+    }
+    #history-popover.open { display: flex; }
+    .history-popover-content {
+      width: 100%;
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .history-popover-list {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
     }
 
     /* ── Input Resize Handle ── */
@@ -119,70 +107,6 @@ export function getWebviewCss(): string {
       right: 0;
     }
 
-    .sidebar-section {
-      display: flex;
-      flex-direction: column;
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-    #sidebar-threads {
-      flex: 1;
-      min-height: 0;
-      overflow: hidden;
-    }
-    .sidebar-section-header {
-      display: flex;
-      align-items: center;
-      padding: 5px 10px;
-      cursor: pointer;
-      user-select: none;
-      transition: background 0.15s;
-    }
-    .sidebar-section-header:hover {
-      background: var(--card-bg);
-    }
-    .sidebar-section-title {
-      font-size: 0.78em;
-      font-weight: 600;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      flex: 1;
-    }
-    .sidebar-section-action {
-      font-size: 0.85em;
-      cursor: pointer;
-      padding: 0 4px;
-      transition: opacity 0.2s;
-    }
-    .sidebar-section-action:hover {
-      opacity: 1 !important;
-    }
-    .sidebar-section-action .codicon {
-      font-size: 15px;
-    }
-    .sidebar-section-arrow {
-      font-size: 0.7em;
-      color: var(--muted);
-      transition: transform 0.2s;
-    }
-    .sidebar-section.collapsed .sidebar-section-arrow {
-      transform: rotate(-90deg);
-    }
-    .sidebar-section-body {
-      overflow-y: auto;
-      max-height: 200px;
-      transition: max-height 0.25s ease;
-    }
-    .sidebar-section.collapsed .sidebar-section-body {
-      max-height: 0 !important;
-      overflow: hidden;
-    }
-    #sidebar-threads .sidebar-section-body {
-      max-height: none;
-      flex: 1;
-      min-height: 0;
-    }
     #sidebar-threads[data-active-tab="sessions"] #tab-threads-list,
     #sidebar-threads[data-active-tab="threads"] #tab-sessions {
       display: none;
@@ -213,6 +137,35 @@ export function getWebviewCss(): string {
     .sidebar-tab.active {
       background: var(--brand-primary);
       color: white;
+    }
+    .session-scope-tab {
+      flex: 1 1 0;
+      width: 0;
+      min-width: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      overflow: hidden;
+    }
+    .session-scope-tab .codicon {
+      flex: 0 0 auto;
+      font-size: 14px;
+    }
+    .session-scope-tab > span:last-child {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .session-scope-tab.active {
+      background: var(--vscode-progressBar-background, var(--brand-primary-light));
+      color: white;
+    }
+    .session-scope-tab.active:hover {
+      background: var(--vscode-progressBar-background, var(--brand-primary-light));
+      color: white;
+      filter: brightness(1.12);
     }
 
     .thread-item {
@@ -258,6 +211,16 @@ export function getWebviewCss(): string {
     .thread-item.active .thread-preview { color: rgba(255,255,255,0.7); }
     .thread-item.active .thread-meta { color: rgba(255,255,255,0.6); }
     .thread-item.active .turn-status { color: rgba(255,255,255,0.8) !important; }
+    .thread-item.session-item.active {
+      background: #2b2b2b;
+      background: color-mix(in srgb, var(--vscode-editor-background) 84%, var(--vscode-foreground) 16%);
+      color: var(--fg);
+      box-shadow: inset 2px 0 0 color-mix(in srgb, var(--vscode-foreground) 48%, transparent);
+    }
+    .thread-item.session-item.active .thread-title { color: var(--fg); }
+    .thread-item.session-item.active .thread-preview,
+    .thread-item.session-item.active .thread-meta { color: var(--muted); }
+    .thread-item.session-item.active .turn-status { color: inherit !important; }
     .thread-item .thread-preview {
       font-size: 0.92em;
       color: var(--muted);
@@ -360,6 +323,9 @@ export function getWebviewCss(): string {
     }
     .thread-item.active .session-delete-btn {
       color: #ff6b6b;
+    }
+    .thread-item.session-item.active .session-delete-btn {
+      color: var(--vscode-errorForeground, #f14c4c);
     }
     .thread-item.active .session-delete-btn:hover {
       color: #ff6b6b;
@@ -1108,6 +1074,13 @@ export function getWebviewCss(): string {
       align-items: center;
       justify-content: center;
     }
+    #input-area #btn-send-stop:not(.streaming) {
+      background: var(--vscode-progressBar-background, var(--brand-primary-light));
+    }
+    #input-area #btn-send-stop:not(.streaming):hover {
+      background: var(--vscode-progressBar-background, var(--brand-primary-light));
+      filter: brightness(1.12);
+    }
     .btn-send-stop .btn-text-stop,
     .btn-send-stop .btn-text-steer { display: none; }
     .btn-send-stop.streaming .btn-text-send { display: none; }
@@ -1142,7 +1115,7 @@ export function getWebviewCss(): string {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      color: var(--brand-primary);
+      --context-usage-stroke: var(--vscode-progressBar-background, var(--brand-primary-light));
       border-radius: 50%;
       cursor: default;
     }
@@ -1163,19 +1136,17 @@ export function getWebviewCss(): string {
       stroke: color-mix(in srgb, var(--muted) 42%, transparent);
     }
     #context-usage-gauge .context-usage-value {
-      stroke: currentColor;
+      stroke: var(--context-usage-stroke);
       stroke-linecap: round;
-      stroke-dasharray: 100;
-      stroke-dashoffset: 100;
       transform: rotate(-90deg);
       transform-origin: 12px 12px;
       transition: stroke-dashoffset 180ms ease, color 180ms ease;
     }
     #context-usage-gauge.warning {
-      color: var(--vscode-editorWarning-foreground, #cca700);
+      --context-usage-stroke: var(--vscode-editorWarning-foreground, #cca700);
     }
     #context-usage-gauge.critical {
-      color: var(--vscode-errorForeground, #f14c4c);
+      --context-usage-stroke: var(--vscode-errorForeground, #f14c4c);
     }
     #context-usage-gauge.unavailable {
       color: var(--muted);
@@ -1186,7 +1157,7 @@ export function getWebviewCss(): string {
       color: var(--muted);
       border: 1px solid var(--border);
       border-radius: 3px;
-      padding: 2px 10px;
+      padding: 0;
       cursor: pointer;
       font-size: 0.8em;
       height: 26px;
@@ -1196,11 +1167,11 @@ export function getWebviewCss(): string {
       line-height: 1;
       vertical-align: middle;
       flex: 0 0 auto;
+      width: 26px;
       white-space: nowrap;
     }
-    #toolbar button:hover { color: var(--fg); border-color: var(--fg); }
     #toolbar button .codicon {
-      margin-right: 4px;
+      margin-right: 0;
       font-size: 14px;
     }
     #toolbar button:disabled {
@@ -1213,11 +1184,6 @@ export function getWebviewCss(): string {
     #toolbar #btn-stop-agents:not(:disabled) {
       color: var(--vscode-errorForeground, #f14c4c);
       border-color: color-mix(in srgb, var(--vscode-errorForeground, #f14c4c) 55%, var(--border));
-    }
-    #toolbar #btn-stop-agents:not(:disabled):hover {
-      color: var(--vscode-errorForeground, #f14c4c);
-      border-color: var(--vscode-errorForeground, #f14c4c);
-      background: color-mix(in srgb, var(--vscode-errorForeground, #f14c4c) 10%, transparent);
     }
     #toolbar button.is-unavailable,
     #toolbar button[aria-disabled="true"] {
@@ -1249,7 +1215,6 @@ export function getWebviewCss(): string {
     }
 
     #toolbar #btn-session-controls {
-      margin-left: auto;
       width: 26px;
       flex: 0 0 26px;
       padding: 0;
@@ -1263,6 +1228,12 @@ export function getWebviewCss(): string {
       color: var(--fg);
       border-color: var(--vscode-focusBorder, var(--brand-primary));
       background: color-mix(in srgb, var(--brand-primary) 18%, transparent);
+    }
+    #toolbar button:not(:disabled):not(.is-unavailable):not([aria-disabled="true"]):hover {
+      color: var(--brand-primary-foreground);
+      border-color: var(--vscode-progressBar-background, var(--brand-primary-light));
+      background: var(--vscode-progressBar-background, var(--brand-primary-light));
+      filter: brightness(1.12);
     }
 
     #settings-bar {
@@ -1278,7 +1249,7 @@ export function getWebviewCss(): string {
     #session-controls-popover {
       display: none;
       position: fixed;
-      right: 8px;
+      left: 8px;
       bottom: 48px;
       width: min(300px, calc(100vw - 16px));
       max-height: calc(100vh - 24px);
@@ -1408,8 +1379,9 @@ export function getWebviewCss(): string {
       background: color-mix(in srgb, var(--brand-primary) 12%, transparent);
     }
 
-    #settings-bar #btn-threads,
     #settings-bar #btn-new-thread,
+    #settings-bar #btn-history,
+    #settings-bar #btn-tasks-popover,
     #settings-bar #btn-work-popover,
     #settings-bar #btn-changes,
     #settings-bar #btn-agents,
@@ -1429,17 +1401,11 @@ export function getWebviewCss(): string {
       align-items: center;
       justify-content: center;
     }
-    #settings-bar #btn-threads:hover,
-    #settings-bar #btn-new-thread:hover,
-    #settings-bar #btn-work-popover:not(:disabled):hover,
-    #settings-bar #btn-changes:not(:disabled):hover,
-    #settings-bar #btn-agents:not(:disabled):hover,
-    #settings-bar #btn-config:hover {
-      color: var(--fg);
-      background: var(--brand-primary);
-    }
-    #settings-bar #btn-work-popover {
+    #settings-bar #btn-tasks-popover {
       margin-left: auto;
+    }
+    #settings-bar #btn-tasks-popover,
+    #settings-bar #btn-work-popover {
       position: relative;
       font-size: 15px;
     }
@@ -1450,17 +1416,31 @@ export function getWebviewCss(): string {
     #settings-bar #btn-new-thread .codicon { transform: translateY(1px); }
     #settings-bar #btn-changes,
     #settings-bar #btn-agents { position: relative; }
+    #settings-bar #btn-tasks-popover:disabled,
     #settings-bar #btn-work-popover:disabled,
     #settings-bar #btn-changes:disabled,
     #settings-bar #btn-agents:disabled {
       cursor: default;
       opacity: 0.45;
     }
+    #settings-bar #btn-tasks-popover:not(:disabled)[aria-expanded="true"],
     #settings-bar #btn-work-popover:not(:disabled)[aria-expanded="true"],
     #settings-bar #btn-changes:not(:disabled)[aria-expanded="true"],
-    #settings-bar #btn-agents:not(:disabled)[aria-expanded="true"] {
+    #settings-bar #btn-agents:not(:disabled)[aria-expanded="true"],
+    #settings-bar #btn-history[aria-expanded="true"] {
       color: var(--fg);
       background: color-mix(in srgb, var(--brand-primary) 30%, transparent);
+    }
+    #settings-bar #btn-new-thread:hover,
+    #settings-bar #btn-history:hover,
+    #settings-bar #btn-tasks-popover:not(:disabled):hover,
+    #settings-bar #btn-work-popover:not(:disabled):hover,
+    #settings-bar #btn-changes:not(:disabled):hover,
+    #settings-bar #btn-agents:not(:disabled):hover,
+    #settings-bar #btn-config:hover {
+      color: var(--brand-primary-foreground);
+      background: var(--vscode-progressBar-background, var(--brand-primary-light));
+      filter: brightness(1.12);
     }
     #work-pending-badge,
     #changes-count-badge,
@@ -1492,6 +1472,45 @@ export function getWebviewCss(): string {
     }
     #settings-bar #btn-changes.has-changes #changes-count-badge {
       display: inline-flex;
+    }
+
+    /* ── Floating background tasks ── */
+    #tasks-popover {
+      display: none;
+      position: absolute;
+      top: 36px;
+      right: 8px;
+      width: min(360px, calc(100% - 16px));
+      max-height: min(520px, calc(100% - 48px));
+      flex-direction: column;
+      overflow: hidden;
+      z-index: 900;
+      color: var(--fg);
+      background: var(--vscode-editorWidget-background, var(--card-bg));
+      border: 1px solid var(--vscode-widget-border, var(--border));
+      border-radius: 7px;
+      box-shadow: 0 10px 30px var(--vscode-widget-shadow, rgba(0,0,0,0.38));
+    }
+    #tasks-popover.open { display: flex; }
+    .tasks-popover-header {
+      min-height: 34px;
+      padding: 7px 10px;
+      display: flex;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.78em;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .tasks-popover-header .codicon {
+      font-size: 1em;
+      vertical-align: -0.08em;
+    }
+    #tasks-popover-list {
+      overflow-y: auto;
+      overscroll-behavior: contain;
     }
 
     /* ── Floating work checklist ── */

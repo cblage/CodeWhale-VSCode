@@ -39,6 +39,8 @@ export interface WebviewTranslations {
   loadedThreadPattern: string; // "Loaded: {0}" / "已加载: {0}"
   showAllWorkspaces: string;
   filterCurrentWorkspace: string;
+  showingWorkspaceSessions: string;
+  showingAllSessions: string;
   approvalRequired: string;
   allow: string;
   deny: string;
@@ -245,33 +247,32 @@ ${css}
   <div id="task-detail-overlay" class="task-detail-overlay" style="display:none"></div>
   <div id="agent-detail-overlay" class="task-detail-overlay" style="display:none"></div>
   <div id="layout">
-    <div id="threads-panel">
-      <div class="sidebar-section" id="sidebar-threads" data-active-tab="sessions">
-        <div class="sidebar-tabs">
-          <button class="sidebar-tab active" id="tab-sessions-btn" data-tab="sessions">${tr.sessions}</button>
-          <button class="sidebar-tab" id="tab-threads-btn" data-tab="threads">${tr.threads}</button>
-          <span class="sidebar-section-action" id="workspace-filter-toggle" title="${tr.filterCurrentWorkspace}" aria-label="${tr.filterCurrentWorkspace}"><span class="codicon codicon-save" aria-hidden="true"></span></span>
-        </div>
-        <div class="sidebar-section-body" id="tab-sessions"></div>
-        <div class="sidebar-section-body" id="tab-threads-list"></div>
-      </div>
-      <div class="sidebar-section" id="sidebar-tasks">
-        <div class="sidebar-section-header" id="tasks-section-toggle">
-          <span class="sidebar-section-title">⚙ ${tr.tasks}</span>
-          <span class="sidebar-section-arrow">▼</span>
-        </div>
-        <div class="sidebar-section-body" id="tab-tasks"></div>
-      </div>
-    </div>
-    <div id="sidebar-resize-handle" title="Drag to resize sidebar"></div>
     <div id="chat-area">
       <div id="settings-bar">
-        <button id="btn-threads" title="${tr.toggleHistory}"><span class="codicon codicon-layout-sidebar-left" aria-hidden="true"></span></button>
+        <button id="btn-new-thread" title="New session" aria-label="New session"><span class="codicon codicon-new-session" aria-hidden="true"></span></button>
+        <button id="btn-history" title="${tr.history}" aria-label="${tr.history}" aria-expanded="false" aria-controls="history-popover"><span class="codicon codicon-history" aria-hidden="true"></span></button>
+        <button id="btn-tasks-popover" title="${tr.tasks}" aria-label="${tr.tasks}" aria-expanded="false" aria-controls="tasks-popover" disabled><span class="codicon codicon-server-process" aria-hidden="true"></span></button>
         <button id="btn-work-popover" title="${tr.checklist}" aria-label="${tr.checklist}" aria-expanded="false" aria-controls="work-popover" disabled><span class="codicon codicon-checklist" aria-hidden="true"></span><span id="work-pending-badge" aria-hidden="true"></span></button>
         <button id="btn-changes" title="${tr.changes}" aria-label="${tr.changes}" aria-expanded="false" aria-controls="changes-popover" disabled><span class="codicon codicon-diff-multiple" aria-hidden="true"></span><span id="changes-count-badge" aria-hidden="true"></span></button>
         <button id="btn-agents" title="${tr.agents}" aria-label="${tr.agents}" aria-expanded="false" aria-controls="agent-popover" disabled><span class="codicon codicon-robot" aria-hidden="true"></span><span id="agent-count-badge" aria-hidden="true"></span></button>
-        <button id="btn-new-thread" title="New session" aria-label="New session"><span class="codicon codicon-new-session" aria-hidden="true"></span></button>
         <button id="btn-config" title="Open Config Panel"><span class="codicon codicon-settings-gear" aria-hidden="true"></span></button>
+      </div>
+      <div id="history-popover" role="dialog" aria-label="${tr.history}" aria-hidden="true">
+        <div class="history-popover-content" id="sidebar-threads" data-active-tab="sessions">
+          <div class="sidebar-tabs">
+            <button class="sidebar-tab session-scope-tab active" id="session-scope-workspace" data-tab="sessions" title="${tr.showingWorkspaceSessions}" aria-label="${tr.showingWorkspaceSessions}" aria-pressed="true"><span class="codicon codicon-folder" aria-hidden="true"></span><span>${tr.filterCurrentWorkspace}</span></button>
+            <button class="sidebar-tab session-scope-tab" id="session-scope-all" data-tab="sessions" title="${tr.showingAllSessions}" aria-label="${tr.showingAllSessions}" aria-pressed="false"><span class="codicon codicon-globe" aria-hidden="true"></span><span>${tr.showAllWorkspaces}</span></button>
+            <button class="sidebar-tab" id="tab-threads-btn" data-tab="threads">${tr.threads}</button>
+          </div>
+          <div class="history-popover-list" id="tab-sessions"></div>
+          <div class="history-popover-list" id="tab-threads-list"></div>
+        </div>
+      </div>
+      <div id="tasks-popover" role="dialog" aria-label="${tr.tasks}" aria-hidden="true">
+        <div class="tasks-popover-header">
+          <span><span class="codicon codicon-server-process" aria-hidden="true"></span> ${tr.tasks}</span>
+        </div>
+        <div id="tasks-popover-list"></div>
       </div>
       <div id="work-popover" role="dialog" aria-label="${tr.checklist}" aria-hidden="true">
         <div class="work-popover-header">
@@ -295,16 +296,16 @@ ${css}
       </div>
       <div id="messages"></div>
       <div id="toolbar">
-        <button id="btn-undo" title="Undo last turn"><span class="codicon codicon-discard" aria-hidden="true"></span>Undo</button>
-        <button id="btn-retry" title="Retry last turn"><span class="codicon codicon-history" aria-hidden="true"></span>Retry</button>
-        <button id="btn-stop-agents" title="${tr.stopAllAgents}" disabled><span class="codicon codicon-debug-stop" aria-hidden="true"></span>${tr.stopAllAgents}</button>
-        <button id="btn-session-controls" title="Session controls" aria-label="Session controls" aria-expanded="false" aria-controls="session-controls-popover"><span class="codicon codicon-dashboard" aria-hidden="true"></span></button>
         <div id="context-usage-gauge" class="context-usage-gauge unavailable" role="img" tabindex="0" aria-label="${tr.contextUsageUnavailable}" data-tooltip="${tr.contextUsageUnavailable}">
           <svg viewBox="0 0 24 24" aria-hidden="true">
-            <circle class="context-usage-track" cx="12" cy="12" r="9" pathLength="100"></circle>
-            <circle class="context-usage-value" cx="12" cy="12" r="9" pathLength="100"></circle>
+            <circle class="context-usage-track" cx="12" cy="12" r="9"></circle>
+            <circle class="context-usage-value" cx="12" cy="12" r="9" stroke-dasharray="56.549" stroke-dashoffset="56.549"></circle>
           </svg>
         </div>
+        <button id="btn-session-controls" title="Session controls" aria-label="Session controls" aria-expanded="false" aria-controls="session-controls-popover"><span class="codicon codicon-dashboard" aria-hidden="true"></span></button>
+        <button id="btn-undo" title="Undo last turn" aria-label="Undo last turn"><span class="codicon codicon-discard" aria-hidden="true"></span></button>
+        <button id="btn-retry" title="Retry last turn" aria-label="Retry last turn"><span class="codicon codicon-debug-restart" aria-hidden="true"></span></button>
+        <button id="btn-stop-agents" title="${tr.stopAllAgents}" aria-label="${tr.stopAllAgents}" disabled><span class="codicon codicon-debug-stop" aria-hidden="true"></span></button>
       </div>
       <div id="session-controls-popover" role="dialog" aria-label="Session controls" aria-hidden="true">
         <div class="session-controls-header">
@@ -314,11 +315,11 @@ ${css}
           <div class="setting-item">
             <span class="setting-label">${tr.modeLabel}:</span>
             <div class="setting-dropdown" data-setting="mode">
-              <span class="setting-value" id="current-mode">agent</span>
+              <span class="setting-value" id="current-mode" data-value="act">Agent</span>
               <div class="dropdown-menu" id="dropdown-mode">
-                <div class="dropdown-item" data-value="agent">agent</div>
-                <div class="dropdown-item" data-value="plan">plan</div>
-                <div class="dropdown-item" data-value="yolo">yolo</div>
+                <div class="dropdown-item" data-value="act">Agent</div>
+                <div class="dropdown-item" data-value="plan">Planner</div>
+                <div class="dropdown-item" data-value="operate">Orchestrator</div>
               </div>
             </div>
           </div>
@@ -328,9 +329,6 @@ ${css}
               <span class="setting-value" id="current-model">deepseek-v4-pro</span>
               <div class="dropdown-menu" id="dropdown-model">
                 <div class="dropdown-item" data-value="deepseek-v4-pro">deepseek-v4-pro</div>
-                <div class="dropdown-item" data-value="deepseek-v4-flash">deepseek-v4-flash</div>
-                <div class="dropdown-item" data-value="deepseek-chat">deepseek-chat</div>
-                <div class="dropdown-item" data-value="deepseek-reasoner">deepseek-reasoner</div>
               </div>
             </div>
           </div>
@@ -428,63 +426,6 @@ ${css}
   </script>
   <script nonce="${nonce}">
     ${getUtilitiesScript(tr)}
-  </script>
-  <script nonce="${nonce}">
-    (function() {
-      'use strict';
-      var handle = document.getElementById('sidebar-resize-handle');
-      var panel = document.getElementById('threads-panel');
-      if (!handle || !panel) return;
-
-      // Restore saved width from previous session
-      try {
-        var savedWidth = localStorage.getItem('cblage.codewhale:sidebarWidth');
-        if (savedWidth) {
-          var w = parseInt(savedWidth, 10);
-          if (w >= 120 && w <= 600) {
-            panel.style.width = w + 'px';
-          }
-        }
-      } catch(e) { /* localStorage may not be available */ }
-
-      var startX, startWidth;
-
-      function onMouseDown(e) {
-        startX = e.clientX;
-        startWidth = panel.getBoundingClientRect().width;
-        handle.classList.add('active');
-        document.body.style.cursor = 'col-resize';
-        document.body.style.userSelect = 'none';
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
-        e.preventDefault();
-      }
-
-      function onMouseMove(e) {
-        if (startX === undefined) return;
-        var newWidth = startWidth + (e.clientX - startX);
-        if (newWidth < 120) newWidth = 120;
-        if (newWidth > 600) newWidth = 600;
-        panel.style.width = newWidth + 'px';
-      }
-
-      function onMouseUp() {
-        handle.classList.remove('active');
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-        document.removeEventListener('mousemove', onMouseMove);
-        document.removeEventListener('mouseup', onMouseUp);
-        // Save width for next session
-        try {
-          var finalWidth = panel.getBoundingClientRect().width;
-          localStorage.setItem('cblage.codewhale:sidebarWidth', String(Math.round(finalWidth)));
-        } catch(e) { /* ignore localStorage errors */ }
-        startX = undefined;
-        startWidth = undefined;
-      }
-
-      handle.addEventListener('mousedown', onMouseDown);
-    })();
   </script>
   <script nonce="${nonce}">
     (function() {

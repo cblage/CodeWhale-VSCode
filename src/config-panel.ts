@@ -429,22 +429,16 @@ export class ConfigPanel {
       <div class="field">
         <span class="field-label">Model</span>
         <div class="field-value">
-          <select id="cfg-model">
-            <option value="deepseek-v4-pro">deepseek-v4-pro</option>
-            <option value="deepseek-v4-flash">deepseek-v4-flash</option>
-            <option value="deepseek-chat">deepseek-chat</option>
-            <option value="deepseek-reasoner">deepseek-reasoner</option>
-            <option value="auto">auto</option>
-          </select>
+          <input type="text" id="cfg-model" autocomplete="off" spellcheck="false">
         </div>
       </div>
       <div class="field">
         <span class="field-label">Default Mode</span>
         <div class="field-value">
           <select id="cfg-default_mode">
-            <option value="agent">agent</option>
-            <option value="plan">plan</option>
-            <option value="yolo">yolo</option>
+            <option value="act">Agent</option>
+            <option value="plan">Planner</option>
+            <option value="operate">Orchestrator</option>
           </select>
         </div>
       </div>
@@ -754,10 +748,14 @@ export class ConfigPanel {
     // ── Populate from config data ──
 
     function populateForm(config) {
-      currentConfig = config;
+      var normalizedMode = String(config.default_mode || '').toLowerCase();
+      if (normalizedMode === 'agent' || normalizedMode === 'auto' || normalizedMode === 'yolo') {
+        normalizedMode = 'act';
+      }
+      currentConfig = Object.assign({}, config, { default_mode: normalizedMode || 'act' });
       var keys = Object.keys(config);
       for (var i = 0; i < keys.length; i++) {
-        setFieldValue('cfg-' + keys[i], config[keys[i]]);
+        setFieldValue('cfg-' + keys[i], keys[i] === 'default_mode' ? currentConfig.default_mode : config[keys[i]]);
       }
     }
 

@@ -362,10 +362,36 @@ export interface WorkspaceStatusResponse {
 }
 
 export interface RuntimeInfoResponse {
+  service: string;
+  runtime_api_version: string;
+  codewhale_version: string;
   bind_host: string;
   port: number;
   auth_required: boolean;
+  transports: string[];
+  capabilities: {
+    threads: boolean;
+    turns: boolean;
+    turn_steer: boolean;
+    turn_interrupt: boolean;
+    event_replay: boolean;
+    external_tools: boolean;
+    environments: boolean;
+    worker_runtime: boolean;
+  };
+  experimental: {
+    environments: boolean;
+    agent_run_cancel: boolean;
+    agent_run_nudge: boolean;
+  };
+  /** Backward-compatible alias supplied by the runtime. */
   version: string;
+}
+
+export interface RuntimeModelsResponse {
+  provider: string;
+  provider_display_name: string;
+  models: string[];
 }
 
 export interface RuntimeApiCapabilities {

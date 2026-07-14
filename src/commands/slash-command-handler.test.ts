@@ -161,6 +161,11 @@ function createContext(overrides: Partial<SlashCommandContext> = {}): SlashComma
         },
         buckets: [],
       })),
+      listModels: vi.fn(async () => ({
+        provider: "deepseek",
+        provider_display_name: "DeepSeek",
+        models: ["deepseek-v4-pro", "deepseek-v4-flash"],
+      })),
       listAutomations: vi.fn(async () => []),
       getAutomation: vi.fn(async () => ({
         id: "auto-1",
@@ -353,7 +358,7 @@ describe("SlashCommandHandler - Dispatcher Pattern", () => {
   // ── /mode ──
 
   describe("/mode", () => {
-    it("switches to yolo mode and updates the active thread state", async () => {
+    it("treats legacy yolo as Act plus auto-approve", async () => {
       const currentThread = {
         id: "thread-1",
         mode: "agent",
@@ -363,7 +368,7 @@ describe("SlashCommandHandler - Dispatcher Pattern", () => {
       } as any;
       const updateThread = vi.fn(async () => ({
         ...currentThread,
-        mode: "yolo",
+        mode: "act",
         trust_mode: true,
         auto_approve: true,
       }));
@@ -377,19 +382,20 @@ describe("SlashCommandHandler - Dispatcher Pattern", () => {
 
       await handler.handle("/mode", "yolo");
 
-      expect(vscodeState.updateMock).toHaveBeenCalledWith("defaultMode", "yolo", "global");
+      expect(vscodeState.updateMock).toHaveBeenCalledWith("defaultMode", "act", "global");
+      expect(vscodeState.updateMock).toHaveBeenCalledWith("autoApprove", true, "global");
       expect(updateThread).toHaveBeenCalledWith("thread-1", {
-        mode: "yolo",
+        mode: "act",
         trust_mode: true,
         auto_approve: true,
       });
       expect(postMessage).toHaveBeenCalledWith({
         type: "settingsUpdated",
-        mode: "yolo",
+        mode: "act",
         model: "deepseek-v4-pro",
         reasoningEffort: "auto",
       });
-      expect(currentThread.mode).toBe("yolo");
+      expect(currentThread.mode).toBe("act");
       expect(currentThread.trust_mode).toBe(true);
       expect(currentThread.auto_approve).toBe(true);
     });
@@ -414,16 +420,16 @@ describe("SlashCommandHandler - Dispatcher Pattern", () => {
       await handler.handle("/mode", "agent");
 
       expect(updateThread).toHaveBeenCalledWith("thread-1", {
-        mode: "agent",
+        mode: "act",
         trust_mode: false,
         auto_approve: false,
       });
-      expect(currentThread.mode).toBe("agent");
+      expect(currentThread.mode).toBe("act");
       expect(currentThread.trust_mode).toBe(false);
       expect(currentThread.auto_approve).toBe(false);
       expect(postMessage).toHaveBeenCalledWith({
         type: "settingsUpdated",
-        mode: "agent",
+        mode: "act",
         model: "deepseek-v4-pro",
         reasoningEffort: "auto",
       });
@@ -437,16 +443,28 @@ describe("SlashCommandHandler - Dispatcher Pattern", () => {
       await handler.handle("/mode", "plan");
 
       expect(vscodeState.updateMock).toHaveBeenCalledWith("defaultMode", "plan", "global");
+      expect(postMessage).toHaveBeenCalledWith({ type: "info", message: "Mode changed to Planner" });
     });
 
-    it("accepts numeric aliases (1=agent, 2=plan, 3=yolo)", async () => {
+    it("accepts the user-facing orchestrator name while preserving the API value", async () => {
+      const postMessage = vi.fn();
+      const ctx = createContext({ postMessage });
+      const handler = new SlashCommandHandler(ctx);
+
+      await handler.handle("/mode", "orchestrator");
+
+      expect(vscodeState.updateMock).toHaveBeenCalledWith("defaultMode", "operate", "global");
+      expect(postMessage).toHaveBeenCalledWith({ type: "info", message: "Mode changed to Orchestrator" });
+    });
+
+    it("accepts numeric aliases (1=act, 2=plan, 3=operate)", async () => {
       const postMessage = vi.fn();
       const ctx = createContext({ postMessage });
 
       const handler = new SlashCommandHandler(ctx);
       await handler.handle("/mode", "3");
 
-      expect(vscodeState.updateMock).toHaveBeenCalledWith("defaultMode", "yolo", "global");
+      expect(vscodeState.updateMock).toHaveBeenCalledWith("defaultMode", "operate", "global");
     });
 
     it("shows current mode when no valid arg given", async () => {

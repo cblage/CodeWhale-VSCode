@@ -431,7 +431,10 @@ export function getInputScript(tr: WebviewTranslations): string {
     scheduleInputVerticalCentering();
   });
 
-  newThreadBtn.addEventListener('click', function() { vscode.postMessage({ type: 'newThread' }); });
+  newThreadBtn.addEventListener('click', function() {
+    if (window.__wvSidebar && window.__wvSidebar.closeFloatingPopovers) window.__wvSidebar.closeFloatingPopovers();
+    vscode.postMessage({ type: 'newThread' });
+  });
   compactBtn.addEventListener('click', function() { vscode.postMessage({ type: 'compact' }); });
   undoBtn.addEventListener('click', function() {
     if (undoBtn.getAttribute('aria-disabled') === 'true') return;

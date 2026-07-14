@@ -243,8 +243,8 @@ describe("getCommandHelpText", () => {
     const help = getCommandHelpText("/mode");
     expect(help).toContain("/mode");
     expect(help).toContain("agent");
-    expect(help).toContain("plan");
-    expect(help).toContain("yolo");
+    expect(help).toContain("planner");
+    expect(help).toContain("orchestrator");
   });
 
   it("returns unavailable message for unsupported commands", () => {

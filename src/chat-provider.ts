@@ -8,6 +8,7 @@ import {
   CodeWhaleEngine,
   AgentRunRecord,
   RuntimeApiCapabilities,
+  RuntimeInfoResponse,
   RuntimeEvent,
   SkillsResponse,
   SessionMetadata,
@@ -70,6 +71,7 @@ import {
   type PersistedSubagentState,
 } from "./utils/agent-runs";
 import { isInternalRuntimeEventText } from "./utils/runtime-events";
+import { isLegacyBypassMode, normalizeBehavioralMode } from "./utils/runtime-mode";
 
 /** Normalize file path for dedup comparison: backslashes to forward, strip trailing slashes. */
 function normalizePath(p: string): string {
@@ -168,6 +170,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
   private currentAttachments: Array<{ kind: string; path: string; name: string }> = [];
   private showAllWorkspaces: boolean = false;
   private runtimeVersion: string | null = null;
+  private runtimeInfo: RuntimeInfoResponse | null = null;
   private contextUsage: ThreadContextUsageResponse | null = null;
   private contextUsageThreadId: string | null = null;
   private contextUsageRefreshGeneration = 0;
@@ -355,9 +358,9 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
   }
 
   private getDisplayedMode(): string {
-    return this.viewedSessionDisplay?.mode
+    return normalizeBehavioralMode(this.viewedSessionDisplay?.mode
       || this.currentThread?.mode
-      || this.getCurrentMode();
+      || this.getCurrentMode());
   }
 
   public notifyDisplaySettingsChanged(): void {
@@ -500,8 +503,8 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       case "loadThread":
         await this.loadThread(msg.threadId as string);
         break;
-      case "toggleAllWorkspaces":
-        this.showAllWorkspaces = !this.showAllWorkspaces;
+      case "setAllWorkspaces":
+        this.showAllWorkspaces = msg.showAllWorkspaces === true;
         await this.refreshSessionList();
         await this.refreshThreadList();
         break;
@@ -599,6 +602,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
 
   private async syncWebviewState(): Promise<void> {
     await this.refreshRuntimeVersion();
+    await this.refreshRuntimeModels();
     await this.refreshApiCapabilities();
     await this.refreshRuntimeDisplaySettings();
     try {
@@ -690,6 +694,11 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
   private async refreshContextUsage(): Promise<void> {
     const threadId = this.currentThread?.id;
     if (!threadId) {
+      const sessionId = this.viewingSessionId;
+      if (sessionId) {
+        await this.refreshSessionContextUsage(sessionId);
+        return;
+      }
       this.clearContextUsage();
       return;
     }
@@ -722,6 +731,34 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
         this.clearContextUsage();
       }
       this.debugLog(`refreshContextUsage failed: ${message}`);
+    }
+  }
+
+  private async refreshSessionContextUsage(sessionId: string): Promise<void> {
+    const generation = ++this.contextUsageRefreshGeneration;
+    try {
+      const usage = await this.api.getSessionContext(sessionId);
+      if (
+        generation !== this.contextUsageRefreshGeneration
+        || this.currentThread !== null
+        || this.viewingSessionId !== sessionId
+      ) {
+        return;
+      }
+      this.postContextUsage(usage);
+    } catch (err) {
+      if (
+        generation !== this.contextUsageRefreshGeneration
+        || this.currentThread !== null
+        || this.viewingSessionId !== sessionId
+      ) {
+        return;
+      }
+      const message = getErrorMessage(err);
+      if (!this.contextUsage || this.contextUsageThreadId !== sessionId) {
+        this.clearContextUsage();
+      }
+      this.debugLog(`refreshSessionContextUsage failed: ${message}`);
     }
   }
 
@@ -858,6 +895,8 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       if (!this.isCurrentTranscriptSelection(generation)) return;
       this.debugLog(`engine running on ${this.engine.baseUrl}`);
       await this.refreshRuntimeVersion();
+      if (!this.isCurrentTranscriptSelection(generation)) return;
+      await this.refreshRuntimeModels();
       if (!this.isCurrentTranscriptSelection(generation)) return;
       await this.refreshApiCapabilities();
       if (!this.isCurrentTranscriptSelection(generation)) return;
@@ -1386,6 +1425,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       if (!this.isCurrentTranscriptSelection(generation)) return "stale";
       if (!confirmed) return "cancelled";
     }
+    this.clearContextUsage();
     try {
       const session = await this.api.getSession(sessionId);
       if (!this.isCurrentTranscriptSelection(generation)) return "stale";
@@ -1403,7 +1443,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       // moves on to a different task (e.g. a plan-mode session would lock
       // the extension into plan mode forever).
       const sessionModel = session.metadata.model;
-      const sessionMode = session.metadata.mode || "agent";
+      const sessionMode = normalizeBehavioralMode(session.metadata.mode || "act");
       const cfg = vscode.workspace.getConfiguration("cblage.codewhale");
       const currentModel = cfg.get<string>("defaultModel", "deepseek-v4-pro");
       this.viewedSessionDisplay = {
@@ -1844,6 +1884,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
         thread: this.currentThread,
         messages: this.messages,
       });
+      void this.refreshContextUsage();
       this.postMessage({
         type: "status",
         text: `Thread ${threadId.slice(0, 12)}: ${this.messages.length} messages`,
@@ -2023,9 +2064,10 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
         const generation = this.beginTranscriptSelection();
         const cfg = vscode.workspace.getConfiguration("cblage.codewhale");
         const model = cfg.get<string>("defaultModel", "deepseek-v4-pro");
-        const mode = cfg.get<string>("defaultMode", "agent");
+        const configuredMode = cfg.get<string>("defaultMode", "act");
+        const mode = normalizeBehavioralMode(configuredMode);
         const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        const isYolo = mode === "yolo";
+        const isYolo = isLegacyBypassMode(configuredMode);
         const autoApprove = isYolo || cfg.get<boolean>("autoApprove", false);
         const createdThread = await this.api.createThread({
           model,
@@ -2080,14 +2122,16 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       if (!threadOk) {
         const replacementGeneration = this.beginTranscriptSelection();
         const cfg = vscode.workspace.getConfiguration("cblage.codewhale");
-        const mode = cfg.get<string>("defaultMode", "agent");
-        const autoApprove = cfg.get<boolean>("autoApprove", false);
+        const configuredMode = cfg.get<string>("defaultMode", "act");
+        const mode = normalizeBehavioralMode(configuredMode);
+        const isYolo = isLegacyBypassMode(configuredMode);
+        const autoApprove = isYolo || cfg.get<boolean>("autoApprove", false);
         const replacementThread = await this.api.createThread({
           model: this.getCurrentModel(),
           mode,
           workspace: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
           auto_approve: autoApprove,
-          trust_mode: mode === "yolo",
+          trust_mode: isYolo,
         });
         if (!this.isCurrentTranscriptSelection(replacementGeneration)) return;
         this.currentThread = replacementThread;
@@ -3545,7 +3589,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
 
   private async refreshApiCapabilities(): Promise<void> {
     try {
-      this.apiCapabilities = await this.api.probeRuntimeCapabilities();
+      this.apiCapabilities = await this.api.probeRuntimeCapabilities(this.runtimeInfo);
     } catch {
       this.apiCapabilities = {
         saveSession: false,
@@ -3565,9 +3609,27 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
   private async refreshRuntimeVersion(): Promise<void> {
     try {
       const info = await this.api.getRuntimeInfo();
-      this.runtimeVersion = info.version || null;
+      this.runtimeInfo = info;
+      this.runtimeVersion = info.codewhale_version || info.version || null;
     } catch {
+      this.runtimeInfo = null;
       this.runtimeVersion = null;
+    }
+  }
+
+  private async refreshRuntimeModels(): Promise<void> {
+    try {
+      const catalog = await this.api.listModels();
+      this.postMessage({ type: "modelsUpdated", ...catalog });
+    } catch {
+      // Older runtimes do not expose /v1/models. Keep the selected model
+      // available without presenting a hard-coded list as authoritative.
+      this.postMessage({
+        type: "modelsUpdated",
+        provider: "",
+        provider_display_name: "",
+        models: [this.getCurrentModel()],
+      });
     }
   }
 
@@ -4267,7 +4329,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     try {
     switch (event.event) {
       case "context.updated": {
-        if (this.currentThread?.id && event.thread_id !== this.currentThread.id) break;
+        if (!this.currentThread?.id || event.thread_id !== this.currentThread.id) break;
         const usage = event.payload as unknown as ThreadContextUsageResponse;
         if (
           typeof usage.estimated_input_tokens === "number"
@@ -5024,7 +5086,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
 
   private getCurrentMode(): string {
     const cfg = vscode.workspace.getConfiguration("cblage.codewhale");
-    return cfg.get<string>("defaultMode", "agent");
+    return normalizeBehavioralMode(cfg.get<string>("defaultMode", "act"));
   }
 
   private getCurrentReasoningEffort(): string {

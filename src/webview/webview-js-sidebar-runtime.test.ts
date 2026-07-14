@@ -206,7 +206,8 @@ describe("agent popover runtime", () => {
     expect(button.disabled).toBe(true);
     expect(stopAll.disabled).toBe(true);
     expect(stopAll.innerHTML).toContain("codicon codicon-debug-stop");
-    expect(stopAll.innerHTML).toContain("Stop all agents");
+    expect(stopAll.innerHTML).not.toContain("Stop all agents");
+    expect(stopAll.getAttribute("title")).toBe("Stop all agents");
     button.dispatch("click");
 
     expect(button.getAttribute("aria-expanded")).toBe("false");
@@ -303,7 +304,8 @@ describe("agent popover runtime", () => {
     harness.windowObj.__wvSidebar.updateAgentRuns([running, completed]);
     expect(harness.getElement("btn-stop-agents").disabled).toBe(true);
     expect(harness.getElement("btn-stop-agents").innerHTML).toContain("codicon codicon-debug-stop");
-    expect(harness.getElement("btn-stop-agents").innerHTML).toContain("Stop all agents");
+    expect(harness.getElement("btn-stop-agents").innerHTML).not.toContain("Stop all agents");
+    expect(harness.getElement("btn-stop-agents").getAttribute("title")).toBe("Stop all agents");
   });
 
   it("posts one Stop All request and can release pending state after a provider failure", () => {
@@ -317,12 +319,14 @@ describe("agent popover runtime", () => {
     expect(harness.postMessages).toContainEqual({ type: "stopAllAgents" });
     expect(stopAll.disabled).toBe(true);
     expect(stopAll.innerHTML).toContain("codicon codicon-debug-stop");
-    expect(stopAll.innerHTML).toContain("Stopping…");
+    expect(stopAll.innerHTML).not.toContain("Stopping…");
+    expect(stopAll.getAttribute("title")).toBe("Stopping…");
 
     harness.windowObj.__wvSidebar.finishAgentStop(null);
     expect(stopAll.disabled).toBe(false);
     expect(stopAll.innerHTML).toContain("codicon codicon-debug-stop");
-    expect(stopAll.innerHTML).toContain("Stop all agents");
+    expect(stopAll.innerHTML).not.toContain("Stop all agents");
+    expect(stopAll.getAttribute("title")).toBe("Stop all agents");
   });
 
   it("keeps completed agents inspectable without showing a red badge", () => {
@@ -463,6 +467,8 @@ describe("work checklist popover runtime", () => {
   it("allows only one top-right popover to be open and closes Work when its list clears", () => {
     const harness = createHarness();
     const sidebar = harness.windowObj.__wvSidebar;
+    const tasksButton = harness.getElement("btn-tasks-popover");
+    const tasksPopover = harness.getElement("tasks-popover");
     const workButton = harness.getElement("btn-work-popover");
     const agentButton = harness.getElement("btn-agents");
     const workPopover = harness.getElement("work-popover");
@@ -474,9 +480,14 @@ describe("work checklist popover runtime", () => {
     sidebar.updateAgentRuns([sampleRun("running", "agent-running", "Runner")]);
     sidebar.setChangesState([{ filePath: "src/a.ts", changeType: "modified", addedLines: 2, removedLines: 1, diff: "patch" }]);
     sidebar.renderChanges();
+    sidebar.renderTasks([{ id: "task-active", status: "running", prompt_summary: "Background task", model: "deepseek-v4-pro" }]);
+
+    tasksButton.dispatch("click");
+    expect(tasksPopover.classList.contains("open")).toBe(true);
 
     workButton.dispatch("click");
     expect(workPopover.classList.contains("open")).toBe(true);
+    expect(tasksPopover.classList.contains("open")).toBe(false);
     expect(agentPopover.classList.contains("open")).toBe(false);
 
     agentButton.dispatch("click");
@@ -498,9 +509,54 @@ describe("work checklist popover runtime", () => {
     expect(agentPopover.classList.contains("open")).toBe(true);
     expect(changesPopover.classList.contains("open")).toBe(false);
 
+    tasksButton.dispatch("click");
+    expect(tasksPopover.classList.contains("open")).toBe(true);
+    expect(agentPopover.classList.contains("open")).toBe(false);
+
     sidebar.setWorkState(workState([]));
     expect(workButton.disabled).toBe(true);
     expect(workPopover.classList.contains("open")).toBe(false);
+  });
+});
+
+describe("background tasks popover runtime", () => {
+  it("disables when empty, then renders task actions and preserves detail and cancel commands", () => {
+    const harness = createHarness();
+    const sidebar = harness.windowObj.__wvSidebar;
+    const button = harness.getElement("btn-tasks-popover");
+    const popover = harness.getElement("tasks-popover");
+    const list = harness.getElement("tasks-popover-list");
+
+    expect(button.disabled).toBe(true);
+    button.dispatch("click");
+    expect(popover.classList.contains("open")).toBe(false);
+    expect(list.children).toHaveLength(1);
+    expect(list.children[0].innerHTML).toContain("No tasks");
+
+    sidebar.renderTasks([
+      { id: "task-1", status: "running", prompt_summary: "Review <changes>", model: "deepseek-v4-pro", result_summary: "partial" },
+    ]);
+
+    expect(button.disabled).toBe(false);
+    button.dispatch("click");
+    expect(popover.classList.contains("open")).toBe(true);
+    expect(list.children).toHaveLength(1);
+    const card = list.children[0];
+    expect(card.innerHTML).toContain("Review &lt;changes&gt;");
+    expect(card.innerHTML).toContain("deepseek-v4-pro");
+    expect(card.children).toHaveLength(1);
+    const actions = card.children[0];
+    expect(actions.children.map((child) => child.textContent)).toEqual(["Details", "Result", "Cancel"]);
+
+    card.dispatch("click");
+    expect(harness.postMessages).toContainEqual({ type: "showTaskDetail", taskId: "task-1" });
+
+    actions.children[2].dispatch("click");
+    expect(harness.postMessages).toContainEqual({ type: "slashCommand", command: "/task", args: "cancel task-1" });
+
+    sidebar.renderTasks([]);
+    expect(button.disabled).toBe(true);
+    expect(popover.classList.contains("open")).toBe(false);
   });
 });
 
@@ -576,47 +632,60 @@ describe("changes popover runtime", () => {
   });
 });
 
-describe("history sidebar controls", () => {
-  it("switches between show/hide icons when the panel toggles", () => {
+describe("full-chat history popover controls", () => {
+  it("toggles the full-chat overlay and refreshes history when opened", () => {
     const harness = createHarness();
-    const button = harness.getElement("btn-threads");
-    const panel = harness.getElement("threads-panel");
+    const button = harness.getElement("btn-history");
+    const popover = harness.getElement("history-popover");
 
-    expect(button.innerHTML).toContain("codicon-layout-sidebar-left");
     expect(button.getAttribute("aria-expanded")).toBe("false");
 
     button.dispatch("click");
-    expect(panel.classList.contains("open")).toBe(true);
-    expect(button.innerHTML).toContain("codicon-layout-sidebar-left-off");
+    expect(popover.classList.contains("open")).toBe(true);
     expect(button.getAttribute("aria-expanded")).toBe("true");
     expect(harness.postMessages).toContainEqual({ type: "refreshSidebar" });
 
     button.dispatch("click");
-    expect(panel.classList.contains("open")).toBe(false);
-    expect(button.innerHTML).toContain("codicon-layout-sidebar-left");
+    expect(popover.classList.contains("open")).toBe(false);
     expect(button.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("uses save scope icons and a red trash action for sessions", () => {
+  it("uses direct Project and All scope tabs and a red trash action for sessions", () => {
     const harness = createHarness();
     const sidebar = harness.windowObj.__wvSidebar;
     sidebar.setSessions([{ id: "session-1", title: "One", mode: "yolo", workspace: "/workspace" }]);
     sidebar.setShowAllWorkspaces(false);
     sidebar.renderSessions();
 
-    expect(harness.getElement("workspace-filter-toggle").innerHTML).toContain("codicon-save");
-    expect(harness.getElement("workspace-filter-toggle").getAttribute("title")).toBe("Current workspace only");
-    expect(harness.getElement("workspace-filter-toggle").getAttribute("aria-label")).toBe("Current workspace only");
+    const workspaceScope = harness.getElement("session-scope-workspace");
+    const allScope = harness.getElement("session-scope-all");
+    expect(workspaceScope.classList.contains("active")).toBe(true);
+    expect(workspaceScope.getAttribute("aria-pressed")).toBe("true");
+    expect(allScope.classList.contains("active")).toBe(false);
+    expect(allScope.getAttribute("aria-pressed")).toBe("false");
     let container = harness.getElement("tab-sessions");
     let sessionItem = container.children.find((child) => child.classList.contains("thread-item"));
     expect(sessionItem?.classList.contains("session-item")).toBe(true);
+    expect(sessionItem?.children[1].children[0].textContent).toBe("Agent");
     expect(sessionItem?.children[2].innerHTML).toContain("codicon-trash");
+
+    harness.getElement("btn-history").dispatch("click");
+    expect(harness.getElement("history-popover").classList.contains("open")).toBe(true);
+    sessionItem?.dispatch("click");
+    expect(harness.postMessages).toContainEqual({ type: "loadSession", sessionId: "session-1" });
+    expect(harness.getElement("history-popover").classList.contains("open")).toBe(false);
 
     sidebar.setShowAllWorkspaces(true);
     sidebar.renderSessions();
-    expect(harness.getElement("workspace-filter-toggle").innerHTML).toContain("codicon-save-all");
-    expect(harness.getElement("workspace-filter-toggle").getAttribute("title")).toBe("All workspaces");
-    expect(harness.getElement("workspace-filter-toggle").getAttribute("aria-label")).toBe("All workspaces");
+    expect(workspaceScope.classList.contains("active")).toBe(false);
+    expect(workspaceScope.getAttribute("aria-pressed")).toBe("false");
+    expect(allScope.classList.contains("active")).toBe(true);
+    expect(allScope.getAttribute("aria-pressed")).toBe("true");
+
+    workspaceScope.dispatch("click");
+    allScope.dispatch("click");
+    expect(harness.postMessages).toContainEqual({ type: "setAllWorkspaces", showAllWorkspaces: false });
+    expect(harness.postMessages).toContainEqual({ type: "setAllWorkspaces", showAllWorkspaces: true });
   });
 });
 

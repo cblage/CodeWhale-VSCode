@@ -82,10 +82,12 @@ interface Translations {
   threadsCountPattern: string;
   /** "Loaded: {0}" / "已加载: {0}" */
   loadedThreadPattern: string;
-  /** "All workspaces" / "所有工作区" */
+  /** "All" / "全部" */
   showAllWorkspaces: string;
-  /** "Current workspace only" / "仅当前工作区" */
+  /** "Project" / "项目" */
   filterCurrentWorkspace: string;
+  showingWorkspaceSessions: string;
+  showingAllSessions: string;
   // Slash commands
   commandMode: string;
   commandModel: string;
@@ -330,9 +332,11 @@ const en: Translations = {
   thinkingToggle: "▶ Thinking", thinkingOpen: "▼ Thinking", thinkingClose: "▶ Thinking",
   threadsCountPattern: "{n} threads",
   loadedThreadPattern: "Loaded: {0}",
-  showAllWorkspaces: "All workspaces",
-  filterCurrentWorkspace: "Current workspace only",
-  commandMode: "/mode - Switch mode (agent/plan/yolo)",
+  showAllWorkspaces: "All",
+  filterCurrentWorkspace: "Project",
+  showingWorkspaceSessions: "Show sessions from this project",
+  showingAllSessions: "Show sessions from all workspaces",
+  commandMode: "/mode - Switch mode (Agent/Planner/Orchestrator)",
   commandModel: "/model - Switch model",
   commandModels: "/models - List available models",
   commandReasoning: "/reasoning - Set reasoning effort",
@@ -575,9 +579,11 @@ const zhCn: Translations = {
   thinkingToggle: "▶ 思考过程", thinkingOpen: "▼ 思考过程", thinkingClose: "▶ 思考过程",
   threadsCountPattern: "{n} 个会话",
   loadedThreadPattern: "已加载: {0}",
-  showAllWorkspaces: "所有工作区",
-  filterCurrentWorkspace: "仅当前工作区",
-  commandMode: "/mode - 切换模式 (agent/plan/yolo)",
+  showAllWorkspaces: "全部",
+  filterCurrentWorkspace: "项目",
+  showingWorkspaceSessions: "显示当前项目的会话",
+  showingAllSessions: "显示所有工作区的会话",
+  commandMode: "/mode - 切换模式 (Agent/Planner/Orchestrator)",
   commandModel: "/model - 切换模型",
   commandModels: "/models - 列出可用模型",
   commandReasoning: "/reasoning - 设置思考深度",
@@ -818,6 +824,8 @@ export function webviewTranslations(tr: Translations) {
     loadedThreadPattern: tr.loadedThreadPattern,
     showAllWorkspaces: tr.showAllWorkspaces,
     filterCurrentWorkspace: tr.filterCurrentWorkspace,
+    showingWorkspaceSessions: tr.showingWorkspaceSessions,
+    showingAllSessions: tr.showingAllSessions,
     approvalRequired: tr.approvalRequired,
     allow: tr.allow,
     deny: tr.deny,

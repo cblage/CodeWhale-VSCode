@@ -291,7 +291,8 @@ describe("webview-js-event-handler runtime", () => {
       },
     });
 
-    expect(Number(value.getAttribute("stroke-dashoffset"))).toBeCloseTo(25.8);
+    expect(value.getAttribute("stroke-dasharray")).toBe("56.549");
+    expect(value.getAttribute("stroke-dashoffset")).toBe("14.59");
     expect(gauge.getAttribute("data-tooltip")).toBe("Context: 742,000 / 1,000,000 tokens (74.2%)");
     expect(gauge.getAttribute("aria-label")).toBe("Context: 742,000 / 1,000,000 tokens (74.2%)");
     expect(gauge.classList.contains("unavailable")).toBe(false);
@@ -323,10 +324,37 @@ describe("webview-js-event-handler runtime", () => {
     expect(gauge.classList.contains("critical")).toBe(true);
 
     harness.dispatchMessage({ type: "contextUsage", available: false });
-    expect(value.getAttribute("stroke-dashoffset")).toBe("100");
+    expect(value.getAttribute("stroke-dasharray")).toBe("56.549");
+    expect(value.getAttribute("stroke-dashoffset")).toBe("56.549");
     expect(gauge.getAttribute("data-tooltip")).toBe("Context usage unavailable");
     expect(gauge.classList.contains("critical")).toBe(false);
     expect(gauge.classList.contains("unavailable")).toBe(true);
+  });
+
+  it("maps context percentages to the real SVG circumference", () => {
+    const harness = createRuntimeHarness();
+    const value = harness.getElement("context-usage-gauge").querySelector(".context-usage-value")!;
+    const expectedOffsets = new Map([
+      [0, 56.549],
+      [25, 42.412],
+      [50, 28.275],
+      [100, 0],
+    ]);
+
+    for (const [percent, expectedOffset] of expectedOffsets) {
+      harness.dispatchMessage({
+        type: "contextUsage",
+        available: true,
+        usage: {
+          estimated_input_tokens: percent * 10_000,
+          context_window_tokens: 1_000_000,
+          used_percent: percent,
+          auto_compact_threshold_percent: 90,
+        },
+      });
+      expect(value.getAttribute("stroke-dasharray")).toBe("56.549");
+      expect(value.getAttribute("stroke-dashoffset")).toBe(String(expectedOffset));
+    }
   });
 
   it("updates only the visible settings labels for ready/settingsUpdated messages", () => {
@@ -343,7 +371,8 @@ describe("webview-js-event-handler runtime", () => {
       showThreadList: false,
     });
 
-    expect(harness.getElement("current-mode").textContent).toBe("plan");
+    expect(harness.getElement("current-mode").textContent).toBe("Planner");
+    expect(harness.getElement("current-mode").getAttribute("data-value")).toBe("plan");
     expect(harness.getElement("current-model").textContent).toBe("deepseek-v4-pro");
     expect(harness.getElement("current-reasoning").textContent).toBe("auto");
 
@@ -354,7 +383,8 @@ describe("webview-js-event-handler runtime", () => {
       reasoningEffort: "high",
     });
 
-    expect(harness.getElement("current-mode").textContent).toBe("agent");
+    expect(harness.getElement("current-mode").textContent).toBe("Agent");
+    expect(harness.getElement("current-mode").getAttribute("data-value")).toBe("act");
     expect(harness.getElement("current-model").textContent).toBe("deepseek-v4-pro");
     expect(harness.getElement("current-reasoning").textContent).toBe("high");
     expect(harness.postMessages).toEqual([{ type: "webviewReady" }]);

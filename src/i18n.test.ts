@@ -27,7 +27,7 @@ const COMMAND_KEYS = [
 
 describe("i18n command translations", () => {
   const enTranslations: Record<string, string> = {
-    commandMode: "/mode - Switch mode (agent/plan/yolo)",
+    commandMode: "/mode - Switch mode (Agent/Planner/Orchestrator)",
     commandModel: "/model - Switch model",
     commandModels: "/models - List available models",
     commandReasoning: "/reasoning - Set reasoning effort",
@@ -94,7 +94,7 @@ describe("i18n command translations", () => {
   };
 
   const zhCnTranslations: Record<string, string> = {
-    commandMode: "/mode - 切换模式 (agent/plan/yolo)",
+    commandMode: "/mode - 切换模式 (Agent/Planner/Orchestrator)",
     commandModel: "/model - 切换模型",
     commandModels: "/models - 列出可用模型",
     commandReasoning: "/reasoning - 设置思考深度",

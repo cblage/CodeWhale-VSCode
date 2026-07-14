@@ -41,8 +41,10 @@ function makeTr(): WebviewTranslations {
     modelLabel: "Model",
     workspaceLabel: "Workspace",
     loadedThreadPattern: "Loaded: {0}",
-    showAllWorkspaces: "All workspaces",
-    filterCurrentWorkspace: "Current workspace only",
+    showAllWorkspaces: "All",
+    filterCurrentWorkspace: "Project",
+    showingWorkspaceSessions: "Show sessions from this project",
+    showingAllSessions: "Show sessions from all workspaces",
     approvalRequired: "Approval required",
     allow: "Allow",
     deny: "Deny",
@@ -260,12 +262,14 @@ describe("webview-html.ts assembler", () => {
   it("contains HTML structure with all key elements", () => {
     const html = getWebviewHtml(makeMockWebview(), makeMockExtensionUri(), makeTr());
     expect(html).toContain('id="layout"');
-    expect(html).toContain('id="threads-panel"');
-    expect(html).toContain('id="sidebar-resize-handle"');
+    expect(html).not.toContain('id="threads-panel"');
+    expect(html).not.toContain('id="sidebar-resize-handle"');
+    expect(html).toContain('id="history-popover"');
     expect(html).toContain('id="input-resize-handle"');
     expect(html).toContain('id="chat-area"');
     expect(html).toContain('id="messages"');
     expect(html).toContain('id="input-area"');
+    expect(html).not.toContain("cblage.codewhale:sidebarWidth");
     expect(html).toContain('id="toolbar"');
     expect(html).toContain('id="settings-bar"');
     expect(html).toContain('id="status"');
@@ -273,13 +277,20 @@ describe("webview-html.ts assembler", () => {
     expect(html).toContain('id="debug-panel"');
   });
 
-  it("contains only Sessions/Threads and Tasks in the history sidebar", () => {
+  it("moves Sessions/Threads into a full-chat History popover and keeps Tasks separate", () => {
     const html = getWebviewHtml(makeMockWebview(), makeMockExtensionUri(), makeTr());
     expect(html).toContain('id="sidebar-threads"');
-    expect(html).toContain('id="sidebar-tasks"');
     expect(html).toContain('id="tab-sessions"');
     expect(html).toContain('id="tab-threads-list"');
-    expect(html).toContain('id="tab-tasks"');
+    expect(html).toContain('class="history-popover-content"');
+    expect(html).toContain('class="history-popover-list" id="tab-sessions"');
+    expect(html).not.toContain('id="sidebar-tasks"');
+    expect(html).not.toContain('id="tab-tasks"');
+    expect(html).toContain('id="btn-tasks-popover" title="Tasks"');
+    expect(html).toContain('aria-controls="tasks-popover"');
+    expect(html).toContain('codicon codicon-server-process');
+    expect(html).toContain('id="tasks-popover"');
+    expect(html).toContain('id="tasks-popover-list"');
     expect(html).not.toContain('id="sidebar-changes"');
     expect(html).not.toContain('id="tab-changes"');
     expect(html).not.toContain('id="sidebar-work"');
@@ -317,14 +328,16 @@ describe("webview-html.ts assembler", () => {
     expect(html).toContain('data-tooltip="Context usage unavailable"');
     expect(html).toContain('<circle class="context-usage-track"');
     expect(html).toContain('<circle class="context-usage-value"');
-    const sidebarButtonIndex = html.indexOf('id="btn-threads"');
+    expect(html).toContain('stroke-dasharray="56.549" stroke-dashoffset="56.549"');
+    expect(html).not.toContain('pathLength="100"');
     const newSessionButtonIndex = html.indexOf('id="btn-new-thread"');
-    const firstTopActionIndex = html.indexOf('id="btn-work-popover"');
+    const historyButtonIndex = html.indexOf('id="btn-history"');
+    const firstTopActionIndex = html.indexOf('id="btn-tasks-popover"');
     const agentButtonIndex = html.indexOf('id="btn-agents"');
     const configButtonIndex = html.indexOf('id="btn-config"');
-    expect(sidebarButtonIndex).toBeLessThan(firstTopActionIndex);
-    expect(agentButtonIndex).toBeLessThan(newSessionButtonIndex);
-    expect(newSessionButtonIndex).toBeLessThan(configButtonIndex);
+    expect(newSessionButtonIndex).toBeLessThan(historyButtonIndex);
+    expect(historyButtonIndex).toBeLessThan(firstTopActionIndex);
+    expect(agentButtonIndex).toBeLessThan(configButtonIndex);
     expect(html.match(/id="btn-new-thread"/g)).toHaveLength(1);
     expect(html).toContain('id="btn-new-thread" title="New session" aria-label="New session"><span class="codicon codicon-new-session" aria-hidden="true"></span></button>');
     const toolbarHtml = html.slice(html.indexOf('<div id="toolbar">'), html.indexOf('<div id="session-controls-popover"'));
@@ -332,21 +345,35 @@ describe("webview-html.ts assembler", () => {
     expect(toolbarHtml).not.toContain('id="btn-compact"');
     expect(toolbarHtml).toContain('id="btn-session-controls" title="Session controls" aria-label="Session controls"');
     expect(toolbarHtml).toContain('codicon codicon-dashboard');
-    expect(toolbarHtml.indexOf('id="btn-session-controls"')).toBeLessThan(toolbarHtml.indexOf('id="context-usage-gauge"'));
+    const contextGaugeIndex = toolbarHtml.indexOf('id="context-usage-gauge"');
+    const sessionControlsIndex = toolbarHtml.indexOf('id="btn-session-controls"');
+    const undoIndex = toolbarHtml.indexOf('id="btn-undo"');
+    const retryIndex = toolbarHtml.indexOf('id="btn-retry"');
+    const stopAgentsIndex = toolbarHtml.indexOf('id="btn-stop-agents"');
+    expect(contextGaugeIndex).toBeLessThan(sessionControlsIndex);
+    expect(sessionControlsIndex).toBeLessThan(undoIndex);
+    expect(undoIndex).toBeLessThan(retryIndex);
+    expect(retryIndex).toBeLessThan(stopAgentsIndex);
     expect(toolbarHtml).not.toContain('id="thread-count"');
-    expect(html).toContain('id="btn-threads" title="Toggle History"><span class="codicon codicon-layout-sidebar-left"');
+    expect(html).not.toContain('id="btn-threads"');
+    expect(html).toContain('id="btn-history" title="History" aria-label="History" aria-expanded="false" aria-controls="history-popover"><span class="codicon codicon-history"');
     expect(html).not.toContain(">📋</button>");
     expect(html).toContain('id="btn-compact"><span class="codicon codicon-fold" aria-hidden="true"></span>Compact</button>');
-    expect(html).toContain('id="btn-undo" title="Undo last turn"><span class="codicon codicon-discard" aria-hidden="true"></span>Undo</button>');
-    expect(html).toContain('id="btn-retry" title="Retry last turn"><span class="codicon codicon-history" aria-hidden="true"></span>Retry</button>');
+    expect(html).toContain('id="btn-undo" title="Undo last turn" aria-label="Undo last turn"><span class="codicon codicon-discard" aria-hidden="true"></span></button>');
+    expect(html).toContain('id="btn-retry" title="Retry last turn" aria-label="Retry last turn"><span class="codicon codicon-debug-restart" aria-hidden="true"></span></button>');
     expect(html).not.toContain("🔁 Retry");
-    expect(html).toContain('id="btn-stop-agents" title="Stop all agents" disabled><span class="codicon codicon-debug-stop" aria-hidden="true"></span>Stop all agents</button>');
+    expect(html).toContain('id="btn-stop-agents" title="Stop all agents" aria-label="Stop all agents" disabled><span class="codicon codicon-debug-stop" aria-hidden="true"></span></button>');
     expect(html.indexOf('id="btn-stop-agents"')).toBeGreaterThan(html.indexOf('id="btn-retry"'));
     expect(html).toContain('id="btn-config" title="Open Config Panel"><span class="codicon codicon-settings-gear"');
   });
 
-  it("places mutually exclusive Work, Changes, and Agent popovers before Config", () => {
+  it("places mutually exclusive Tasks, Work, Changes, and Agent popovers before Config", () => {
     const html = getWebviewHtml(makeMockWebview(), makeMockExtensionUri(), makeTr());
+    expect(html).toContain('id="btn-tasks-popover"');
+    expect(html).toContain('id="btn-tasks-popover" title="Tasks" aria-label="Tasks" aria-expanded="false" aria-controls="tasks-popover" disabled><span class="codicon codicon-server-process"');
+    expect(html).toMatch(/id="btn-tasks-popover"[^>]*\sdisabled(?:\s|>)/);
+    expect(html).toContain('id="tasks-popover"');
+    expect(html).toContain('id="tasks-popover-list"');
     expect(html).toContain('id="btn-work-popover"');
     expect(html).toContain('disabled><span class="codicon codicon-checklist"');
     expect(html).toContain('<span id="work-pending-badge"');
@@ -369,6 +396,7 @@ describe("webview-html.ts assembler", () => {
     expect(html).toContain('id="agent-count-badge"');
     expect(html).toContain('id="agent-popover"');
     expect(html).toContain('id="agent-popover-list"');
+    expect(html.indexOf('id="btn-tasks-popover"')).toBeLessThan(html.indexOf('id="btn-work-popover"'));
     expect(html.indexOf('id="btn-work-popover"')).toBeLessThan(html.indexOf('id="btn-agents"'));
     expect(html.indexOf('id="btn-agents"')).toBeLessThan(html.indexOf('id="btn-config"'));
   });
@@ -404,10 +432,10 @@ describe("webview-html.ts assembler", () => {
     expect(html).toContain("window.__wvSidebar");
   });
 
-  it("includes all module scripts (shared state + 9 modules = 10)", () => {
+  it("includes all module scripts after removing the sidebar-resize script", () => {
     const html = getWebviewHtml(makeMockWebview(), makeMockExtensionUri(), makeTr());
     const scriptCount = (html.match(/<script nonce=/g) || []).length;
-    expect(scriptCount).toBe(10);
+    expect(scriptCount).toBe(9);
   });
 
   it("contains utilities module output", () => {
@@ -471,11 +499,11 @@ describe("webview-html.ts assembler", () => {
   it("handles zh-cn locale", () => {
     const tr = makeTr();
     tr.locale = "zh-cn";
-    tr.sessions = "会话";
+    tr.filterCurrentWorkspace = "工作区会话";
     tr.threads = "线程";
     tr.send = "发送";
     const html = getWebviewHtml(makeMockWebview(), makeMockExtensionUri(), tr);
-    expect(html).toContain("会话");
+    expect(html).toContain("工作区会话");
     expect(html).toContain("线程");
     expect(html).toContain("发送");
     expect(html).toContain("var __locale = 'zh-cn'");
@@ -520,6 +548,9 @@ describe("webview-html.ts assembler", () => {
     expect(sessionControlsHtml).toContain('<span>Session controls</span>');
     expect(sessionControlsHtml).not.toContain('codicon codicon-dashboard');
     expect(sessionControlsHtml).toContain('id="current-mode"');
+    expect(sessionControlsHtml).toContain('id="current-mode" data-value="act">Agent</span>');
+    expect(sessionControlsHtml).toContain('data-value="plan">Planner</div>');
+    expect(sessionControlsHtml).toContain('data-value="operate">Orchestrator</div>');
     expect(sessionControlsHtml).toContain('id="current-model"');
     expect(sessionControlsHtml).toContain('id="current-reasoning"');
     expect(sessionControlsHtml).toContain('<span class="setting-label">Effort:</span>');
@@ -540,15 +571,22 @@ describe("webview-html.ts assembler", () => {
     expect(html).toContain('aria-controls="session-controls-popover"');
   });
 
-  it("contains workspace filter toggle", () => {
+  it("uses equal Project and All session-scope tabs without a diskette action", () => {
     const html = getWebviewHtml(makeMockWebview(), makeMockExtensionUri(), makeTr());
-    expect(html).toContain('id="workspace-filter-toggle" title="Current workspace only" aria-label="Current workspace only"');
-    expect(html).toContain('codicon codicon-save');
+    expect(html).toContain('id="session-scope-workspace" data-tab="sessions" title="Show sessions from this project"');
+    expect(html).toContain('aria-pressed="true"><span class="codicon codicon-folder"');
+    expect(html).toContain('<span>Project</span></button>');
+    expect(html).toContain('id="session-scope-all" data-tab="sessions" title="Show sessions from all workspaces"');
+    expect(html).toContain('aria-pressed="false"><span class="codicon codicon-globe"');
+    expect(html).toContain('<span>All</span></button>');
+    expect(html).not.toContain('id="workspace-filter-toggle"');
+    expect(html).not.toContain('codicon codicon-save');
   });
 
   it("contains sidebar tab buttons", () => {
     const html = getWebviewHtml(makeMockWebview(), makeMockExtensionUri(), makeTr());
-    expect(html).toContain('id="tab-sessions-btn"');
+    expect(html).toContain('id="session-scope-workspace"');
+    expect(html).toContain('id="session-scope-all"');
     expect(html).toContain('id="tab-threads-btn"');
   });
 });

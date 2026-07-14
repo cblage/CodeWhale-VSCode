@@ -668,6 +668,30 @@ describe("CodeWhaleApiClient - HTTP methods with mocked server", () => {
     expect(options.method).toBe("GET");
   });
 
+  it("getSessionContext() reads the encoded saved-session context endpoint", async () => {
+    const response = {
+      thread_id: "session/with spaces",
+      provider: "deepseek",
+      model: "deepseek-v4-pro",
+      estimated_input_tokens: 123_000,
+      context_window_tokens: 1_000_000,
+      remaining_context_tokens: 877_000,
+      used_percent: 12.3,
+      auto_compact_enabled: true,
+      auto_compact_threshold_tokens: 900_000,
+      auto_compact_threshold_percent: 90,
+      source: "saved_session",
+    };
+    mockHttpRequest(200, JSON.stringify(response));
+
+    const result = await client.getSessionContext("session/with spaces");
+
+    expect(result).toEqual(response);
+    const [url, options] = (http.request as any).mock.calls[0];
+    expect(url.pathname).toBe("/v1/sessions/session%2Fwith%20spaces/context");
+    expect(options.method).toBe("GET");
+  });
+
   it("createThread() sends POST to /v1/threads", async () => {
     const threadData: ThreadRecord = {
       schema_version: 1,
@@ -804,11 +828,49 @@ describe("CodeWhaleApiClient - HTTP methods with mocked server", () => {
   });
 
   it("getRuntimeInfo() returns RuntimeInfoResponse", async () => {
-    const response = { bind_host: "127.0.0.1", port: 54321, auth_required: false, version: "1.0.0" };
+    const response = {
+      service: "codewhale-runtime-api",
+      runtime_api_version: "1.0",
+      codewhale_version: "0.1337.7",
+      bind_host: "127.0.0.1",
+      port: 54321,
+      auth_required: false,
+      transports: ["http", "sse"],
+      capabilities: {
+        threads: true,
+        turns: true,
+        turn_steer: true,
+        turn_interrupt: true,
+        event_replay: true,
+        external_tools: true,
+        environments: false,
+        worker_runtime: true,
+      },
+      experimental: {
+        environments: false,
+        agent_run_cancel: true,
+        agent_run_nudge: true,
+      },
+      version: "0.1337.7",
+    };
     mockHttpRequest(200, JSON.stringify(response));
     const result = await client.getRuntimeInfo();
     expect(result.port).toBe(54321);
-    expect(result.version).toBe("1.0.0");
+    expect(result.runtime_api_version).toBe("1.0");
+    expect(result.codewhale_version).toBe("0.1337.7");
+    expect(result.experimental.agent_run_cancel).toBe(true);
+  });
+
+  it("listModels() returns the active provider catalog", async () => {
+    const response = {
+      provider: "deepseek",
+      provider_display_name: "DeepSeek",
+      models: ["deepseek-v4-pro", "deepseek-v4-flash"],
+    };
+    mockHttpRequest(200, JSON.stringify(response));
+    const result = await client.listModels();
+    expect(result.provider).toBe("deepseek");
+    expect(result.models).toEqual(response.models);
   });
 
   it("probes agent cancellation with a side-effect-free GET", async () => {
