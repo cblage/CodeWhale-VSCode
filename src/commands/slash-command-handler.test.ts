@@ -358,7 +358,7 @@ describe("SlashCommandHandler - Dispatcher Pattern", () => {
   // ── /mode ──
 
   describe("/mode", () => {
-    it("treats legacy yolo as Act plus auto-approve", async () => {
+    it("preserves Yolo as a distinct full-autonomy mode", async () => {
       const currentThread = {
         id: "thread-1",
         mode: "agent",
@@ -368,7 +368,7 @@ describe("SlashCommandHandler - Dispatcher Pattern", () => {
       } as any;
       const updateThread = vi.fn(async () => ({
         ...currentThread,
-        mode: "act",
+        mode: "yolo",
         trust_mode: true,
         auto_approve: true,
       }));
@@ -382,20 +382,20 @@ describe("SlashCommandHandler - Dispatcher Pattern", () => {
 
       await handler.handle("/mode", "yolo");
 
-      expect(vscodeState.updateMock).toHaveBeenCalledWith("defaultMode", "act", "global");
+      expect(vscodeState.updateMock).toHaveBeenCalledWith("defaultMode", "yolo", "global");
       expect(vscodeState.updateMock).toHaveBeenCalledWith("autoApprove", true, "global");
       expect(updateThread).toHaveBeenCalledWith("thread-1", {
-        mode: "act",
+        mode: "yolo",
         trust_mode: true,
         auto_approve: true,
       });
       expect(postMessage).toHaveBeenCalledWith({
         type: "settingsUpdated",
-        mode: "act",
+        mode: "yolo",
         model: "deepseek-v4-pro",
         reasoningEffort: "auto",
       });
-      expect(currentThread.mode).toBe("act");
+      expect(currentThread.mode).toBe("yolo");
       expect(currentThread.trust_mode).toBe(true);
       expect(currentThread.auto_approve).toBe(true);
     });

@@ -31,6 +31,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     var mode = String(value || '').trim().toLowerCase();
     if (mode === 'plan' || mode === 'planner' || mode === '2') return 'Planner';
     if (mode === 'operate' || mode === 'operation' || mode === 'ops' || mode === 'orchestrator' || mode === '3') return 'Orchestrator';
+    if (mode === 'yolo' || mode === 'bypass' || mode === 'bypass-permissions' || mode === 'bypasspermissions' || mode === '4') return 'Yolo';
     return 'Agent';
   }
 

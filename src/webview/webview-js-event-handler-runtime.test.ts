@@ -387,6 +387,16 @@ describe("webview-js-event-handler runtime", () => {
     expect(harness.getElement("current-mode").getAttribute("data-value")).toBe("act");
     expect(harness.getElement("current-model").textContent).toBe("deepseek-v4-pro");
     expect(harness.getElement("current-reasoning").textContent).toBe("high");
+
+    harness.dispatchMessage({
+      type: "settingsUpdated",
+      mode: "yolo",
+      model: "deepseek-v4-pro",
+      reasoningEffort: "max",
+    });
+
+    expect(harness.getElement("current-mode").textContent).toBe("Yolo");
+    expect(harness.getElement("current-mode").getAttribute("data-value")).toBe("yolo");
     expect(harness.postMessages).toEqual([{ type: "webviewReady" }]);
   });
 

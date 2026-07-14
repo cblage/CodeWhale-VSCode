@@ -319,6 +319,7 @@ ${css}
               <div class="dropdown-menu" id="dropdown-mode">
                 <div class="dropdown-item" data-value="act">Agent</div>
                 <div class="dropdown-item" data-value="plan">Planner</div>
+                <div class="dropdown-item" data-value="yolo">Yolo</div>
                 <div class="dropdown-item" data-value="operate">Orchestrator</div>
               </div>
             </div>

@@ -438,6 +438,7 @@ export class ConfigPanel {
           <select id="cfg-default_mode">
             <option value="act">Agent</option>
             <option value="plan">Planner</option>
+            <option value="yolo">Yolo</option>
             <option value="operate">Orchestrator</option>
           </select>
         </div>

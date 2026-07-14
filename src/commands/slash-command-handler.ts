@@ -151,7 +151,7 @@ async function handleMode(ctx: SlashCommandContext, args: string): Promise<void>
   } else {
     ctx.postMessage({
       type: "info",
-      message: `Current mode: ${behavioralModeDisplayName(cfg().get<string>("defaultMode", "act"))}\nUsage: /mode [agent|planner|orchestrator|1|2|3]`,
+      message: `Current mode: ${behavioralModeDisplayName(cfg().get<string>("defaultMode", "act"))}\nUsage: /mode [agent|planner|yolo|orchestrator|1|2|3|4]`,
     });
   }
 }
@@ -616,7 +616,7 @@ async function handleFeedback(_ctx: SlashCommandContext, _args: string): Promise
 
 async function handleHelp(ctx: SlashCommandContext, _args: string): Promise<void> {
   ctx.postMessage({ type: "info", message: `Available commands:
-/mode [agent|planner|orchestrator|1|2|3] - Switch mode
+/mode [agent|planner|yolo|orchestrator|1|2|3|4] - Switch mode
 /model [name] - Switch model
 /models - List available models
 /reasoning [auto|off|low|medium|high|max] - Set reasoning effort

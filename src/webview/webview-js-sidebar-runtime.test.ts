@@ -666,7 +666,7 @@ describe("full-chat history popover controls", () => {
     let container = harness.getElement("tab-sessions");
     let sessionItem = container.children.find((child) => child.classList.contains("thread-item"));
     expect(sessionItem?.classList.contains("session-item")).toBe(true);
-    expect(sessionItem?.children[1].children[0].textContent).toBe("Agent");
+    expect(sessionItem?.children[1].children[0].textContent).toBe("Yolo");
     expect(sessionItem?.children[2].innerHTML).toContain("codicon-trash");
 
     harness.getElement("btn-history").dispatch("click");

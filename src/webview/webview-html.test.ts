@@ -551,6 +551,7 @@ describe("webview-html.ts assembler", () => {
     expect(sessionControlsHtml).toContain('id="current-mode" data-value="act">Agent</span>');
     expect(sessionControlsHtml).toContain('data-value="plan">Planner</div>');
     expect(sessionControlsHtml).toContain('data-value="operate">Orchestrator</div>');
+    expect(sessionControlsHtml).toContain('data-value="yolo">Yolo</div>');
     expect(sessionControlsHtml).toContain('id="current-model"');
     expect(sessionControlsHtml).toContain('id="current-reasoning"');
     expect(sessionControlsHtml).toContain('<span class="setting-label">Effort:</span>');

@@ -2,7 +2,7 @@
   "name": "codewhale-vscode",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.4.64",
+  "version": "0.4.65",
   "publisher": "cblage",
   "repository": "https://github.com/HengQuWorld/CodeWhale-VSCode",
   "engines": {
@@ -96,6 +96,7 @@
           "enum": [
             "act",
             "plan",
+            "yolo",
             "operate"
           ],
           "default": "act",

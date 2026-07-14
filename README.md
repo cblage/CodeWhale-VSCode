@@ -40,7 +40,7 @@ The extension will attempt to locate the `codewhale` binary automatically from s
 
 ### Agentic AI in Your Sidebar
 - **Full coding agent** — CodeWhale reads, writes, and patches files, runs shell commands, searches code, and browses the web to complete your goal.
-- **Three behaviors**: **Agent** (direct execution), **Planner** (research and design), and **Orchestrator** (multi-agent coordination). Permissions are configured separately.
+- **Four modes**: **Agent** (direct execution), **Planner** (research and design), **Yolo** (direct execution with full autonomy), and **Orchestrator** (Fleet/workflow coordination that requires a configured roster).
 - **Model of your choice** — switch between models at any time (`/model`).
 - **Reasoning effort control** — from `off` to `max` to balance speed and depth.
 
@@ -134,7 +134,7 @@ That's it. The agent reads your workspace and responds.
 
 | Command | Action |
 |---|---|
-| `/mode [agent\|planner\|orchestrator]` | Switch behavior |
+| `/mode [agent\|planner\|yolo\|orchestrator]` | Switch mode |
 | `/model [name]` | Switch model |
 | `/reasoning [auto\|off\|low\|medium\|high\|max]` | Set reasoning effort |
 | `/task add <prompt>` | Create a background task |
@@ -163,7 +163,7 @@ CodeWhale is configurable via VS Code settings (`Cmd+,` → search "cblage.codew
 | `cblage.codewhale.enginePath` | `"codewhale"` | Path to the codewhale binary |
 | `cblage.codewhale.enginePort` | `7878` | Port for the CodeWhale runtime API |
 | `cblage.codewhale.defaultModel` | `"deepseek-v4-pro"` | Default model for new threads |
-| `cblage.codewhale.defaultMode` | `"act"` | Default behavior (Agent / Planner / Orchestrator); permission posture is configured separately |
+| `cblage.codewhale.defaultMode` | `"act"` | Default mode (Agent / Planner / Yolo / Orchestrator) |
 | `cblage.codewhale.reasoningEffort` | `"auto"` | Reasoning effort level |
 | `cblage.codewhale.autoStartEngine` | `true` | Auto-start engine on activation |
 | `cblage.codewhale.autoApprove` | `false` | Auto-approve tool calls independently of behavioral mode |

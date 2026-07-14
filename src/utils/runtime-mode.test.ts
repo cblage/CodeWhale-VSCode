@@ -12,6 +12,8 @@ describe("runtime mode labels", () => {
     ["planner", "plan", "Planner"],
     ["operate", "operate", "Orchestrator"],
     ["orchestrator", "operate", "Orchestrator"],
+    ["yolo", "yolo", "Yolo"],
+    ["bypass", "yolo", "Yolo"],
   ])("maps %s to %s / %s", (input, value, label) => {
     expect(normalizeBehavioralMode(input)).toBe(value);
     expect(behavioralModeDisplayName(input)).toBe(label);

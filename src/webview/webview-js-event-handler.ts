@@ -32,6 +32,7 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
     var mode = String(value || '').trim().toLowerCase();
     if (mode === 'plan' || mode === 'planner' || mode === '2') return 'plan';
     if (mode === 'operate' || mode === 'operation' || mode === 'ops' || mode === 'orchestrator' || mode === '3') return 'operate';
+    if (mode === 'yolo' || mode === 'bypass' || mode === 'bypass-permissions' || mode === 'bypasspermissions' || mode === '4') return 'yolo';
     return 'act';
   }
 
@@ -39,6 +40,7 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
     var mode = normalizeModeValue(value);
     if (mode === 'plan') return 'Planner';
     if (mode === 'operate') return 'Orchestrator';
+    if (mode === 'yolo') return 'Yolo';
     return 'Agent';
   }
 

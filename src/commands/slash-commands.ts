@@ -7,7 +7,7 @@ export interface SlashCommand {
 }
 
 const COMMANDS: SlashCommand[] = [
-  { name: "/mode", desc: "Switch mode (Agent/Planner/Orchestrator)", category: "config", availability: "full", helpText: "/mode [agent|planner|orchestrator|1|2|3] - Switch mode" },
+  { name: "/mode", desc: "Switch mode (Agent/Planner/Yolo/Orchestrator)", category: "config", availability: "full", helpText: "/mode [agent|planner|yolo|orchestrator|1|2|3|4] - Switch mode" },
   { name: "/model", desc: "Switch model", category: "config", availability: "full", helpText: "/model [name] - Switch model" },
   { name: "/models", desc: "List available models", category: "config", availability: "full", helpText: "/models - List available models" },
   { name: "/reasoning", desc: "Set reasoning effort", category: "config", availability: "full", helpText: "/reasoning [auto|off|low|medium|high|max] - Set reasoning effort" },
