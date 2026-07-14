@@ -137,6 +137,8 @@ describe("webview-css.ts", () => {
     );
     expect(css).toContain(".btn-send-stop.streaming.steering .btn-text-steer");
     expect(css).toMatch(/#input-area #btn-send-stop:not\(\.streaming\)\s*\{[^}]*background:\s*var\(--vscode-progressBar-background, var\(--brand-primary-light\)\);/s);
+    expect(css).toMatch(/#input-area #btn-send-stop\.streaming\s*\{[^}]*background:\s*#d32f2f;/s);
+    expect(css).toMatch(/#input-area #btn-send-stop\.streaming\.steering\s*\{[^}]*background:\s*var\(--brand-primary\);/s);
     expect(css).toMatch(/\.session-scope-tab\s*\{[^}]*flex:\s*1 1 0;[^}]*width:\s*0;[^}]*justify-content:\s*center;/s);
     expect(css).toMatch(/\.session-scope-tab > span:last-child\s*\{[^}]*text-overflow:\s*ellipsis;/s);
     expect(css).toMatch(/\.session-scope-tab\.active\s*\{[^}]*background:\s*var\(--vscode-progressBar-background, var\(--brand-primary-light\)\);/s);

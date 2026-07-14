@@ -360,7 +360,7 @@ ${css}
           <button id="btn-send-stop" class="btn-send-stop">
             <span class="btn-text-send">${tr.send}</span>
             <span class="btn-text-stop">${tr.interrupt}</span>
-            <span class="btn-text-steer">${tr.steer}</span>
+            <span class="btn-text-steer"><span class="codicon codicon-forward" aria-hidden="true"></span>${tr.steer}</span>
           </button>
         </div>
       </div>

@@ -1,5 +1,13 @@
 # Change Log
 
+## 0.4.66
+
+### Interface
+
+- **Red Active-Turn Stop Button** — Give the main Stop state a red background,
+  including distinct hover and pressed shades, while keeping Send and Steer on
+  the normal accent color. The Steer state now includes the `$(forward)` icon.
+
 ## 0.4.44
 
 ### Interface

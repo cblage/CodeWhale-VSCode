@@ -1086,14 +1086,18 @@ export function getWebviewCss(): string {
     .btn-send-stop.streaming .btn-text-send { display: none; }
     .btn-send-stop.streaming .btn-text-stop { display: inline; }
     .btn-send-stop.streaming.steering .btn-text-stop { display: none; }
-    .btn-send-stop.streaming.steering .btn-text-steer { display: inline; }
-    .btn-send-stop.streaming {
+    .btn-send-stop.streaming.steering .btn-text-steer {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #input-area #btn-send-stop.streaming {
       background: #d32f2f;
     }
-    .btn-send-stop.streaming:hover { background: #e53935; }
-    .btn-send-stop.streaming:active { background: #b71c1c; }
-    .btn-send-stop.streaming.steering { background: var(--brand-primary); }
-    .btn-send-stop.streaming.steering:hover { background: var(--brand-primary-light); }
+    #input-area #btn-send-stop.streaming:hover { background: #e53935; }
+    #input-area #btn-send-stop.streaming:active { background: #b71c1c; }
+    #input-area #btn-send-stop.streaming.steering { background: var(--brand-primary); }
+    #input-area #btn-send-stop.streaming.steering:hover { background: var(--brand-primary-light); }
 
     #toolbar {
       padding: 4px 8px;
