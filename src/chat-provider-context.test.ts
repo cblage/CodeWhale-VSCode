@@ -19,7 +19,7 @@ vi.mock("vscode", () => ({
 }));
 
 import { ChatProvider } from "./chat-provider";
-import type { RuntimeEvent, ThreadContextUsageResponse, ThreadRecord } from "./types";
+import type { RuntimeEvent, ThreadContextUsageResponse, ThreadRecord, TurnRecord } from "./types";
 
 function makeThread(id: string): ThreadRecord {
   return {
@@ -55,15 +55,37 @@ function makeUsage(threadId = "thread-1"): ThreadContextUsageResponse {
   };
 }
 
+function makeTurn(threadId = "thread-1", id = "turn-compact"): TurnRecord {
+  return {
+    schema_version: 1,
+    id,
+    thread_id: threadId,
+    status: "in_progress",
+    input_summary: "Manual context compaction",
+    created_at: "2026-07-12T00:00:01Z",
+    started_at: "2026-07-12T00:00:01Z",
+    item_ids: [],
+    steer_count: 0,
+  };
+}
+
 function createProvider(
   getThreadContext = vi.fn(async () => makeUsage()),
   getSessionContext = vi.fn(async (sessionId: string) => makeUsage(sessionId)),
 ) {
   const api = {
     bindEngine: vi.fn(),
+    ensureReady: vi.fn(async () => undefined),
     getThreadContext,
     getSessionContext,
-    compactThread: vi.fn(async () => undefined),
+    resumeSessionThread: vi.fn(async () => ({
+      thread_id: "thread-resumed",
+      summary: "Resumed session",
+    })),
+    compactThread: vi.fn(async (threadId: string) => ({
+      thread: makeThread(threadId),
+      turn: makeTurn(threadId),
+    })),
   };
   const provider = new ChatProvider({} as any, {} as any, api as any);
   provider.postMessage = vi.fn();
@@ -174,5 +196,44 @@ describe("ChatProvider context usage bridge", () => {
     await refresh;
 
     expect(postMessage).not.toHaveBeenCalled();
+  });
+
+  it("resumes a selected saved session before starting manual compaction", async () => {
+    const { provider, api, postMessage } = createProvider();
+    provider.currentThread = null;
+    (provider as any).viewingSessionId = "session-1";
+    (provider as any).loadThread = vi.fn(async (threadId: string) => {
+      provider.currentThread = makeThread(threadId);
+      return "loaded";
+    });
+    (provider as any).refreshSessionList = vi.fn();
+
+    await provider.handleCompact();
+
+    expect(api.resumeSessionThread).toHaveBeenCalledWith("session-1");
+    expect(api.compactThread).toHaveBeenCalledWith("thread-resumed");
+    expect((provider as any).viewingSessionId).toBeNull();
+    expect((provider as any).currentSessionId).toBe("session-1");
+    expect(postMessage).toHaveBeenCalledWith({
+      type: "turnStarted",
+      turnId: "turn-compact",
+    });
+    expect(postMessage).toHaveBeenCalledWith({
+      type: "status",
+      text: "Context compaction started",
+    });
+  });
+
+  it("reports an explicit no-target message instead of silently ignoring compact", async () => {
+    const { provider, api, postMessage } = createProvider();
+    provider.currentThread = null;
+
+    await provider.handleCompact();
+
+    expect(api.compactThread).not.toHaveBeenCalled();
+    expect(postMessage).toHaveBeenCalledWith({
+      type: "info",
+      message: "There is no conversation to compact",
+    });
   });
 });

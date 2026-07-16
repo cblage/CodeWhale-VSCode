@@ -172,7 +172,11 @@ export class CodeWhaleEngine {
   }
 
   async ensureRunning(): Promise<void> {
-    if (this._running && this.process && this._workspaceKey === this.getWorkspaceKey()) {
+    // A healthy runtime adopted from the persisted port intentionally has no
+    // child-process handle. Treat the established workspace binding as live;
+    // re-probing it for every API action can mistake temporary load for death
+    // and spawn a second runtime against the same store.
+    if (this._running && this._workspaceKey === this.getWorkspaceKey()) {
       return;
     }
     if (this._starting) {
@@ -188,7 +192,7 @@ export class CodeWhaleEngine {
 
   private async _doEnsureRunning(): Promise<void> {
     const currentKey = this.getWorkspaceKey();
-    if (this._running && this.process && this._workspaceKey === currentKey) {
+    if (this._running && this._workspaceKey === currentKey) {
       return;
     }
 

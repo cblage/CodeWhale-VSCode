@@ -155,20 +155,18 @@ describe("ChatProvider master-agent watchdog", () => {
     blocked.provider.dispose();
   });
 
-  it("uses the core durable watchdog turn when the parent is idle", async () => {
+  it("parks without nudging when the parent is idle", async () => {
     const idle = makeProvider({ activeTurn: false });
     (idle.provider as any).reconcileAgentWatchdog();
 
     await vi.advanceTimersByTimeAsync(30_000);
     expect(idle.api.getThreadDetail).toHaveBeenCalledTimes(1);
-    expect(idle.nudgeAgentRuns).toHaveBeenCalledTimes(1);
-    expect((idle.provider as any).currentTurnId).toBe("turn-current");
+    expect(idle.nudgeAgentRuns).not.toHaveBeenCalled();
+    expect((idle.provider as any).agentWatchdogParkedForIdleParent).toBe(true);
 
-    await vi.advanceTimersByTimeAsync(29_999);
-    expect(idle.nudgeAgentRuns).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(1);
-    expect(idle.api.getThreadDetail).toHaveBeenCalledTimes(2);
-    expect(idle.nudgeAgentRuns).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(idle.api.getThreadDetail).toHaveBeenCalledTimes(1);
+    expect(idle.nudgeAgentRuns).not.toHaveBeenCalled();
     idle.provider.dispose();
   });
 
@@ -297,6 +295,17 @@ describe("ChatProvider master-agent watchdog", () => {
     expect(nudgeAgentRuns).toHaveBeenCalledTimes(1);
   });
 
+  it("is opt-in when the setting has no persisted value", async () => {
+    delete configValues.autoWakeMasterForAgents;
+    const { provider, nudgeAgentRuns } = makeProvider();
+
+    (provider as any).reconcileAgentWatchdog();
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(nudgeAgentRuns).not.toHaveBeenCalled();
+    provider.dispose();
+  });
+
   it("coalesces overlapping ticks while the runtime request is in flight", async () => {
     let resolveNudge!: (value: unknown) => void;
     const pending = new Promise((resolve) => { resolveNudge = resolve; });
@@ -322,7 +331,7 @@ describe("ChatProvider master-agent watchdog", () => {
     provider.dispose();
   });
 
-  it("nudges a parked checkpoint needing parent action but ignores unavailable receipts", async () => {
+  it("ignores completed parked checkpoints and unavailable receipts", async () => {
     const parked = {
       ...run("agent-parked", "waiting_for_user"),
       completed_at_ms: 123,
@@ -338,7 +347,7 @@ describe("ChatProvider master-agent watchdog", () => {
     (provider as any).reconcileAgentWatchdog();
     await vi.advanceTimersByTimeAsync(30_000);
 
-    expect(nudgeAgentRuns).toHaveBeenCalledWith("thread-current", ["agent-parked"]);
+    expect(nudgeAgentRuns).not.toHaveBeenCalled();
     provider.dispose();
   });
 });

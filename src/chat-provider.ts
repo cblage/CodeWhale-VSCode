@@ -193,6 +193,11 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
   private autoSaveInProgress = false;
   private readonly deletedSessionIds = new Set<string>();
   private readonly retiredThreadIds = new Set<string>();
+  private readonly deletingSessionIds = new Set<string>();
+  private sessionDeleteQueue: Promise<void> = Promise.resolve();
+  private deletedSessionReconcileTimer: ReturnType<typeof setTimeout> | null = null;
+  private deletedSessionReconcileRunning = false;
+  private deletedSessionReconcilePending = false;
   private readonly textArtifactPreviewStore = new Map<string, { content: string; language?: string }>();
   private agentRunsRefreshGeneration = 0;
   private agentRunsRefreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -222,6 +227,8 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
   private subagentTranscriptRevision = 0;
   private restoringSubagentTranscriptHistory = false;
   private readonly pendingSteerItemIds = new Set<string>();
+  private compactRequestInFlight = false;
+  private readonly pendingManualCompactionTurnIds = new Set<string>();
   private transcriptSelectionGeneration = 0;
   private viewedSessionDisplay: { model: string; mode: string } | null = null;
 
@@ -2263,7 +2270,8 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
   public async refreshSessionList(limit = 100): Promise<SessionMetadata[] | null> {
     const fetchAndSend = async (): Promise<SessionMetadata[]> => {
       const result = await this.api.listSessions({ limit });
-      let sessions = result.sessions || [];
+      let sessions = (result.sessions || [])
+        .filter((session) => !this.deletedSessionIds.has(session.id));
       const currentWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       if (!this.showAllWorkspaces && currentWorkspace) {
         sessions = sessions.filter(s => s.workspace === currentWorkspace);
@@ -2304,66 +2312,159 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     }
   }
 
+  private enqueueSessionDelete(operation: () => Promise<void>): Promise<void> {
+    const queued = this.sessionDeleteQueue.then(operation, operation);
+    this.sessionDeleteQueue = queued.catch(() => undefined);
+    return queued;
+  }
+
+  private scheduleDeletedSessionReconciliation(): void {
+    if (this.deletedSessionReconcileTimer) {
+      clearTimeout(this.deletedSessionReconcileTimer);
+    }
+    this.deletedSessionReconcileTimer = setTimeout(() => {
+      this.deletedSessionReconcileTimer = null;
+      void this.reconcileDeletedSessions();
+    }, 250);
+  }
+
+  /**
+   * Coalesce bulk-delete cleanup into one cheap thread-index read. Session
+   * deletion is already committed before this runs, so slow archival must
+   * never hold the UI open or turn a successful DELETE into a failure.
+   */
+  private async reconcileDeletedSessions(): Promise<void> {
+    if (this.deletedSessionReconcileTimer) {
+      clearTimeout(this.deletedSessionReconcileTimer);
+      this.deletedSessionReconcileTimer = null;
+    }
+    if (this.deletedSessionReconcileRunning) {
+      this.deletedSessionReconcilePending = true;
+      return;
+    }
+
+    this.deletedSessionReconcileRunning = true;
+    try {
+      do {
+        this.deletedSessionReconcilePending = false;
+        if (!this.engine.isRunning) {
+          this.debugLog("[session-delete] reconciliation skipped: runtime is not running");
+          break;
+        }
+
+        this.api.syncFromEngine();
+        try {
+          // Active-only is sufficient: archived threads are already retired.
+          // Reading the thread index is cheap; thread detail is deliberately
+          // avoided because it scans the entire turn/item store per thread.
+          const threads = await this.api.listThreads({ limit: 500 });
+          const linkedThreads = threads.filter((thread) => (
+            !!thread.session_id
+            && this.deletedSessionIds.has(thread.session_id)
+            && !this.retiredThreadIds.has(thread.id)
+          ));
+
+          const concurrency = 4;
+          for (let index = 0; index < linkedThreads.length; index += concurrency) {
+            const batch = linkedThreads.slice(index, index + concurrency);
+            for (const thread of batch) this.retiredThreadIds.add(thread.id);
+            const results = await Promise.allSettled(
+              batch.map((thread) => this.api.updateThread(thread.id, { archived: true })),
+            );
+            results.forEach((result, resultIndex) => {
+              if (result.status === "rejected") {
+                const thread = batch[resultIndex];
+                this.retiredThreadIds.delete(thread.id);
+                this.debugLog(
+                  `[session-delete] failed to archive ${thread.id}: ${getErrorMessage(result.reason)}`,
+                );
+              }
+            });
+          }
+        } catch (err) {
+          this.debugLog(`[session-delete] background reconciliation failed: ${getErrorMessage(err)}`);
+        }
+
+        // One debounced session refresh replaces dozens of per-delete list
+        // and thread-summary scans. Tombstones filter any stale runtime rows.
+        await this.refreshSessionList();
+      } while (this.deletedSessionReconcilePending);
+    } finally {
+      this.deletedSessionReconcileRunning = false;
+    }
+  }
+
   /** Delete a session with confirmation dialog */
   private async handleDeleteSession(sessionId: string, sessionTitle: string): Promise<void> {
-    const confirmMsg = t().deleteSessionConfirmMessage.replace("{title}", sessionTitle || sessionId.slice(0, 8));
-    const confirm = await vscode.window.showWarningMessage(
-      t().deleteSessionConfirmTitle,
-      { modal: true },
-      confirmMsg,
-    );
-    if (confirm !== confirmMsg) return;
+    if (this.deletingSessionIds.has(sessionId)) return;
+    this.deletingSessionIds.add(sessionId);
+
+    let shouldReconcile = false;
     try {
-      let linkedThreads: ThreadRecord[] = [];
-      try {
-        linkedThreads = (await this.api.listThreads({ limit: 500, include_archived: true }))
-          .filter((thread) => thread.session_id === sessionId);
-      } catch {
-        // The currently loaded thread is still enough to retire the visible
-        // conversation when the broader thread index is unavailable.
-      }
-      if (
-        this.currentThread?.session_id === sessionId
-        && !linkedThreads.some((thread) => thread.id === this.currentThread?.id)
-      ) {
-        linkedThreads.push(this.currentThread);
-      }
+      const confirmMsg = t().deleteSessionConfirmMessage.replace("{title}", sessionTitle || sessionId.slice(0, 8));
+      const confirmButton = t().deleteSessionConfirmButton;
+      const confirm = await vscode.window.showWarningMessage(
+        t().deleteSessionConfirmTitle,
+        { modal: true, detail: confirmMsg },
+        confirmButton,
+      );
+      if (confirm !== confirmButton) return;
+
+      shouldReconcile = true;
+      this.postMessage({ type: "sessionDeletePending", sessionId });
+
+      const linkedCurrentThread = this.currentThread?.session_id === sessionId
+        ? this.currentThread
+        : null;
+      const activeTurnId = linkedCurrentThread ? this.currentTurnId : null;
 
       const deletingCurrent = this.viewingSessionId === sessionId
         || this.currentSessionId === sessionId
-        || linkedThreads.some((thread) => thread.id === this.currentThread?.id);
+        || !!linkedCurrentThread;
 
       this.deletedSessionIds.add(sessionId);
-      for (const thread of linkedThreads) this.retiredThreadIds.add(thread.id);
       try {
-        await this.api.deleteSession(sessionId);
+        // Serialize destructive calls globally. A burst of row clicks must
+        // not create dozens of concurrent 30-second HTTP requests.
+        await this.enqueueSessionDelete(async () => {
+          if (this.engine.isRunning) {
+            this.api.syncFromEngine();
+          } else {
+            await this.api.ensureReady();
+          }
+          try {
+            await this.api.deleteSession(sessionId);
+          } catch (err) {
+            if (!ChatProvider.isNotFoundError(err)) throw err;
+            this.debugLog(`[session-delete] ${sessionId} was already absent; reconciling`);
+          }
+        });
       } catch (err) {
         this.deletedSessionIds.delete(sessionId);
-        for (const thread of linkedThreads) this.retiredThreadIds.delete(thread.id);
         throw err;
       }
 
-      // Retire every resumed/runtime copy linked to this snapshot. There is
-      // no thread DELETE route, and archived threads are excluded from normal
-      // startup/listing without erasing their lower-level audit records.
-      await Promise.allSettled(linkedThreads.map(async (thread) => {
+      // Stop the visible turn promptly without loading thread detail (which
+      // scans the whole runtime item store). Archival of all linked threads is
+      // coalesced in the background below.
+      if (linkedCurrentThread && activeTurnId) {
         try {
-          const detail = await this.api.getThreadDetail(thread.id);
-          const activeTurn = getActiveTurn(detail);
-          if (activeTurn) await this.api.interruptTurn(thread.id, activeTurn.id);
-        } catch { /* already inactive or unavailable */ }
-        await this.api.updateThread(thread.id, { archived: true });
-      }));
+          await this.api.interruptTurn(linkedCurrentThread.id, activeTurnId);
+        } catch (err) {
+          this.debugLog(`[session-delete] interrupt skipped: ${getErrorMessage(err)}`);
+        }
+      }
 
       if (deletingCurrent) {
         await this.handleNewThread();
         this.postMessage({ type: "status", text: "Ready" });
       }
-      await this.refreshSessionList();
-      await this.refreshThreadList();
       vscode.window.setStatusBarMessage(t().deleteSessionSuccess, 3000);
     } catch (err) {
       vscode.window.showErrorMessage(`${t().deleteSessionFailed}: ${getErrorMessage(err)}`);
+    } finally {
+      this.deletingSessionIds.delete(sessionId);
+      if (shouldReconcile) this.scheduleDeletedSessionReconciliation();
     }
   }
 
@@ -2371,7 +2472,8 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
   private async handleSearchSessions(query: string): Promise<void> {
     try {
       const result = await this.api.listSessions({ limit: 100, search: query || undefined });
-      let sessions = result.sessions || [];
+      let sessions = (result.sessions || [])
+        .filter((session) => !this.deletedSessionIds.has(session.id));
       const currentWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       if (!this.showAllWorkspaces && currentWorkspace) {
         sessions = sessions.filter(s => s.workspace === currentWorkspace);
@@ -2401,10 +2503,10 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
   }
 
   private isAgentRunWatchdogTarget(run: AgentRunRecord): boolean {
-    if (run.runtime_available === false) return false;
-    if (this.isAgentRunActive(run)) return true;
-    return String(run.status || "").toLowerCase() === "waiting_for_user"
-      && run.recommended_action?.action === "inspect_or_replace";
+    // Completed checkpoints are UI receipts, not live work. In particular,
+    // waiting_for_user + inspect_or_replace can persist indefinitely after a
+    // timed-out worker and must never become a recurring paid watchdog target.
+    return this.isAgentRunActive(run);
   }
 
   private getAgentWatchdogSettings(): { enabled: boolean; intervalMs: number } {
@@ -2415,7 +2517,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       Math.max(10, Number.isFinite(rawSeconds) ? Math.round(rawSeconds) : 30),
     );
     return {
-      enabled: config.get<boolean>("autoWakeMasterForAgents", true),
+      enabled: config.get<boolean>("autoWakeMasterForAgents", false),
       intervalMs: seconds * 1000,
     };
   }
@@ -2519,9 +2621,8 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       return;
     }
 
-    // A legacy core returns 409 when the parent is idle. Park after that
-    // explicit receipt so reconcile/refresh cannot hot-loop against it. New
-    // cores accept the same nudge and create a durable internal watchdog turn.
+    // Idle parents are never valid watchdog targets. Once an idle parent is
+    // observed, park until real parent activity starts a new turn.
     if (this.agentWatchdogParkedForIdleParent) {
       this.clearAgentWatchdogTimer();
       return;
@@ -2619,16 +2720,18 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       )].sort();
 
       if (agentIds.length === 0) return;
+      if (!activeTurn) {
+        this.agentWatchdogParkedForIdleParent = true;
+        this.debugLog("[agent-watchdog] parked: parent turn is idle");
+        return;
+      }
       if (
         this.pendingApprovals.size > 0
         || this.pendingUserInputs.size > 0
         || this.currentThread?.id !== threadId
       ) return;
-      if (activeTurn) this.currentTurnId = activeTurn.id;
+      this.currentTurnId = activeTurn.id;
       const result = await this.api.nudgeAgentRuns(threadId, agentIds);
-      // On an idle parent, modern cores create a durable internal watchdog
-      // turn. Use the authoritative id returned by the endpoint so its normal
-      // item/completion stream is tracked exactly like a user-started turn.
       this.currentTurnId = result.turn_id;
       this.debugLog(
         `[agent-watchdog] ${result.coalesced ? "coalesced" : "accepted"} `
@@ -2637,12 +2740,11 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
       this.lastMasterActivityAt = Date.now();
     } catch (err) {
       // A turn can finish between the detail read and nudge POST. Park that
-      // race just like an already-idle parent instead of retrying forever.
+      // race instead of retrying forever.
       if (this.isIdleAgentWatchdogError(err)) {
         this.agentWatchdogParkedForIdleParent = true;
       }
-      // Never fabricate a user turn or surface repetitive sticky errors from
-      // the watchdog. Modern cores own durable idle-turn creation.
+      // Never surface repetitive sticky errors from the watchdog.
       this.debugLog(`[agent-watchdog] nudge skipped: ${getErrorMessage(err)}`);
       if (!this.agentWatchdogParkedForIdleParent) {
         this.lastMasterActivityAt = Date.now();
@@ -3990,17 +4092,76 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
   }
 
   public async handleCompact(): Promise<void> {
-    if (this.currentThread) {
-      try {
-        await this.api.compactThread(this.currentThread.id);
-        this.postMessage({ type: "info", message: "Context compacted" });
-        void this.refreshContextUsage();
-      } catch (err) {
-        this.postMessage({
-          type: "error",
-          message: formatError("Compact failed", err),
+    if (this.compactRequestInFlight) {
+      this.postMessage({ type: "info", message: "Context compaction is already starting" });
+      return;
+    }
+    if (this.currentTurnId) {
+      this.postMessage({ type: "info", message: "Wait for the current turn to finish before compacting" });
+      return;
+    }
+
+    this.compactRequestInFlight = true;
+    try {
+      await this.api.ensureReady();
+
+      // Saved sessions are read-only transcript views and intentionally have
+      // no currentThread. Resume the selected session into a live runtime
+      // thread before compacting it, matching send/undo/retry behavior.
+      if (this.viewingSessionId && !this.currentThread) {
+        const generation = this.beginTranscriptSelection();
+        const sessionId = this.viewingSessionId;
+        const sessionCost = this.pendingSessionCost;
+        this.postMessage({ type: "status", text: "Resuming session for compaction…" });
+
+        const resumed = await this.api.resumeSessionThread(sessionId);
+        if (!this.isCurrentTranscriptSelection(generation)) return;
+
+        this.viewingSessionId = null;
+        const loaded = await this.loadThread(resumed.thread_id, {
+          generation,
+          confirmSwitch: false,
         });
+        if (loaded !== "loaded" || !this.isCurrentTranscriptSelection(generation)) return;
+
+        // loadThread resets seeded usage because resumed turns have no usage
+        // records. Restore the saved session's cumulative totals and keep
+        // future auto-saves linked to the original session.
+        if (sessionCost) {
+          this.sessionCostUsd = sessionCost.sessionCostUsd;
+          this.sessionCostCny = sessionCost.sessionCostCny;
+          this.displayedCostHighWaterUsd = sessionCost.displayedCostHighWaterUsd;
+          this.displayedCostHighWaterCny = sessionCost.displayedCostHighWaterCny;
+          this.totalTokens = sessionCost.totalTokens;
+          this.cumulativeTurnSecs = sessionCost.cumulativeTurnSecs;
+          this.pendingSessionCost = null;
+          this.sendSessionStats();
+        }
+        this.currentSessionId = sessionId;
+        this.refreshSessionList();
       }
+
+      const threadId = this.currentThread?.id;
+      if (!threadId) {
+        this.postMessage({ type: "info", message: "There is no conversation to compact" });
+        return;
+      }
+
+      const result = await this.api.compactThread(threadId);
+      if (this.currentThread?.id !== threadId) return;
+
+      this.currentThread = result.thread;
+      this.currentTurnId = result.turn.id;
+      this.pendingManualCompactionTurnIds.add(result.turn.id);
+      this.postMessage({ type: "turnStarted", turnId: result.turn.id });
+      this.postMessage({ type: "status", text: "Context compaction started" });
+    } catch (err) {
+      this.postMessage({
+        type: "error",
+        message: formatError("Compact failed", err),
+      });
+    } finally {
+      this.compactRequestInFlight = false;
     }
   }
 
@@ -4367,6 +4528,8 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
 
       case "turn.completed": {
         const pl = event.payload as { turn?: TurnRecord };
+        const wasManualCompaction = !!event.turn_id
+          && this.pendingManualCompactionTurnIds.delete(event.turn_id);
         this.currentTurnId = null;
         this.pendingSteerItemIds.clear();
         if (pl.turn?.usage) {
@@ -4400,6 +4563,16 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
         // Determine the effective status from the turn record.
         const turnStatus = pl.turn?.status || "completed";
         const isTerminalError = turnStatus === "failed" || turnStatus === "interrupted";
+        if (wasManualCompaction) {
+          this.postMessage(isTerminalError
+            ? {
+                type: "error",
+                message: pl.turn?.error
+                  ? `Context compaction failed: ${pl.turn.error}`
+                  : `Context compaction ${turnStatus}`,
+              }
+            : { type: "info", message: "Context compacted" });
+        }
 
         // Safety net: finalize any toolCalls still "running" or
         // "awaiting_approval".  If their item.completed/item.failed/
@@ -5168,6 +5341,7 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
     this.subagentTranscriptRevision = 0;
     this.restoringSubagentTranscriptHistory = false;
     this.pendingSteerItemIds.clear();
+    this.pendingManualCompactionTurnIds.clear();
     this.eventController?.abort();
     this.eventController = null;
     this.diffContentStore.clear();
@@ -5176,6 +5350,10 @@ export class ChatProvider implements vscode.WebviewViewProvider, SlashCommandCon
   }
 
   dispose(): void {
+    if (this.deletedSessionReconcileTimer) {
+      clearTimeout(this.deletedSessionReconcileTimer);
+      this.deletedSessionReconcileTimer = null;
+    }
     this.cleanup();
     for (const d of this._disposables) {
       d.dispose();

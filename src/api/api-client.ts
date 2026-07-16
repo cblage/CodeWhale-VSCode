@@ -260,10 +260,13 @@ export class CodeWhaleApiClient {
     )) as TurnRecord;
   }
 
-  async compactThread(threadId: string, reason?: string): Promise<void> {
+  async compactThread(threadId: string, reason?: string): Promise<StartTurnResponse> {
     const body: Record<string, unknown> = {};
     if (reason) body.reason = reason;
-    await this.post(`/v1/threads/${threadId}/compact`, body);
+    return (await this.post(
+      `/v1/threads/${threadId}/compact`,
+      body,
+    )) as StartTurnResponse;
   }
 
   // ── Undo / Retry ──

@@ -95,7 +95,7 @@ describe("extension view contribution", () => {
   it("declares the configurable master-agent watchdog", () => {
     const properties = manifest.contributes.configuration.properties;
     expect(properties["cblage.codewhale.autoWakeMasterForAgents"]).toEqual(
-      expect.objectContaining({ type: "boolean", default: true })
+      expect.objectContaining({ type: "boolean", default: false })
     );
     expect(properties["cblage.codewhale.agentWakeIntervalSeconds"]).toEqual(
       expect.objectContaining({

@@ -168,7 +168,7 @@ CodeWhale is configurable via VS Code settings (`Cmd+,` → search "cblage.codew
 | `cblage.codewhale.autoStartEngine` | `true` | Auto-start engine on activation |
 | `cblage.codewhale.autoApprove` | `false` | Auto-approve tool calls independently of behavioral mode |
 | `cblage.codewhale.showAgentToolCards` | `false` | Show raw agent tool-call cards; subagent transcript cards remain visible |
-| `cblage.codewhale.autoWakeMasterForAgents` | `true` | Periodically nudge an active master turn to inspect running subagents; can use model tokens |
+| `cblage.codewhale.autoWakeMasterForAgents` | `false` | Opt in to periodically nudging an active master turn to inspect running subagents; can use model tokens |
 | `cblage.codewhale.agentWakeIntervalSeconds` | `30` | Seconds between agent watchdog nudges (10–3600) |
 
 ---

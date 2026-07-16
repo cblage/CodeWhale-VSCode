@@ -76,6 +76,20 @@ describe("Engine process lifecycle", () => {
     expect(engineSource).not.toContain("lacks direct agent cancellation; restarting");
   });
 
+  it("trusts an adopted runtime without requiring a child-process handle", () => {
+    const ensureBody = engineSource.slice(
+      engineSource.indexOf("async ensureRunning(): Promise<void>"),
+      engineSource.indexOf("private persistCurrentPort"),
+    );
+    expect(ensureBody).toContain(
+      "this._running && this._workspaceKey === this.getWorkspaceKey()",
+    );
+    expect(ensureBody).toContain(
+      "this._running && this._workspaceKey === currentKey",
+    );
+    expect(ensureBody).not.toContain("this._running && this.process");
+  });
+
   it("reserves port-based process termination for explicit Restart Engine", () => {
     const startBody = engineSource.slice(
       engineSource.indexOf("async start(): Promise<void>"),

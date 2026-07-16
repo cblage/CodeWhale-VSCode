@@ -93,7 +93,7 @@ export class ConfigPanel {
     this.panel.webview.postMessage({
       type: "extensionSettings",
       showAgentToolCards: config.get<boolean>("showAgentToolCards", false),
-      autoWakeMasterForAgents: config.get<boolean>("autoWakeMasterForAgents", true),
+      autoWakeMasterForAgents: config.get<boolean>("autoWakeMasterForAgents", false),
       agentWakeIntervalSeconds: config.get<number>("agentWakeIntervalSeconds", 30),
     });
   }
