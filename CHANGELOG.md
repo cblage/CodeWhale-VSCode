@@ -1,5 +1,64 @@
 # Change Log
 
+## 0.4.73
+
+### Interface
+
+- **Compact Session Controls** — Reduce the dashboard popover to a compact
+  220-pixel width and give selector, option, and Compact hover states the same
+  blue accent and foreground colors as Send.
+
+## 0.4.72
+
+### Fixed
+
+- **Stable Icon Tooltips** — Keep a button's custom tooltip active while the
+  pointer crosses into its nested Codicon, including the Session Controls
+  dashboard button.
+
+## 0.4.71
+
+### Fixed
+
+- **Bulk Session Deletion** — Serialize destructive requests, deduplicate
+  repeated clicks, remove confirmed rows immediately, and coalesce linked
+  thread cleanup without expensive detail/summary scans.
+- **Detached Runtime Reuse** — Keep an adopted live runtime bound even without
+  a child-process handle, preventing load spikes from spawning a second runtime
+  against the same task store.
+
+## 0.4.70
+
+### Fixed
+
+- **Reliable Session Deletion** — Use the real Delete confirmation action,
+  synchronize the live runtime before deleting, treat already-absent sessions
+  as success, and refresh cached session/thread rows after every attempt.
+
+## 0.4.69
+
+### Fixed
+
+- **Saved-Session Compact** — Resume the selected saved session before manual
+  compaction instead of silently dropping the command, block duplicate compact
+  starts while another turn is active, and report asynchronous start/completion
+  state accurately.
+
+## 0.4.68
+
+### Safety
+
+- **Agent Watchdog Opt-In** — Default the token-consuming master watchdog off,
+  ignore completed worker receipts, and never create watchdog turns while the
+  parent is idle.
+
+## 0.4.67
+
+### Interface
+
+- **Stop All Agents Pairing** — Show `$(debug-stop)` followed by `$(robot)` on
+  the Stop All Agents control, with enough width to keep both glyphs legible.
+
 ## 0.4.66
 
 ### Interface
