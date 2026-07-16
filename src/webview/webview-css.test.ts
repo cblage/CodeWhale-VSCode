@@ -226,9 +226,12 @@ describe("webview-css.ts", () => {
     expect(css).not.toMatch(/#toolbar #btn-session-controls\s*\{[^}]*margin-left:\s*auto;/s);
     expect(css).toMatch(/#toolbar #btn-session-controls \.codicon\s*\{[^}]*margin-right:\s*0;[^}]*font-size:\s*inherit;/s);
     expect(css).toContain('#toolbar #btn-session-controls[aria-expanded="true"]');
-    expect(css).toMatch(/#session-controls-popover\s*\{[^}]*display:\s*none;[^}]*position:\s*fixed;[^}]*left:\s*8px;[^}]*bottom:\s*48px;[^}]*z-index:\s*1100;/s);
+    expect(css).toMatch(/#session-controls-popover\s*\{[^}]*display:\s*none;[^}]*position:\s*fixed;[^}]*left:\s*8px;[^}]*bottom:\s*48px;[^}]*width:\s*min\(220px, calc\(100vw - 16px\)\);[^}]*z-index:\s*1100;/s);
     expect(css).toContain("#session-controls-popover.open { display: flex; }");
     expect(css).toMatch(/#session-controls-popover #btn-compact\s*\{[^}]*width:\s*100%;[^}]*justify-content:\s*flex-start;/s);
+    expect(css).toMatch(/#session-controls-popover \.setting-value:hover\s*\{[^}]*background:\s*var\(--vscode-progressBar-background, var\(--brand-primary-light\)\);[^}]*color:\s*var\(--brand-primary-foreground\);/s);
+    expect(css).toMatch(/#session-controls-popover \.dropdown-item:hover,[\s\S]*?#session-controls-popover \.dropdown-item\.selected\s*\{[^}]*background:\s*var\(--vscode-progressBar-background, var\(--brand-primary-light\)\);[^}]*color:\s*var\(--brand-primary-foreground\);/s);
+    expect(css).toMatch(/#session-controls-popover #btn-compact:hover\s*\{[^}]*color:\s*var\(--brand-primary-foreground\);[^}]*border-color:\s*var\(--vscode-progressBar-background, var\(--brand-primary-light\)\);[^}]*background:\s*var\(--vscode-progressBar-background, var\(--brand-primary-light\)\);/s);
     expect(css).not.toContain("#toolbar .thread-count");
   });
 

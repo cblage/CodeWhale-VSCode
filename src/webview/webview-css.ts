@@ -1189,6 +1189,12 @@ export function getWebviewCss(): string {
       color: var(--vscode-errorForeground, #f14c4c);
       border-color: color-mix(in srgb, var(--vscode-errorForeground, #f14c4c) 55%, var(--border));
     }
+    #toolbar #btn-stop-agents {
+      width: auto;
+      min-width: 42px;
+      padding: 0 5px;
+      gap: 3px;
+    }
     #toolbar button.is-unavailable,
     #toolbar button[aria-disabled="true"] {
       background: linear-gradient(
@@ -1255,7 +1261,7 @@ export function getWebviewCss(): string {
       position: fixed;
       left: 8px;
       bottom: 48px;
-      width: min(300px, calc(100vw - 16px));
+      width: min(220px, calc(100vw - 16px));
       max-height: calc(100vh - 24px);
       flex-direction: column;
       overflow: visible;
@@ -1321,7 +1327,7 @@ export function getWebviewCss(): string {
       opacity: 0.5;
     }
     #session-controls-popover .setting-value:hover {
-      background: var(--brand-primary);
+      background: var(--vscode-progressBar-background, var(--brand-primary-light));
       color: var(--brand-primary-foreground);
     }
 
@@ -1358,7 +1364,7 @@ export function getWebviewCss(): string {
     }
     #session-controls-popover .dropdown-item:hover,
     #session-controls-popover .dropdown-item.selected {
-      background: var(--brand-primary);
+      background: var(--vscode-progressBar-background, var(--brand-primary-light));
       color: var(--brand-primary-foreground);
     }
     #session-controls-popover #btn-compact {
@@ -1378,9 +1384,9 @@ export function getWebviewCss(): string {
       font: inherit;
     }
     #session-controls-popover #btn-compact:hover {
-      color: var(--fg);
-      border-color: var(--fg);
-      background: color-mix(in srgb, var(--brand-primary) 12%, transparent);
+      color: var(--brand-primary-foreground);
+      border-color: var(--vscode-progressBar-background, var(--brand-primary-light));
+      background: var(--vscode-progressBar-background, var(--brand-primary-light));
     }
 
     #settings-bar #btn-new-thread,

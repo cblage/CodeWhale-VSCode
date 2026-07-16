@@ -362,7 +362,7 @@ describe("webview-html.ts assembler", () => {
     expect(html).toContain('id="btn-undo" title="Undo last turn" aria-label="Undo last turn"><span class="codicon codicon-discard" aria-hidden="true"></span></button>');
     expect(html).toContain('id="btn-retry" title="Retry last turn" aria-label="Retry last turn"><span class="codicon codicon-debug-restart" aria-hidden="true"></span></button>');
     expect(html).not.toContain("🔁 Retry");
-    expect(html).toContain('id="btn-stop-agents" title="Stop all agents" aria-label="Stop all agents" disabled><span class="codicon codicon-debug-stop" aria-hidden="true"></span></button>');
+    expect(html).toContain('id="btn-stop-agents" title="Stop all agents" aria-label="Stop all agents" disabled><span class="codicon codicon-debug-stop" aria-hidden="true"></span><span class="codicon codicon-robot" aria-hidden="true"></span></button>');
     expect(html).toContain('<span class="btn-text-steer"><span class="codicon codicon-forward" aria-hidden="true"></span>Steer</span>');
     expect(html.indexOf('id="btn-stop-agents"')).toBeGreaterThan(html.indexOf('id="btn-retry"'));
     expect(html).toContain('id="btn-config" title="Open Config Panel"><span class="codicon codicon-settings-gear"');

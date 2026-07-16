@@ -10,11 +10,16 @@ export function getTooltipScript(): string {
 
   function getTooltipText(el) {
     if (!el) return '';
-    return el.getAttribute('data-tooltip') || el.getAttribute('title') || '';
+    return el.getAttribute('data-tooltip')
+      || el.getAttribute('title')
+      || el.getAttribute('data-title-backup')
+      || '';
   }
 
   function getTooltipTarget(el) {
-    return el && el.closest ? el.closest('[data-tooltip], [title]') : null;
+    return el && el.closest
+      ? el.closest('[data-tooltip], [title], [data-title-backup]')
+      : null;
   }
 
   function suppressNativeTitle(el) {

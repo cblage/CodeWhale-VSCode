@@ -752,7 +752,7 @@ export function getSidebarScript(tr: WebviewTranslations): string {
     var label = pending ? __i18n.stoppingAgent : __i18n.stopAllAgents;
     button.setAttribute('title', label);
     button.setAttribute('aria-label', label);
-    button.innerHTML = '<span class="codicon codicon-debug-stop" aria-hidden="true"></span>';
+    button.innerHTML = '<span class="codicon codicon-debug-stop" aria-hidden="true"></span><span class="codicon codicon-robot" aria-hidden="true"></span>';
   }
 
   function requestStopAgent(runId) {

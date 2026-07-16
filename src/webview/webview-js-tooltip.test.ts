@@ -60,6 +60,84 @@ describe("webview-js-tooltip.ts", () => {
     expect(script).toContain("removeAttribute('title')");
   });
 
+  it("keeps a suppressed parent tooltip discoverable from nested icons", () => {
+    const script = getTooltipScript();
+    expect(script).toContain(
+      "[data-tooltip], [title], [data-title-backup]"
+    );
+    expect(script).toContain("el.getAttribute('data-title-backup')");
+  });
+
+  it("keeps the tooltip visible while crossing a button's nested icon", () => {
+    const listeners = new Map<string, (event: any) => void>();
+    const createElement = (attributes: Record<string, string> = {}) => {
+      const attrs = new Map(Object.entries(attributes));
+      const classes = new Set<string>();
+      const element: any = {
+        parentElement: null,
+        style: {},
+        classList: {
+          add: (name: string) => classes.add(name),
+          remove: (name: string) => classes.delete(name),
+          contains: (name: string) => classes.has(name),
+        },
+        getAttribute: (name: string) => attrs.get(name) ?? null,
+        setAttribute: (name: string, value: string) => attrs.set(name, value),
+        removeAttribute: (name: string) => attrs.delete(name),
+        hasAttribute: (name: string) => attrs.has(name),
+        getBoundingClientRect: () => ({ left: 0, bottom: 26, width: 100, height: 20 }),
+        contains(node: any) {
+          return node === element || node?.parentElement === element;
+        },
+        closest(selector: string) {
+          let current: any = element;
+          while (current) {
+            if (
+              (selector.includes("[data-tooltip]") && current.hasAttribute("data-tooltip"))
+              || (selector.includes("[title]") && current.hasAttribute("title"))
+              || (selector.includes("[data-title-backup]") && current.hasAttribute("data-title-backup"))
+            ) {
+              return current;
+            }
+            current = current.parentElement;
+          }
+          return null;
+        },
+      };
+      return element;
+    };
+
+    const tooltip = createElement({ "aria-hidden": "true" });
+    const button = createElement({ title: "Session controls" });
+    const icon = createElement();
+    icon.parentElement = button;
+    const document = {
+      getElementById: (id: string) => id === "ui-tooltip" ? tooltip : null,
+      addEventListener: (type: string, listener: (event: any) => void) => {
+        listeners.set(type, listener);
+      },
+    };
+    const window = { innerWidth: 800, innerHeight: 600 };
+    Function("document", "window", getTooltipScript())(document, window);
+
+    listeners.get("mouseover")?.({ target: button, clientX: 5, clientY: 5 });
+    expect(tooltip.classList.contains("visible")).toBe(true);
+    expect(button.getAttribute("title")).toBeNull();
+
+    listeners.get("mouseout")?.({ target: button, relatedTarget: icon });
+    listeners.get("mouseover")?.({ target: icon, clientX: 7, clientY: 7 });
+    expect(tooltip.classList.contains("visible")).toBe(true);
+
+    listeners.get("mouseout")?.({ target: icon, relatedTarget: button });
+    listeners.get("mouseover")?.({ target: button, clientX: 9, clientY: 9 });
+    expect(tooltip.classList.contains("visible")).toBe(true);
+
+    listeners.get("mouseout")?.({ target: button, relatedTarget: null });
+    expect(tooltip.classList.contains("visible")).toBe(false);
+    expect(button.getAttribute("title")).toBe("Session controls");
+    expect(button.getAttribute("data-title-backup")).toBeNull();
+  });
+
   it("handles focusin/focusout for accessibility", () => {
     const script = getTooltipScript();
     expect(script).toContain("focusin");

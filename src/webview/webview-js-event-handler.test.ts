@@ -112,6 +112,8 @@ describe("webview-js-event-handler.ts", () => {
   it("handles 'sessionList' message type", () => {
     const script = getEventHandlerScript(makeTr());
     expect(script).toContain("case 'sessionList'");
+    expect(script).toContain("case 'sessionDeletePending'");
+    expect(script).toContain("window.__wvSidebar.getSessions().filter");
   });
 
   it("handles 'threadList' message type", () => {

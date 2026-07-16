@@ -305,7 +305,7 @@ ${css}
         <button id="btn-session-controls" title="Session controls" aria-label="Session controls" aria-expanded="false" aria-controls="session-controls-popover"><span class="codicon codicon-dashboard" aria-hidden="true"></span></button>
         <button id="btn-undo" title="Undo last turn" aria-label="Undo last turn"><span class="codicon codicon-discard" aria-hidden="true"></span></button>
         <button id="btn-retry" title="Retry last turn" aria-label="Retry last turn"><span class="codicon codicon-debug-restart" aria-hidden="true"></span></button>
-        <button id="btn-stop-agents" title="${tr.stopAllAgents}" aria-label="${tr.stopAllAgents}" disabled><span class="codicon codicon-debug-stop" aria-hidden="true"></span></button>
+        <button id="btn-stop-agents" title="${tr.stopAllAgents}" aria-label="${tr.stopAllAgents}" disabled><span class="codicon codicon-debug-stop" aria-hidden="true"></span><span class="codicon codicon-robot" aria-hidden="true"></span></button>
       </div>
       <div id="session-controls-popover" role="dialog" aria-label="Session controls" aria-hidden="true">
         <div class="session-controls-header">

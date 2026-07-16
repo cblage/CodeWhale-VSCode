@@ -137,6 +137,7 @@ function createRuntimeHarness() {
   const sendStopStateCalls: boolean[] = [];
   const showAgentToolCardCalls: boolean[] = [];
   const toolDetailSettingCalls: Array<{ showToolDetails: boolean; calmMode: boolean }> = [];
+  let sidebarSessions: Array<Record<string, unknown>> = [];
   let isStreaming = false;
 
   const windowObj: Record<string, any> = {
@@ -158,7 +159,10 @@ function createRuntimeHarness() {
     __wvSidebar: {
       closeTaskDetail: () => {},
       applyShowThreadList: () => {},
-      setSessions: () => {},
+      getSessions: () => sidebarSessions,
+      setSessions: (sessions: Array<Record<string, unknown>>) => {
+        sidebarSessions = sessions;
+      },
       setShowAllWorkspaces: () => {},
       renderSessions: () => {},
       setThreads: () => {},
@@ -258,6 +262,7 @@ function createRuntimeHarness() {
     },
     getElement: getEl,
     postMessages,
+    getSidebarSessions: () => sidebarSessions,
     documentListeners,
     taskDetailCalls,
     agentDetailCalls,
@@ -275,6 +280,21 @@ function createRuntimeHarness() {
 }
 
 describe("webview-js-event-handler runtime", () => {
+  it("removes a confirmed pending deletion from the session list immediately", () => {
+    const harness = createRuntimeHarness();
+    harness.dispatchMessage({
+      type: "sessionList",
+      sessions: [
+        { id: "session-delete", title: "Delete me" },
+        { id: "session-keep", title: "Keep me" },
+      ],
+    });
+
+    harness.dispatchMessage({ type: "sessionDeletePending", sessionId: "session-delete" });
+
+    expect(harness.getSidebarSessions().map((session) => session.id)).toEqual(["session-keep"]);
+  });
+
   it("renders context usage, threshold colors, and the unavailable fallback", () => {
     const harness = createRuntimeHarness();
     const gauge = harness.getElement("context-usage-gauge");

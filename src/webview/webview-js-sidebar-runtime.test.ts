@@ -206,6 +206,7 @@ describe("agent popover runtime", () => {
     expect(button.disabled).toBe(true);
     expect(stopAll.disabled).toBe(true);
     expect(stopAll.innerHTML).toContain("codicon codicon-debug-stop");
+    expect(stopAll.innerHTML).toContain("codicon codicon-robot");
     expect(stopAll.innerHTML).not.toContain("Stop all agents");
     expect(stopAll.getAttribute("title")).toBe("Stop all agents");
     button.dispatch("click");
@@ -304,6 +305,7 @@ describe("agent popover runtime", () => {
     harness.windowObj.__wvSidebar.updateAgentRuns([running, completed]);
     expect(harness.getElement("btn-stop-agents").disabled).toBe(true);
     expect(harness.getElement("btn-stop-agents").innerHTML).toContain("codicon codicon-debug-stop");
+    expect(harness.getElement("btn-stop-agents").innerHTML).toContain("codicon codicon-robot");
     expect(harness.getElement("btn-stop-agents").innerHTML).not.toContain("Stop all agents");
     expect(harness.getElement("btn-stop-agents").getAttribute("title")).toBe("Stop all agents");
   });
@@ -319,12 +321,14 @@ describe("agent popover runtime", () => {
     expect(harness.postMessages).toContainEqual({ type: "stopAllAgents" });
     expect(stopAll.disabled).toBe(true);
     expect(stopAll.innerHTML).toContain("codicon codicon-debug-stop");
+    expect(stopAll.innerHTML).toContain("codicon codicon-robot");
     expect(stopAll.innerHTML).not.toContain("Stopping…");
     expect(stopAll.getAttribute("title")).toBe("Stopping…");
 
     harness.windowObj.__wvSidebar.finishAgentStop(null);
     expect(stopAll.disabled).toBe(false);
     expect(stopAll.innerHTML).toContain("codicon codicon-debug-stop");
+    expect(stopAll.innerHTML).toContain("codicon codicon-robot");
     expect(stopAll.innerHTML).not.toContain("Stop all agents");
     expect(stopAll.getAttribute("title")).toBe("Stop all agents");
   });

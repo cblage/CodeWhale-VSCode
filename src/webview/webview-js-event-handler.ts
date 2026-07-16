@@ -394,6 +394,15 @@ export function getEventHandlerScript(tr: WebviewTranslations): string {
         window.__wvSidebar.renderSessions();
         break;
 
+      case 'sessionDeletePending':
+        window.__wvSidebar.setSessions(
+          window.__wvSidebar.getSessions().filter(function(session) {
+            return session && session.id !== msg.sessionId;
+          })
+        );
+        window.__wvSidebar.renderSessions();
+        break;
+
       case 'threadList':
         window.__wvSidebar.setThreads(msg.threads || []);
         window.__wvSidebar.setShowAllWorkspaces(!!msg.showAllWorkspaces);
